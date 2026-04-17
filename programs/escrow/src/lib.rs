@@ -5,8 +5,9 @@ pub mod instructions;
 pub mod state;
 
 use instructions::*;
+use state::MilestoneInput;
 
-declare_id!("11111111111111111111111111111111");
+declare_id!("3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ");
 
 #[program]
 pub mod escrow {

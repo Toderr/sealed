@@ -18,8 +18,10 @@ import {
   usdcToLamports,
 } from "./types";
 
-// Placeholder — replace with real program ID after deploying to devnet
-export const PROGRAM_ID = new PublicKey("11111111111111111111111111111111");
+export const PROGRAM_ID = new PublicKey(
+  process.env.NEXT_PUBLIC_PROGRAM_ID ??
+    "3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ"
+);
 
 // --- PDA derivation ---
 
