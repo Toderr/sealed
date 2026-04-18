@@ -182,11 +182,15 @@ function TrustStrip() {
         />
         <TrustItem
           icon={<ShieldIcon />}
-          text="Milestone release requires buyer signature"
+          text="Buyer confirms each milestone release"
+        />
+        <TrustItem
+          icon={<HandshakeIcon />}
+          text="Refund requires both signatures"
         />
         <TrustItem
           icon={<EyeIcon />}
-          text="Every transaction on-chain & verifiable"
+          text="Every transaction on Solana devnet"
         />
       </div>
     </section>
@@ -260,25 +264,33 @@ function Problem() {
 }
 
 function Solution() {
-  const features = [
+  const agents = [
     {
+      role: "Structurer",
       icon: <ChatIcon />,
-      title: "AI agent does the paperwork.",
+      title: "Turns a chat into a deal.",
       body:
-        "Describe the deal in plain language. Indonesian or English both work. The agent extracts milestones, amounts, and counterparty details, then drafts the escrow.",
+        "Describe what you are buying in plain language — Bahasa Indonesia or English. The Structurer extracts counterparty, amount, and milestones, then drafts the escrow.",
     },
     {
-      icon: <VaultIcon />,
-      title: "Program-held escrow.",
+      role: "Negotiator",
+      icon: <HandshakeIcon className="w-5 h-5" />,
+      title: "Speaks for each side.",
       body:
-        "USDC sits in a Solana program-derived account. Neither side can withdraw it alone. Funds release only when the buyer confirms each milestone.",
+        "Both wallets get their own Negotiator, carrying BusinessMemory — red-lines, style, past deals. The agents counter-offer until they agree, then summarize pros, cons, and risks.",
     },
     {
-      icon: <ReceiptIcon />,
-      title: "Portable reputation.",
+      role: "Verifier",
+      icon: <ShieldCheckIcon />,
+      title: "Reviews delivery proof.",
       body:
-        "Every completed deal counts toward the counterparty's on-chain record. You bring your track record with you — not stuck in one platform.",
+        "Seller submits proof per milestone. The Verifier scores confidence and recommends approve, reject, or request clarification. The buyer retains final authority.",
     },
+  ];
+  const primitives = [
+    { label: "Program-held escrow", detail: "USDC locked in a PDA vault; neither side withdraws alone." },
+    { label: "Mutual refund", detail: "2-sig partial-sign handoff — no trusted relay, no griefing vector." },
+    { label: "Portable reputation", detail: "Completed-deals counter tracked per wallet, portable to the reputation PDA." },
   ];
   return (
     <section
@@ -286,30 +298,59 @@ function Solution() {
       className="border-t border-card-border-subtle bg-[rgba(255,255,255,0.015)]"
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
-        <SectionEyebrow>What Sealed does</SectionEyebrow>
+        <SectionEyebrow>The three agents</SectionEyebrow>
         <h2
           className="mt-3 text-[32px] sm:text-[40px] max-w-3xl text-primary"
           style={h2Style}
         >
-          A neutral third party, enforced by code.
+          Three AI agents. One on-chain deal table.
         </h2>
+        <p className="mt-4 text-[17px] text-foreground max-w-2xl leading-relaxed">
+          Structurer, Negotiator, Verifier — one engine, different roles. Each
+          one does the piece a bank or lawyer would otherwise charge you for.
+        </p>
         <div className="mt-12 grid md:grid-cols-3 gap-3">
-          {features.map((f) => (
+          {agents.map((a) => (
             <article
-              key={f.title}
+              key={a.role}
               className="rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 flex flex-col transition-colors hover:bg-[rgba(255,255,255,0.035)]"
             >
-              <div className="h-10 w-10 rounded-lg bg-accent/15 text-accent flex items-center justify-center">
-                {f.icon}
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-accent/15 text-accent flex items-center justify-center">
+                  {a.icon}
+                </div>
+                <span className="text-[11px] uppercase tracking-[0.14em] text-subtle">
+                  {a.role}
+                </span>
               </div>
               <h3 className="mt-5 text-[15px] text-primary" style={h3Style}>
-                {f.title}
+                {a.title}
               </h3>
               <p className="mt-2 text-[14px] text-foreground leading-relaxed">
-                {f.body}
+                {a.body}
               </p>
             </article>
           ))}
+        </div>
+        <div className="mt-12 rounded-xl border border-card-border-subtle bg-[rgba(255,255,255,0.015)] p-6 sm:p-7">
+          <p className="text-[11px] uppercase tracking-[0.14em] text-subtle">
+            Under the hood
+          </p>
+          <dl className="mt-4 grid md:grid-cols-3 gap-x-8 gap-y-4">
+            {primitives.map((p) => (
+              <div key={p.label}>
+                <dt
+                  className="text-[13px] text-primary"
+                  style={{ fontWeight: 510 }}
+                >
+                  {p.label}
+                </dt>
+                <dd className="mt-1 text-[13px] text-muted leading-relaxed">
+                  {p.detail}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </div>
       </div>
     </section>
@@ -320,21 +361,33 @@ function HowItWorks() {
   const steps = [
     {
       n: "01",
-      title: "Describe the deal.",
+      title: "Describe.",
       body:
-        "Open the chat. Say what you are buying, from whom, and how you want to pay it out. The agent asks only what it needs.",
+        "Open the chat. Say what you are buying, from whom, how to pay it out. The Structurer drafts a deal preview.",
     },
     {
       n: "02",
-      title: "Fund the escrow.",
+      title: "Negotiate.",
       body:
-        "The agent drafts the on-chain deal. You review the milestones and sign once. USDC moves into a program-derived vault.",
+        "Each side's Negotiator counter-offers with its BusinessMemory in mind. You accept the final summary when the risks make sense.",
     },
     {
       n: "03",
-      title: "Release on delivery.",
+      title: "Fund.",
       body:
-        "When the seller ships a milestone, you confirm in one tap. The contract releases only that milestone, not the whole pot.",
+        "Sign once. USDC moves into a program-derived vault on Solana. Neither side can withdraw unilaterally.",
+    },
+    {
+      n: "04",
+      title: "Verify.",
+      body:
+        "Seller uploads proof per milestone. The Verifier reviews it and recommends approve, reject, or request clarification.",
+    },
+    {
+      n: "05",
+      title: "Release.",
+      body:
+        "You confirm delivery in one tap. The contract releases that milestone only — not the whole pot.",
     },
   ];
   return (
@@ -344,13 +397,13 @@ function HowItWorks() {
         className="mt-3 text-[32px] sm:text-[40px] max-w-3xl text-primary"
         style={h2Style}
       >
-        Three steps. One signature per milestone.
+        Five steps. One signature per milestone.
       </h2>
-      <ol className="mt-12 grid md:grid-cols-3 gap-3">
+      <ol className="mt-12 grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {steps.map((s) => (
           <li
             key={s.n}
-            className="relative rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6"
+            className="relative rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-5"
           >
             <span
               className="text-[12px] font-mono text-accent"
@@ -361,12 +414,30 @@ function HowItWorks() {
             <h3 className="mt-2 text-[15px] text-primary" style={h3Style}>
               {s.title}
             </h3>
-            <p className="mt-2 text-[14px] text-foreground leading-relaxed">
+            <p className="mt-2 text-[13.5px] text-foreground leading-relaxed">
               {s.body}
             </p>
           </li>
         ))}
       </ol>
+      <div className="mt-6 rounded-xl border border-card-border-subtle bg-[rgba(255,255,255,0.015)] p-5 sm:p-6 flex items-start gap-4">
+        <span className="mt-0.5 text-accent shrink-0">
+          <RefundIcon />
+        </span>
+        <div>
+          <p
+            className="text-[13px] text-primary"
+            style={{ fontWeight: 510 }}
+          >
+            Recovery path, also shipped.
+          </p>
+          <p className="mt-1 text-[13.5px] text-muted leading-relaxed">
+            If the deal unwinds, mutual refund returns the remaining USDC —
+            both parties partial-sign, no trusted relay, no griefing vector.
+            Pre-funding deals cancel locally without touching the chain.
+          </p>
+        </div>
+      </div>
     </section>
   );
 }
@@ -429,6 +500,8 @@ function TeamTrust() {
             <Fact label="Settlement token" value="USDC (SPL)" />
             <Fact label="Escrow model" value="Milestone-based" />
             <Fact label="Release rule" value="Buyer confirms" />
+            <Fact label="Negotiation" value="Dual-agent" />
+            <Fact label="Refund" value="Buyer + seller sign" />
           </div>
         </aside>
       </div>
@@ -676,7 +749,7 @@ function ChatIcon() {
     </svg>
   );
 }
-function VaultIcon() {
+function HandshakeIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -685,19 +758,17 @@ function VaultIcon() {
       strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="w-5 h-5"
+      className={className}
       aria-hidden="true"
     >
-      <rect width="18" height="16" x="3" y="4" rx="2" />
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 9v-.5" />
-      <path d="M12 15v.5" />
-      <path d="M9 12h-.5" />
-      <path d="M15 12h.5" />
+      <path d="m11 17 2 2a1 1 0 0 0 3-3" />
+      <path d="m14 14 2.5 2.5a1 1 0 0 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 0 1-1.41 0l-2.62-2.62a1 1 0 0 0-1.41 0L3 10.5" />
+      <path d="m21 3-3 3" />
+      <path d="M3 21v-4.5" />
     </svg>
   );
 }
-function ReceiptIcon() {
+function ShieldCheckIcon() {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -709,10 +780,25 @@ function ReceiptIcon() {
       className="w-5 h-5"
       aria-hidden="true"
     >
-      <path d="M4 2v20l3-2 3 2 3-2 3 2 3-2 3 2V2l-3 2-3-2-3 2-3-2-3 2-3-2Z" />
-      <path d="M8 8h8" />
-      <path d="M8 12h8" />
-      <path d="M8 16h5" />
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
+function RefundIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="w-5 h-5"
+      aria-hidden="true"
+    >
+      <path d="M3 7v6h6" />
+      <path d="M21 17a9 9 0 0 0-15-6.7L3 13" />
     </svg>
   );
 }
