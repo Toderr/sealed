@@ -39,12 +39,13 @@ When a deal goes wrong, the options are ugly: eat the loss, hire a lawyer, or se
 
 ## Slide 3 — Solution
 
-### An AI agent that represents your business on an on-chain deal table.
+### Three AI agents. One on-chain deal table.
 
-1. **Chat** — describe your deal in plain language. Indonesian or English.
-2. **Structure** — the agent converts it into milestones, amounts, and release conditions.
-3. **Sign** — both parties approve. Funds lock in a Solana smart contract.
-4. **Settle** — milestones release automatically on delivery confirmation.
+1. **Chat** — describe your deal in plain language (Bahasa Indonesia or English). The **Structurer** agent parses it into milestones, amounts, and release conditions.
+2. **Negotiate** — both parties get their own **Negotiator** agent carrying their BusinessMemory (deal history, red-lines, style). The agents counter-offer until they agree, then summarize pros, cons, and risk flags.
+3. **Sign + fund** — both wallets approve. USDC locks in a Solana PDA-owned vault.
+4. **Verify + settle** — seller submits proof per milestone. The **Verifier** agent scores confidence and recommends approve / reject / request clarification. Buyer releases with one signature.
+5. **Exit** — mutual refund via 2-sig partial-sign handoff if the deal unwinds.
 
 No lawyer. No bank. No dispute hotline.
 
@@ -59,14 +60,17 @@ Just code that can't lie.
 **Program ID:** `3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ`
 
 **[Screenshot or GIF grid]**
-- Chat interface with deal preview card
+- Chat intake → deal preview card
+- Dual-agent negotiation view (counter-offers, concessions, risk summary)
 - On-chain deal creation (Solscan link)
 - Fund escrow with USDC
+- Milestone proof + Verifier review
 - Milestone release transaction
+- Mutual-refund 2-sig partial-sign handoff
 
-**Built in 4 weeks by a team of 2.**
+**Built in 4 weeks by a team of 2.** 4 Anchor instructions, 3 AI agent roles, end-to-end typed — no mocks.
 
-Full walkthrough in the technical video.
+Full walkthrough in [DEMO.md](./DEMO.md) and the technical video.
 
 ---
 
@@ -83,6 +87,22 @@ Pengusaha (Indonesian business owners) already hold USDT on exchanges. They move
 **Sealed is the first escrow layer built for them, not for DeFi natives.**
 
 *Sources: [McKinsey Feb 2026](https://www.mckinsey.com/industries/financial-services/our-insights/stablecoins-in-payments-what-the-raw-transaction-numbers-miss), [Chainalysis 2025 Index](https://www.chainalysis.com/blog/2025-global-crypto-adoption-index/).*
+
+---
+
+## Slide 5.5 — Why us, not another escrow dApp
+
+### Escrow is a feature. Negotiation is the product.
+
+Bare on-chain escrow already exists — and nobody in our target market uses it, because locking funds into a contract is the *last* 10% of the work. The first 90% is:
+
+- Structuring a messy WhatsApp deal into milestones
+- Negotiating terms without a lawyer
+- Judging whether delivery actually happened
+
+Every incumbent skips straight to "sign this smart contract." We built the agent layer that gets two businesses **to the signature** — and a Verifier that helps them decide **whether to release**.
+
+That's why our wedge is AI-first, and escrow is the settlement rail underneath.
 
 ---
 
@@ -122,10 +142,13 @@ Our partner has 18 years in trading, investing, and crypto, with direct relation
 
 ### Already shipping.
 
-- Anchor program deployed to devnet
-- End-to-end fund and release flow working
-- AI agent integrated via OpenRouter
-- Landing page live
+- Anchor program on devnet: `create_deal`, `fund_escrow`, `release_milestone`, `refund`
+- Full deal lifecycle working end-to-end: chat → negotiate → fund → proof → verify → release → complete
+- Dual-agent negotiation engine with BusinessMemory per wallet
+- AI Verifier scoring milestone proofs (approve / reject / request-clarification)
+- Mutual refund via 2-sig partial-sign handoff — no trusted relay needed
+- Anthropic direct + OpenRouter both supported
+- Linear-grade UI — not a hackathon-looking app
 
 **Team**
 
@@ -172,7 +195,7 @@ Two people. Four weeks. Working product on mainnet-adjacent infrastructure.
 [Screen recording: chat, deal preview, wallet sign, on-chain confirmation, milestone release]
 
 **2:15–2:45 — Why us**
-"Two people, four weeks, shipped. My partner has a direct line to ten thousand business owners who will never touch a DEX but will happily use this if it feels like chat. That's our wedge."
+"Two people, four weeks. Three AI agents — Structurer, Negotiator, Verifier — on top of a four-instruction Anchor escrow. My partner has eighteen years in trading and a direct line to business owners who will never touch a DEX but will happily use this if it feels like chat. That's our wedge."
 
 **2:45–3:00 — Close**
 "People break promises. Code doesn't. Sealed makes trust infrastructure for the 99% of business that happens off-chain today."
@@ -181,12 +204,12 @@ Two people. Four weeks. Working product on mainnet-adjacent infrastructure.
 
 ## Submission Checklist (Colosseum)
 
-- [ ] Project name + one-line tagline
-- [ ] GitHub repo (public, README, demo script)
-- [ ] Team bios
-- [ ] Tech stack listed
+- [x] Project name + one-line tagline
+- [x] GitHub repo (public, README, demo script) — github.com/Toderr/sealed
+- [x] Tech stack listed — in README
+- [ ] Team bios — fill [Dev name] + [Partner name] placeholders
 - [ ] Track selection
 - [ ] 3-min pitch video uploaded
 - [ ] Under-3-min technical walkthrough
-- [ ] Live demo URL
+- [ ] Live demo URL (Vercel)
 - [ ] Contact email
