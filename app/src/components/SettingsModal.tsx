@@ -16,6 +16,15 @@ import { useToast } from "./Toast";
 const STYLES: NegotiationStyle[] = ["conservative", "balanced", "aggressive"];
 const PAYMENT_TERMS = Object.keys(PAYMENT_TERM_LABELS) as PaymentTerm[];
 
+const labelStyle: React.CSSProperties = {
+  fontWeight: 510,
+  letterSpacing: "-0.006em",
+};
+const headingStyle: React.CSSProperties = {
+  fontWeight: 590,
+  letterSpacing: "-0.014em",
+};
+
 export default function SettingsModal({
   onClose,
 }: {
@@ -25,8 +34,6 @@ export default function SettingsModal({
   const { memory, updateMemory } = useBusinessMemory(publicKey ?? null);
   const toast = useToast();
 
-  // Lazy init from memory at mount. Parent remounts this component on re-open,
-  // so draft always starts fresh from current memory.
   const [draft, setDraft] = useState<NegotiationBoundaries>(
     () => memory?.boundaries ?? DEFAULT_BOUNDARIES
   );
@@ -85,7 +92,7 @@ export default function SettingsModal({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-[2px] px-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="settings-title"
@@ -93,41 +100,60 @@ export default function SettingsModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-card border border-card-border rounded-2xl shadow-2xl">
+      <div
+        className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-surface border border-card-border rounded-2xl"
+        style={{ boxShadow: "var(--shadow-dialog)" }}
+      >
         {/* Header */}
-        <div className="sticky top-0 bg-card border-b border-card-border px-6 py-4 flex items-center justify-between z-10">
+        <div className="sticky top-0 bg-surface border-b border-card-border-subtle px-6 py-4 flex items-center justify-between z-10">
           <div>
             <h2
               id="settings-title"
-              className="text-lg font-semibold text-white"
+              className="text-[16px] text-primary"
+              style={headingStyle}
             >
-              Agent Settings
+              Agent settings
             </h2>
-            <p className="text-xs text-muted mt-0.5">
+            <p className="text-[12px] text-muted mt-0.5">
               Boundaries your Negotiator agent will respect
             </p>
           </div>
           <button
             onClick={onClose}
-            className="w-9 h-9 rounded-lg hover:bg-background text-foreground hover:text-accent transition-colors flex items-center justify-center"
+            className="h-8 w-8 rounded-md hover:bg-[rgba(255,255,255,0.04)] text-muted hover:text-primary transition-colors flex items-center justify-center"
             aria-label="Close settings"
           >
-            ×
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
         </div>
 
         {/* Body */}
-        <div className="px-6 py-5 space-y-7">
+        <div className="px-6 py-6 space-y-7">
           {!walletConnected && (
-            <div className="text-sm text-foreground bg-accent/10 border border-accent/30 rounded-lg px-4 py-3">
-              Connect your wallet to save settings. Changes will not persist
+            <div
+              className="text-[13px] text-foreground bg-[rgba(113,112,255,0.08)] border border-[rgba(113,112,255,0.25)] rounded-lg px-4 py-3"
+            >
+              Connect your wallet to save settings. Changes won&apos;t persist
               until connected.
             </div>
           )}
 
           {/* Negotiation Style */}
           <Section
-            title="Negotiation Style"
+            title="Negotiation style"
             helper="How hard the agent pushes on your behalf."
           >
             <div className="grid grid-cols-3 gap-2">
@@ -135,24 +161,25 @@ export default function SettingsModal({
                 <button
                   key={style}
                   onClick={() => patch("negotiationStyle", style)}
-                  className={`px-3 py-3 rounded-lg border text-sm font-medium capitalize transition-colors ${
+                  className={`px-3 py-2.5 rounded-lg border text-[13px] capitalize transition-colors ${
                     draft.negotiationStyle === style
-                      ? "bg-accent/15 border-accent text-accent"
-                      : "border-card-border text-foreground hover:border-accent/50"
+                      ? "bg-[rgba(113,112,255,0.10)] border-[rgba(113,112,255,0.40)] text-accent"
+                      : "bg-[rgba(255,255,255,0.02)] border-card-border text-foreground hover:bg-[rgba(255,255,255,0.04)] hover:border-[rgba(255,255,255,0.14)]"
                   }`}
+                  style={labelStyle}
                 >
                   {style}
                 </button>
               ))}
             </div>
-            <p className="text-xs text-muted mt-2">
+            <p className="text-[12px] text-muted mt-2 leading-relaxed">
               {NEGOTIATION_STYLE_DESCRIPTIONS[draft.negotiationStyle]}
             </p>
           </Section>
 
           {/* Price Flexibility */}
           <Section
-            title="Price Flexibility"
+            title="Price flexibility"
             helper="Max percentage the agent may move off your initial number."
           >
             <div className="grid grid-cols-2 gap-4">
@@ -177,7 +204,7 @@ export default function SettingsModal({
 
           {/* Timeline + Milestones */}
           <Section
-            title="Timeline & Milestones"
+            title="Timeline & milestones"
             helper="Structural limits the agent must work within."
           >
             <div className="grid grid-cols-2 gap-4">
@@ -215,7 +242,7 @@ export default function SettingsModal({
 
           {/* Payment Terms */}
           <Section
-            title="Accepted Payment Terms"
+            title="Accepted payment terms"
             helper="The agent will only agree to these structures."
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -224,10 +251,10 @@ export default function SettingsModal({
                 return (
                   <label
                     key={term}
-                    className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
                       checked
-                        ? "bg-accent/10 border-accent/50 text-foreground"
-                        : "border-card-border text-foreground hover:border-accent/50"
+                        ? "bg-[rgba(113,112,255,0.08)] border-[rgba(113,112,255,0.35)]"
+                        : "bg-[rgba(255,255,255,0.02)] border-card-border hover:bg-[rgba(255,255,255,0.04)] hover:border-[rgba(255,255,255,0.14)]"
                     }`}
                   >
                     <input
@@ -236,7 +263,9 @@ export default function SettingsModal({
                       onChange={() => togglePaymentTerm(term)}
                       className="w-4 h-4 accent-accent"
                     />
-                    <span className="text-sm">{PAYMENT_TERM_LABELS[term]}</span>
+                    <span className="text-[13px] text-foreground">
+                      {PAYMENT_TERM_LABELS[term]}
+                    </span>
                   </label>
                 );
               })}
@@ -245,7 +274,7 @@ export default function SettingsModal({
 
           {/* Red Lines */}
           <Section
-            title="Deal Breakers"
+            title="Deal breakers"
             helper="One per line. If a proposal violates any of these, the agent will auto-reject."
           >
             <textarea
@@ -255,13 +284,13 @@ export default function SettingsModal({
               placeholder={
                 "No payment in advance\nNo buyers from blacklisted regions\nNo milestones over 30 days"
               }
-              className="w-full bg-background border border-card-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted focus:outline-none focus:border-accent resize-none"
+              className="w-full bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-3.5 py-2.5 text-[13px] text-foreground placeholder:text-subtle hover:border-[rgba(255,255,255,0.14)] focus:outline-none resize-none transition-colors"
             />
           </Section>
 
           {/* Autonomy */}
           <Section
-            title="Autonomy Envelope"
+            title="Autonomy envelope"
             helper="When the agent decides alone vs asks you."
           >
             <div className="grid grid-cols-2 gap-4">
@@ -294,27 +323,28 @@ export default function SettingsModal({
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-card border-t border-card-border px-6 py-4 flex items-center justify-between gap-3">
+        <div className="sticky bottom-0 bg-surface border-t border-card-border-subtle px-6 py-4 flex items-center justify-between gap-3">
           <button
             onClick={() => {
               setDraft(DEFAULT_BOUNDARIES);
               setRedLinesText("");
             }}
-            className="text-sm text-muted hover:text-foreground transition-colors"
+            className="text-[13px] text-muted hover:text-primary transition-colors"
           >
             Reset to defaults
           </button>
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2.5 rounded-lg text-sm font-medium text-foreground hover:bg-background transition-colors"
+              className="btn-ghost rounded-lg px-4 h-9 text-[13px]"
+              style={labelStyle}
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
               disabled={!walletConnected}
-              className="px-5 py-2.5 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary rounded-lg px-4 h-9 text-[13px]"
             >
               Save
             </button>
@@ -334,10 +364,20 @@ function Section({
   helper?: string;
   children: React.ReactNode;
 }) {
+  const labelStyleLocal: React.CSSProperties = {
+    fontWeight: 590,
+    letterSpacing: "-0.012em",
+  };
   return (
     <div>
-      <h3 className="text-sm font-semibold text-white">{title}</h3>
-      {helper && <p className="text-xs text-muted mt-0.5 mb-3">{helper}</p>}
+      <h3 className="text-[13px] text-primary" style={labelStyleLocal}>
+        {title}
+      </h3>
+      {helper && (
+        <p className="text-[12px] text-muted mt-1 mb-3 leading-relaxed">
+          {helper}
+        </p>
+      )}
       {!helper && <div className="mb-3" />}
       {children}
     </div>
@@ -359,9 +399,15 @@ function NumberField({
   max?: number;
   onChange: (value: number) => void;
 }) {
+  const labelStyleLocal: React.CSSProperties = {
+    fontWeight: 510,
+    letterSpacing: "-0.006em",
+  };
   return (
     <label className="block">
-      <span className="text-xs font-medium text-foreground">{label}</span>
+      <span className="text-[12px] text-foreground" style={labelStyleLocal}>
+        {label}
+      </span>
       <input
         type="number"
         value={value}
@@ -371,9 +417,13 @@ function NumberField({
           const n = Number(e.target.value);
           if (!Number.isNaN(n)) onChange(n);
         }}
-        className="mt-1 w-full bg-background border border-card-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-accent"
+        className="mt-1.5 w-full bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-3 py-2 text-[13px] text-primary font-mono hover:border-[rgba(255,255,255,0.14)] focus:outline-none transition-colors"
       />
-      {hint && <span className="block text-[11px] text-muted mt-1">{hint}</span>}
+      {hint && (
+        <span className="block text-[11px] text-subtle mt-1 leading-relaxed">
+          {hint}
+        </span>
+      )}
     </label>
   );
 }

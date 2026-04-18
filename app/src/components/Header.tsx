@@ -20,48 +20,60 @@ export default function Header({
   onOpenSettings: () => void;
 }) {
   return (
-    <header className="flex items-center justify-between px-6 py-3 border-b border-card-border bg-card">
-      <div className="flex items-center gap-8">
-        <h1 className="text-lg font-semibold tracking-tight">
-          <span className="text-accent">Sealed</span>
-        </h1>
-        <nav className="flex gap-1">
-          <button
+    <header className="flex items-center justify-between px-4 sm:px-6 h-14 border-b border-card-border-subtle bg-panel">
+      <div className="flex items-center gap-6">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-accent/15 text-accent">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4"
+              aria-hidden="true"
+            >
+              <path d="M12 2 4 6v6c0 5 3.4 9.3 8 10 4.6-.7 8-5 8-10V6l-8-4Z" />
+              <path d="m9 12 2 2 4-4" />
+            </svg>
+          </span>
+          <span
+            className="text-[15px] font-medium tracking-tight text-primary"
+            style={{ fontWeight: 510 }}
+          >
+            Sealed
+          </span>
+        </div>
+        <nav className="flex items-center gap-0.5" aria-label="Main">
+          <NavTab
+            active={activeTab === "chat"}
             onClick={() => onTabChange("chat")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeTab === "chat"
-                ? "bg-accent/15 text-accent"
-                : "text-muted hover:text-foreground"
-            }`}
           >
             New Deal
-          </button>
-          <button
+          </NavTab>
+          <NavTab
+            active={activeTab === "deals"}
             onClick={() => onTabChange("deals")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeTab === "deals"
-                ? "bg-accent/15 text-accent"
-                : "text-muted hover:text-foreground"
-            }`}
           >
             My Deals
-          </button>
+          </NavTab>
         </nav>
       </div>
       <div className="flex items-center gap-2">
         <button
           onClick={onOpenSettings}
-          className="w-10 h-10 rounded-lg text-muted hover:text-foreground hover:bg-background transition-colors flex items-center justify-center"
+          className="h-9 w-9 rounded-lg text-muted hover:text-primary hover:bg-[rgba(255,255,255,0.04)] transition-colors flex items-center justify-center"
           aria-label="Open agent settings"
           title="Agent settings"
         >
           <svg
-            width="18"
-            height="18"
+            width="16"
+            height="16"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="1.8"
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden="true"
@@ -73,5 +85,30 @@ export default function Header({
         <WalletMultiButton />
       </div>
     </header>
+  );
+}
+
+function NavTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      className={`px-3 h-8 text-[13px] rounded-md transition-colors ${
+        active
+          ? "bg-[rgba(255,255,255,0.05)] text-primary"
+          : "text-muted hover:text-primary"
+      }`}
+      style={{ fontWeight: 510 }}
+    >
+      {children}
+    </button>
   );
 }

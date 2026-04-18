@@ -1,23 +1,31 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import WalletProvider from "@/components/WalletProvider";
 import { ToastProvider } from "@/components/Toast";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Inter Variable — Linear's core typeface. Weights 300/400/510/590 required.
+// Google Fonts serves Inter as a variable font; the global font-feature-settings
+// "cv01","ss03" (applied in globals.css) produce Linear's distinctive letterforms.
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
+  display: "swap",
+  axes: ["opsz"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+// JetBrains Mono — open substitute for Berkeley Mono. Used only for code,
+// addresses, deal IDs, and numeric data where tabular figures matter.
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-mono-custom",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Sealed: AI-Powered B2B Escrow",
+  title: "Sealed — AI-powered escrow on Solana",
   description:
-    "Autonomous B2B deal execution with milestone-based escrow on Solana",
+    "Autonomous B2B deal execution with milestone-based escrow on Solana.",
 };
 
 export default function RootLayout({
@@ -28,7 +36,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}
     >
       <body className="min-h-screen">
         <WalletProvider>

@@ -1,63 +1,214 @@
 @import "tailwindcss";
 
+/*
+ * Sealed — Linear-inspired design tokens.
+ * Refs: DESIGN.md §2 (palette), §3 (typography), §6 (elevation).
+ * Dark-mode-native. No chromatic color outside brand violet + status.
+ */
+
 :root {
-  --background: #0a0a0a;
-  --foreground: #e5e5e5;
-  --card: #141414;
-  --card-border: #2d2d3a;
-  --accent: #818cf8;
-  --accent-hover: #a5b4fc;
-  --success: #34d399;
+  /* --- Surfaces: luminance-stepped dark backgrounds --- */
+  --background: #08090a;            /* marketing black (page canvas) */
+  --panel: #0f1011;                 /* panels, sticky headers, sidebars */
+  --surface: #191a1b;               /* elevated cards, popovers */
+  --surface-hover: #28282c;         /* lightest dark surface, hover */
+
+  /* --- Text: 4-tier cool gray hierarchy --- */
+  --primary: #f7f8f8;               /* primary heading text (never pure white) */
+  --foreground: #d0d6e0;            /* body text, descriptions */
+  --muted: #8a8f98;                 /* labels, metadata, placeholders */
+  --subtle: #62666d;                /* timestamps, disabled, hint */
+
+  /* --- Brand: the only chromatic color --- */
+  --brand: #5e6ad2;                 /* primary CTA background */
+  --accent: #7170ff;                /* interactive accent (links, active) */
+  --accent-hover: #828fff;          /* accent hover state */
+
+  /* --- Status (used for indicators, not decoration) --- */
+  --success: #10b981;
   --warning: #fbbf24;
   --danger: #f87171;
-  --muted: #e0e7ff;
+
+  /* --- Borders: semi-transparent white (whisper-thin) --- */
+  --card: #0f1011;                  /* legacy alias → panel */
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-border-subtle: rgba(255, 255, 255, 0.05);
+
+  /* --- Elevation stack (DESIGN.md §6) --- */
+  --shadow-focus: 0 0 0 2px rgba(113, 112, 255, 0.35);
+  --shadow-card: 0 0 0 1px rgba(0, 0, 0, 0.2);
+  --shadow-dialog:
+    0 1px 1px rgba(0, 0, 0, 0.08),
+    0 3px 2px rgba(0, 0, 0, 0.07),
+    0 5px 2px rgba(0, 0, 0, 0.04),
+    0 8px 2px rgba(0, 0, 0, 0.01),
+    0 24px 48px -12px rgba(0, 0, 0, 0.55);
 }
 
+/*
+ * Tailwind v4 theme bridge. Every token below unlocks `text-*`, `bg-*`,
+ * `border-*` utilities. `--color-white` override prevents `text-white`
+ * from being pure #ffffff (DESIGN.md §7: don't use pure white).
+ */
 @theme inline {
   --color-background: var(--background);
+  --color-panel: var(--panel);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+
+  --color-primary: var(--primary);
   --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-border: var(--card-border);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+
+  --color-brand: var(--brand);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
+
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
-  --color-muted: var(--muted);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  --color-card: var(--card);
+  --color-card-border: var(--card-border);
+  --color-card-border-subtle: var(--card-border-subtle);
+
+  /* Override pure white so legacy text-white renders as Linear primary */
+  --color-white: var(--primary);
+
+  --font-sans: var(--font-inter), "SF Pro Display", -apple-system, system-ui,
+    "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: var(--font-mono-custom), ui-monospace, "SF Mono", Menlo,
+    Consolas, monospace;
+}
+
+/*
+ * Global Inter OpenType features. DESIGN.md §3 principle: cv01 + ss03
+ * transform generic Inter into Linear's distinctive typeface.
+ */
+html {
+  font-feature-settings: "cv01", "ss03";
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans, system-ui, sans-serif);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv01", "ss03";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-/* Wallet adapter overrides */
-.wallet-adapter-button {
-  background-color: var(--accent) !important;
-  border-radius: 8px !important;
-  font-size: 14px !important;
-  height: 40px !important;
+/* Focus ring — 2px accent ring, consistent across app (WCAG focus-visible). */
+*:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: 6px;
 }
-.wallet-adapter-button:hover {
+
+/* Respect prefers-reduced-motion — disable non-essential animations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* --- Wallet adapter overrides — match Linear CTA --- */
+.wallet-adapter-button {
+  background-color: var(--brand) !important;
+  border-radius: 6px !important;
+  font-size: 13px !important;
+  font-weight: 510 !important;
+  height: 36px !important;
+  padding: 0 14px !important;
+  transition: background-color 150ms ease-out !important;
+  font-feature-settings: "cv01", "ss03" !important;
+}
+.wallet-adapter-button:hover:not([disabled]) {
   background-color: var(--accent-hover) !important;
 }
+.wallet-adapter-button:not([disabled]):focus-visible {
+  box-shadow: var(--shadow-focus) !important;
+}
 .wallet-adapter-modal-wrapper {
-  background-color: var(--card) !important;
+  background-color: var(--surface) !important;
   border: 1px solid var(--card-border) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-dialog) !important;
+}
+.wallet-adapter-modal-title {
+  color: var(--primary) !important;
 }
 
-/* Scrollbar */
+/* --- Scrollbar — subtle, Linear-style --- */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--card-border);
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 
+/* --- Shared utility classes for repeating patterns --- */
+
+/* Level-2 card: translucent surface + subtle border (DESIGN.md §4). */
+.surface-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--card-border);
+}
+.surface-card-subtle {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--card-border-subtle);
+}
+
+/* Ghost button — DESIGN.md §4 Ghost Button spec. */
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--card-border);
+  color: var(--primary);
+  transition: background-color 150ms ease-out, border-color 150ms ease-out;
+}
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* Primary brand button — DESIGN.md §4 Primary spec. */
+.btn-primary {
+  background: var(--brand);
+  color: #ffffff;
+  font-weight: 510;
+  transition: background-color 150ms ease-out;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Subtle pill — DESIGN.md §4 Neutral Pill. */
+.pill-neutral {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 510;
+  color: var(--foreground);
+  line-height: 1.4;
+}

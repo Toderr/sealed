@@ -30,20 +30,65 @@ import {
   TokenAccountNotFoundError,
 } from "@solana/spl-token";
 
+const labelStyle: React.CSSProperties = {
+  fontWeight: 510,
+  letterSpacing: "-0.006em",
+};
+const headingStyle: React.CSSProperties = {
+  fontWeight: 590,
+  letterSpacing: "-0.014em",
+};
+
 const STATUS_STYLES: Record<DealStatus, { color: string; label: string }> = {
-  [DealStatus.Created]: { color: "text-blue-400", label: "Awaiting Funding" },
-  [DealStatus.Funded]: { color: "text-yellow-400", label: "Funded: Ready" },
-  [DealStatus.InProgress]: { color: "text-accent", label: "In Progress" },
+  [DealStatus.Created]: { color: "text-accent", label: "Awaiting funding" },
+  [DealStatus.Funded]: { color: "text-warning", label: "Funded · ready" },
+  [DealStatus.InProgress]: { color: "text-accent", label: "In progress" },
   [DealStatus.Completed]: { color: "text-success", label: "Completed" },
   [DealStatus.Refunded]: { color: "text-muted", label: "Refunded" },
   [DealStatus.Disputed]: { color: "text-danger", label: "Disputed" },
 };
 
-const MS_ICONS: Record<MilestoneStatus, string> = {
-  [MilestoneStatus.Pending]: "○",
-  [MilestoneStatus.Completed]: "◉",
-  [MilestoneStatus.Released]: "●",
-};
+function MilestoneDot({ status }: { status: MilestoneStatus }) {
+  const common = "h-4 w-4 rounded-full flex items-center justify-center";
+  if (status === MilestoneStatus.Released) {
+    return (
+      <span
+        className={`${common} bg-success/15 text-success`}
+        aria-label="Released"
+      >
+        <svg
+          width="9"
+          height="9"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      </span>
+    );
+  }
+  if (status === MilestoneStatus.Completed) {
+    return (
+      <span
+        className={`${common} bg-accent/15`}
+        aria-label="Completed"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`${common} border border-card-border`}
+      aria-label="Pending"
+    />
+  );
+}
 
 export default function DealDetail({
   deal,
@@ -138,7 +183,7 @@ export default function DealDetail({
     const pendingId = toast.show({
       variant: "loading",
       title: "Funding escrow",
-      description: `Locking ${formatUsdc(amountUsdc)} USDC on devnet...`,
+      description: `Locking ${formatUsdc(amountUsdc)} USDC on devnet…`,
       duration: 0,
     });
 
@@ -183,7 +228,7 @@ export default function DealDetail({
     const pendingId = toast.show({
       variant: "loading",
       title: `Releasing milestone ${index + 1}`,
-      description: `Paying seller ${formatUsdc(lamportsToUsdc(milestone.amount))} USDC...`,
+      description: `Paying seller ${formatUsdc(lamportsToUsdc(milestone.amount))} USDC…`,
       duration: 0,
     });
 
@@ -249,72 +294,126 @@ export default function DealDetail({
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 space-y-5">
         {/* Back + header */}
         <div>
           <button
             onClick={onBack}
-            className="text-sm text-muted hover:text-foreground mb-4 flex items-center gap-1"
+            className="text-[13px] text-muted hover:text-primary mb-5 flex items-center gap-1.5 transition-colors"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M10.78 3.22a.75.75 0 010 1.06L7.06 8l3.72 3.72a.75.75 0 11-1.06 1.06l-4.25-4.25a.75.75 0 010-1.06l4.25-4.25a.75.75 0 011.06 0z" />
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m15 18-6-6 6-6" />
             </svg>
             Back to deals
           </button>
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="text-xl font-semibold font-mono text-white truncate">
+                <h2
+                  className="text-[20px] font-mono text-primary truncate"
+                  style={{ ...headingStyle, letterSpacing: "-0.018em" }}
+                >
                   {deal.dealId}
                 </h2>
                 <button
                   onClick={handleCopyDealId}
-                  className="shrink-0 text-xs bg-card border border-card-border hover:border-accent text-muted hover:text-foreground px-2 py-1 rounded-md transition-colors"
+                  className="shrink-0 text-[11px] btn-ghost rounded-md px-2 py-1 transition-colors"
+                  style={labelStyle}
                   title="Copy deal ID"
                 >
                   {copied ? "Copied" : "Copy"}
                 </button>
               </div>
-              <p className={`text-sm mt-1 ${statusInfo.color}`}>
+              <p
+                className={`text-[13px] mt-1.5 ${statusInfo.color}`}
+                style={labelStyle}
+              >
                 {statusInfo.label}
               </p>
               <a
                 href={`https://solscan.io/account/${dealPDA.toBase58()}?cluster=devnet`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-accent hover:text-accent-hover mt-1 inline-block"
+                className="text-[12px] text-accent hover:text-accent-hover mt-1 inline-flex items-center gap-1 transition-colors"
               >
-                View deal on Solscan ↗
+                View on Solscan
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M7 17 17 7" />
+                  <path d="M7 7h10v10" />
+                </svg>
               </a>
             </div>
             <div className="text-right shrink-0">
-              <p className="text-2xl font-bold text-white">
+              <p
+                className="text-[28px] text-primary font-mono"
+                style={{ fontWeight: 590, letterSpacing: "-0.022em" }}
+              >
                 {formatUsdc(lamportsToUsdc(deal.totalAmount))}
               </p>
-              <p className="text-xs text-muted">USDC</p>
+              <p
+                className="text-[11px] text-subtle uppercase tracking-[0.12em]"
+                style={labelStyle}
+              >
+                USDC
+              </p>
             </div>
           </div>
         </div>
 
         {/* Parties */}
-        <div className="bg-card border border-card-border rounded-xl p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-white">Parties</h3>
-          <div className="grid grid-cols-2 gap-4 text-sm">
+        <div className="surface-card rounded-xl p-4 space-y-3">
+          <h3
+            className="text-[11px] uppercase tracking-[0.08em] text-subtle"
+            style={labelStyle}
+          >
+            Parties
+          </h3>
+          <div className="grid grid-cols-2 gap-4 text-[13px]">
             <div>
-              <span className="text-xs text-muted">Buyer</span>
-              <p className="font-mono text-xs mt-0.5">
+              <span className="text-[11px] text-subtle">Buyer</span>
+              <p className="font-mono text-[12px] text-foreground mt-1">
                 {shortenAddress(deal.buyer.toBase58(), 6)}
                 {isBuyer && (
-                  <span className="ml-1.5 text-accent text-[10px]">(you)</span>
+                  <span
+                    className="ml-1.5 text-accent text-[10px]"
+                    style={labelStyle}
+                  >
+                    (you)
+                  </span>
                 )}
               </p>
             </div>
             <div>
-              <span className="text-xs text-muted">Seller</span>
-              <p className="font-mono text-xs mt-0.5">
+              <span className="text-[11px] text-subtle">Seller</span>
+              <p className="font-mono text-[12px] text-foreground mt-1">
                 {shortenAddress(deal.seller.toBase58(), 6)}
-                {publicKey?.equals(deal.seller) && (
-                  <span className="ml-1.5 text-accent text-[10px]">(you)</span>
+                {isSeller && (
+                  <span
+                    className="ml-1.5 text-accent text-[10px]"
+                    style={labelStyle}
+                  >
+                    (you)
+                  </span>
                 )}
               </p>
             </div>
@@ -322,15 +421,20 @@ export default function DealDetail({
         </div>
 
         {/* Funding */}
-        <div className="bg-card border border-card-border rounded-xl p-4 space-y-3">
+        <div className="surface-card rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white">Escrow Funding</h3>
-            <span className="text-xs text-muted">
+            <h3
+              className="text-[13px] text-primary"
+              style={labelStyle}
+            >
+              Escrow funding
+            </h3>
+            <span className="text-[12px] text-muted font-mono">
               {formatUsdc(lamportsToUsdc(deal.fundedAmount))} /{" "}
-              {formatUsdc(lamportsToUsdc(deal.totalAmount))} USDC
+              {formatUsdc(lamportsToUsdc(deal.totalAmount))}
             </span>
           </div>
-          <div className="h-2 bg-background rounded-full overflow-hidden">
+          <div className="h-1.5 bg-[rgba(255,255,255,0.04)] rounded-full overflow-hidden">
             <div
               className="h-full bg-accent rounded-full transition-all"
               style={{ width: `${fundingPercent}%` }}
@@ -339,30 +443,46 @@ export default function DealDetail({
 
           {isBuyer && deal.fundedAmount < deal.totalAmount && (
             <>
-              <div className="flex items-center justify-between text-xs text-muted">
+              <div className="flex items-center justify-between text-[12px] text-muted pt-1">
                 <span>
                   Your balance:{" "}
-                  {usdcBalance === null
-                    ? "..."
-                    : `${formatUsdc(usdcBalance)} USDC`}
+                  <span className="font-mono text-foreground">
+                    {usdcBalance === null
+                      ? "…"
+                      : `${formatUsdc(usdcBalance)} USDC`}
+                  </span>
                 </span>
                 {usdcBalance !== null && usdcBalance === 0 && (
                   <a
                     href="https://faucet.circle.com/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-accent hover:text-accent-hover"
+                    className="text-accent hover:text-accent-hover inline-flex items-center gap-1 transition-colors"
                   >
-                    Get devnet USDC ↗
+                    Get devnet USDC
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M7 17 17 7" />
+                      <path d="M7 7h10v10" />
+                    </svg>
                   </a>
                 )}
               </div>
               <button
-                className="w-full bg-accent hover:bg-accent-hover text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-primary w-full rounded-lg py-2.5 text-[13px]"
                 onClick={handleFundEscrow}
                 disabled={usdcBalance === 0}
               >
-                Fund Escrow (
+                Fund escrow (
                 {formatUsdc(
                   lamportsToUsdc(deal.totalAmount - deal.fundedAmount)
                 )}{" "}
@@ -373,42 +493,42 @@ export default function DealDetail({
         </div>
 
         {/* Milestones */}
-        <div className="bg-card border border-card-border rounded-xl p-4 space-y-4">
-          <h3 className="text-sm font-semibold text-white">
+        <div className="surface-card rounded-xl p-4 space-y-4">
+          <h3
+            className="text-[13px] text-primary"
+            style={labelStyle}
+          >
             Milestones ({deal.milestones.length})
           </h3>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {deal.milestones.map((milestone, index) => (
-              <div key={index} className="flex items-start gap-3 text-sm">
+              <div
+                key={index}
+                className="flex items-start gap-3 text-[13px]"
+              >
                 <div className="flex flex-col items-center pt-0.5">
-                  <span
-                    className={`text-lg leading-none ${
-                      milestone.status === MilestoneStatus.Released
-                        ? "text-success"
-                        : milestone.status === MilestoneStatus.Completed
-                          ? "text-accent"
-                          : "text-muted"
-                    }`}
-                  >
-                    {MS_ICONS[milestone.status]}
-                  </span>
+                  <MilestoneDot status={milestone.status} />
                   {index < deal.milestones.length - 1 && (
-                    <div className="w-px h-8 bg-card-border mt-1" />
+                    <div className="w-px h-10 bg-card-border-subtle mt-1" />
                   )}
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium truncate text-white">
+                  <div className="flex items-start justify-between gap-3">
+                    <p
+                      className="text-primary leading-snug"
+                      style={labelStyle}
+                    >
+                      <span className="text-subtle mr-1.5">{index + 1}.</span>
                       {milestone.description}
                     </p>
-                    <span className="shrink-0 font-mono text-xs ml-2">
+                    <span className="shrink-0 font-mono text-[12px] text-muted">
                       {formatUsdc(lamportsToUsdc(milestone.amount))} USDC
                     </span>
                   </div>
-                  <p className="text-xs text-muted mt-0.5">
+                  <p className="text-[11px] text-subtle mt-1">
                     {milestone.status === MilestoneStatus.Released
-                      ? `Released${milestone.confirmedAt ? ` on ${new Date(milestone.confirmedAt * 1000).toLocaleDateString()}` : ""}`
+                      ? `Released${milestone.confirmedAt ? ` ${new Date(milestone.confirmedAt * 1000).toLocaleDateString()}` : ""}`
                       : milestone.status}
                   </p>
 
@@ -437,12 +557,13 @@ export default function DealDetail({
         </div>
 
         {/* Timestamps */}
-        <div className="text-xs text-muted text-center space-x-4">
+        <div className="text-[11px] text-subtle text-center flex items-center justify-center gap-4 pt-2">
           <span>
-            Created: {new Date(deal.createdAt * 1000).toLocaleString()}
+            Created {new Date(deal.createdAt * 1000).toLocaleString()}
           </span>
+          <span className="text-card-border">·</span>
           <span>
-            Updated: {new Date(deal.updatedAt * 1000).toLocaleString()}
+            Updated {new Date(deal.updatedAt * 1000).toLocaleString()}
           </span>
         </div>
       </div>
@@ -461,20 +582,20 @@ const REC_STYLES: Record<
   approve: {
     label: "Approve",
     color: "text-success",
-    bg: "bg-success/10",
-    border: "border-success/30",
+    bg: "bg-[rgba(16,185,129,0.06)]",
+    border: "border-[rgba(16,185,129,0.25)]",
   },
   request_clarification: {
-    label: "Needs Clarification",
-    color: "text-yellow-400",
-    bg: "bg-yellow-400/10",
-    border: "border-yellow-400/30",
+    label: "Needs clarification",
+    color: "text-warning",
+    bg: "bg-[rgba(251,191,36,0.06)]",
+    border: "border-[rgba(251,191,36,0.25)]",
   },
   reject: {
     label: "Reject",
     color: "text-danger",
-    bg: "bg-danger/10",
-    border: "border-danger/30",
+    bg: "bg-[rgba(248,113,113,0.06)]",
+    border: "border-[rgba(248,113,113,0.25)]",
   },
 };
 
@@ -583,7 +704,7 @@ function MilestoneProofSection({
     const pendingId = toast.show({
       variant: "loading",
       title: `Reviewing milestone ${index + 1}`,
-      description: "AI verifier is analyzing your proof...",
+      description: "AI verifier is analyzing your proof…",
       duration: 0,
     });
 
@@ -639,7 +760,7 @@ function MilestoneProofSection({
   // Hide proof UI for already-released milestones
   if (milestone.status === MilestoneStatus.Released) {
     return milestone.proof ? (
-      <div className="mt-2">
+      <div className="mt-3">
         <ProofDisplay proof={milestone.proof} dealId={dealId} index={index} />
       </div>
     ) : null;
@@ -654,9 +775,12 @@ function MilestoneProofSection({
 
       {/* Seller upload form — only if no proof yet and deal is active */}
       {isSeller && !milestone.proof && dealActive && (
-        <div className="bg-background/60 border border-card-border rounded-lg p-3 space-y-3">
+        <div className="bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded-lg p-3 space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold text-white">
+            <h4
+              className="text-[11px] uppercase tracking-[0.08em] text-subtle"
+              style={labelStyle}
+            >
               Submit proof of delivery
             </h4>
             <div className="flex gap-1 text-[11px]">
@@ -665,11 +789,12 @@ function MilestoneProofSection({
                   key={t}
                   type="button"
                   onClick={() => setProofType(t)}
-                  className={`px-2 py-0.5 rounded border transition-colors ${
+                  className={`px-2 py-1 rounded-md border capitalize transition-colors ${
                     proofType === t
-                      ? "bg-accent text-white border-accent"
-                      : "border-card-border text-muted hover:text-foreground"
+                      ? "bg-[rgba(113,112,255,0.12)] border-[rgba(113,112,255,0.40)] text-accent"
+                      : "border-card-border text-muted hover:text-primary hover:border-[rgba(255,255,255,0.14)]"
                   }`}
+                  style={labelStyle}
                 >
                   {t}
                 </button>
@@ -684,7 +809,8 @@ function MilestoneProofSection({
                 accept="image/jpeg,image/png,image/webp,image/gif"
                 onChange={handleFile}
                 disabled={submitting}
-                className="block w-full text-xs text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-accent file:text-white hover:file:bg-accent-hover file:cursor-pointer"
+                className="block w-full text-[12px] text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-[12px] file:bg-brand file:text-white hover:file:bg-accent-hover file:cursor-pointer file:transition-colors"
+                style={{ fontWeight: 510 }}
               />
               {imageDataUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -694,9 +820,9 @@ function MilestoneProofSection({
                   className="max-h-40 rounded-md border border-card-border"
                 />
               )}
-              <p className="text-[10px] text-muted">
+              <p className="text-[11px] text-subtle">
                 JPG/PNG/WEBP/GIF up to{" "}
-                {Math.round(MAX_IMAGE_BYTES / 1024)}KB.
+                {Math.round(MAX_IMAGE_BYTES / 1024)}KB
               </p>
             </div>
           )}
@@ -708,7 +834,7 @@ function MilestoneProofSection({
               onChange={(e) => setUrlValue(e.target.value)}
               disabled={submitting}
               placeholder="https://github.com/your/repo/pull/42"
-              className="w-full bg-card border border-card-border rounded-md px-3 py-2 text-xs focus:outline-none focus:border-accent"
+              className="w-full bg-[rgba(255,255,255,0.02)] border border-card-border rounded-md px-3 py-2 text-[12px] text-foreground placeholder:text-subtle hover:border-[rgba(255,255,255,0.14)] focus:outline-none transition-colors"
             />
           )}
 
@@ -718,8 +844,8 @@ function MilestoneProofSection({
               onChange={(e) => setTextValue(e.target.value)}
               disabled={submitting}
               rows={3}
-              placeholder="Describe what was delivered..."
-              className="w-full bg-card border border-card-border rounded-md px-3 py-2 text-xs resize-none focus:outline-none focus:border-accent"
+              placeholder="Describe what was delivered…"
+              className="w-full bg-[rgba(255,255,255,0.02)] border border-card-border rounded-md px-3 py-2 text-[12px] text-foreground placeholder:text-subtle resize-none hover:border-[rgba(255,255,255,0.14)] focus:outline-none transition-colors"
             />
           )}
 
@@ -728,34 +854,48 @@ function MilestoneProofSection({
             onChange={(e) => setNote(e.target.value)}
             disabled={submitting}
             rows={2}
-            placeholder="Optional note for the buyer + verifier..."
-            className="w-full bg-card border border-card-border rounded-md px-3 py-2 text-xs resize-none focus:outline-none focus:border-accent"
+            placeholder="Optional note for the buyer + verifier…"
+            className="w-full bg-[rgba(255,255,255,0.02)] border border-card-border rounded-md px-3 py-2 text-[12px] text-foreground placeholder:text-subtle resize-none hover:border-[rgba(255,255,255,0.14)] focus:outline-none transition-colors"
           />
 
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="w-full bg-accent hover:bg-accent-hover text-white rounded-md py-2 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary w-full rounded-md py-2 text-[12px]"
           >
-            {submitting ? "Reviewing..." : "Submit for AI Review"}
+            {submitting ? "Reviewing…" : "Submit for AI review"}
           </button>
         </div>
       )}
 
       {/* Buyer waiting state */}
       {isBuyer && !milestone.proof && dealActive && (
-        <div className="text-[11px] text-muted italic">
-          Awaiting seller&apos;s proof of delivery.
+        <div className="text-[11px] text-subtle italic">
+          Awaiting seller&apos;s proof of delivery
         </div>
       )}
 
       {/* Buyer release button — always allowed, AI is advisory */}
       {canRelease && (
         <button
-          className="bg-success/15 text-success hover:bg-success/25 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+          className="inline-flex items-center gap-1.5 bg-[rgba(16,185,129,0.12)] text-success hover:bg-[rgba(16,185,129,0.20)] border border-[rgba(16,185,129,0.30)] rounded-md px-3 py-1.5 text-[12px] transition-colors"
           onClick={onRelease}
+          style={labelStyle}
         >
-          Confirm &amp; Release
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          Confirm &amp; release
         </button>
       )}
     </div>
@@ -773,12 +913,17 @@ function ProofDisplay({
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
-    <div className="bg-background/60 border border-card-border rounded-lg p-3 space-y-2">
-      <div className="flex items-center justify-between text-[11px] text-muted">
+    <div className="bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between text-[11px] text-subtle">
         <span>
           Proof submitted {new Date(proof.submittedAt * 1000).toLocaleString()}
         </span>
-        <span className="font-mono uppercase">{proof.proofType}</span>
+        <span
+          className="font-mono uppercase tracking-[0.08em]"
+          style={labelStyle}
+        >
+          {proof.proofType}
+        </span>
       </div>
 
       {proof.proofType === "image" && (
@@ -786,7 +931,7 @@ function ProofDisplay({
         <img
           src={proof.proofData}
           alt={`Proof for ${dealId} milestone ${index + 1}`}
-          className={`rounded-md border border-card-border cursor-pointer transition-all ${
+          className={`rounded-md border border-card-border-subtle cursor-pointer transition-all ${
             expanded ? "max-h-none" : "max-h-40"
           }`}
           onClick={() => setExpanded((v) => !v)}
@@ -798,20 +943,35 @@ function ProofDisplay({
           href={proof.proofData}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-accent hover:text-accent-hover break-all"
+          className="text-[12px] text-accent hover:text-accent-hover break-all inline-flex items-start gap-1 transition-colors"
         >
-          {proof.proofData} ↗
+          <span>{proof.proofData}</span>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            className="shrink-0 mt-1"
+          >
+            <path d="M7 17 17 7" />
+            <path d="M7 7h10v10" />
+          </svg>
         </a>
       )}
 
       {proof.proofType === "text" && (
-        <p className="text-xs text-foreground whitespace-pre-wrap">
+        <p className="text-[12px] text-foreground whitespace-pre-wrap leading-relaxed">
           {proof.proofData}
         </p>
       )}
 
       {proof.note && (
-        <p className="text-[11px] text-muted italic border-l-2 border-card-border pl-2">
+        <p className="text-[11px] text-muted italic border-l-2 border-card-border pl-2 leading-relaxed">
           Seller note: {proof.note}
         </p>
       )}
@@ -825,10 +985,15 @@ function ReviewCard({ review }: { review: VerifierReview }) {
   const style = REC_STYLES[review.recommendation];
   const pct = Math.round(review.confidence * 100);
   return (
-    <div className={`rounded-md border p-2.5 space-y-1.5 ${style.bg} ${style.border}`}>
+    <div
+      className={`rounded-md border p-2.5 space-y-1.5 ${style.bg} ${style.border}`}
+    >
       <div className="flex items-center justify-between">
-        <span className={`text-xs font-semibold ${style.color}`}>
-          AI: {style.label}
+        <span
+          className={`text-[11px] ${style.color}`}
+          style={labelStyle}
+        >
+          AI · {style.label}
         </span>
         <span className="text-[11px] text-muted font-mono">
           {pct}% confidence
@@ -837,10 +1002,9 @@ function ReviewCard({ review }: { review: VerifierReview }) {
       <p className="text-[11px] text-foreground leading-relaxed">
         {review.notes}
       </p>
-      <p className="text-[10px] text-muted">
+      <p className="text-[10px] text-subtle">
         Advisory only — buyer has final say on release.
       </p>
     </div>
   );
 }
-

@@ -36,6 +36,9 @@ function tryParseDealParams(text: string): DealParams | undefined {
   return undefined;
 }
 
+const labelStyle: React.CSSProperties = { fontWeight: 510, letterSpacing: "-0.006em" };
+const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.014em" };
+
 export default function ChatInterface({
   onDealCreated,
 }: {
@@ -115,17 +118,35 @@ export default function ChatInterface({
   return (
     <div className="flex flex-col h-full max-w-3xl mx-auto">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-8 space-y-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center gap-4">
-            <div className="text-4xl">🤝</div>
-            <h2 className="text-xl font-semibold">Create a new deal</h2>
-            <p className="text-muted max-w-md">
-              Describe your business deal in natural language. The AI agent will
-              help structure it into an escrow-protected agreement with
-              milestones.
+            <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-accent/10 text-accent">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+              </svg>
+            </div>
+            <h2
+              className="text-[22px] text-primary"
+              style={{ ...headingStyle, letterSpacing: "-0.022em" }}
+            >
+              Start a new deal
+            </h2>
+            <p className="text-muted max-w-md text-[14px] leading-relaxed">
+              Describe your business deal in natural language. The agent will
+              structure it into an escrow-protected agreement with milestones.
             </p>
-            <div className="flex flex-wrap gap-2 justify-center mt-2">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2 justify-center mt-3 w-full max-w-xl">
               {[
                 "I want to buy 100 units of product X for $5,000 USDC",
                 "Set up a service contract with 3 payment milestones",
@@ -134,7 +155,7 @@ export default function ChatInterface({
                 <button
                   key={suggestion}
                   onClick={() => setInput(suggestion)}
-                  className="px-3 py-2 text-sm text-muted border border-card-border rounded-lg hover:border-accent hover:text-foreground transition-colors text-left"
+                  className="flex-1 min-w-0 px-3.5 py-2.5 text-[13px] text-muted surface-card-subtle rounded-lg hover:bg-[rgba(255,255,255,0.04)] hover:text-primary hover:border-[rgba(255,255,255,0.12)] transition-colors text-left"
                 >
                   {suggestion}
                 </button>
@@ -149,11 +170,12 @@ export default function ChatInterface({
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                className={`max-w-[80%] rounded-2xl px-4 py-3 text-[14px] leading-relaxed ${
                   msg.role === "user"
-                    ? "bg-accent text-white"
-                    : "bg-card border border-card-border"
+                    ? "bg-brand text-white"
+                    : "surface-card text-foreground"
                 }`}
+                style={msg.role === "user" ? { fontWeight: 510 } : undefined}
               >
                 <div className="whitespace-pre-wrap">{msg.content}</div>
               </div>
@@ -174,11 +196,20 @@ export default function ChatInterface({
 
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-card border border-card-border rounded-2xl px-4 py-3 text-sm">
-              <div className="flex gap-1">
-                <span className="animate-bounce" style={{ animationDelay: "0ms" }}>.</span>
-                <span className="animate-bounce" style={{ animationDelay: "150ms" }}>.</span>
-                <span className="animate-bounce" style={{ animationDelay: "300ms" }}>.</span>
+            <div className="surface-card rounded-2xl px-4 py-3 text-sm">
+              <div className="flex gap-1 items-center h-5">
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-muted animate-bounce"
+                  style={{ animationDelay: "0ms" }}
+                />
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-muted animate-bounce"
+                  style={{ animationDelay: "150ms" }}
+                />
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-muted animate-bounce"
+                  style={{ animationDelay: "300ms" }}
+                />
               </div>
             </div>
           </div>
@@ -188,33 +219,65 @@ export default function ChatInterface({
       </div>
 
       {/* Input */}
-      <div className="border-t border-card-border px-4 py-4">
-        <div className="flex gap-3 items-end">
+      <div className="border-t border-card-border-subtle px-4 sm:px-6 py-4 bg-panel">
+        <div className="flex gap-2 items-end">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
               connected
-                ? "Describe your deal..."
-                : "Connect wallet to start..."
+                ? "Describe your deal…"
+                : "Connect wallet to start…"
             }
             disabled={!connected}
             rows={1}
-            className="flex-1 resize-none bg-card border border-card-border rounded-xl px-4 py-3 text-sm placeholder:text-muted focus:outline-none focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ minHeight: "44px", maxHeight: "120px" }}
+            className="flex-1 resize-none bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-3.5 py-2.5 text-[14px] text-foreground placeholder:text-subtle focus:outline-none hover:border-[rgba(255,255,255,0.14)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ minHeight: "40px", maxHeight: "140px" }}
             onInput={(e) => {
               const target = e.target as HTMLTextAreaElement;
               target.style.height = "auto";
-              target.style.height = Math.min(target.scrollHeight, 120) + "px";
+              target.style.height = Math.min(target.scrollHeight, 140) + "px";
             }}
           />
           <button
             onClick={sendMessage}
             disabled={!input.trim() || loading || !connected}
-            className="bg-accent hover:bg-accent-hover text-white rounded-xl px-5 py-3 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            className="btn-primary rounded-lg px-4 h-10 text-[13px] shrink-0 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label="Send message"
           >
-            {loading ? "..." : "Send"}
+            {loading ? (
+              <svg
+                className="animate-spin"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <>
+                Send
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M5 12h14" />
+                  <path d="m12 5 7 7-7 7" />
+                </svg>
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -239,60 +302,92 @@ function DealPreview({
   }
 
   return (
-    <div className="bg-card border border-accent/30 rounded-xl p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-accent">Deal Ready</h3>
-        <span className="text-xs text-muted font-mono">{params.dealId}</span>
+    <div className="surface-card rounded-xl p-4 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+          <h3 className="text-[13px] text-primary" style={labelStyle}>
+            Deal ready
+          </h3>
+        </div>
+        <span className="text-[11px] text-subtle font-mono">
+          {params.dealId}
+        </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 text-sm">
+      <div className="grid grid-cols-2 gap-4 text-[13px]">
         <div>
-          <span className="text-muted text-xs">Seller</span>
-          <p className="font-mono text-xs mt-0.5">
-            {params.sellerWallet.slice(0, 8)}...{params.sellerWallet.slice(-4)}
+          <span
+            className="text-subtle text-[11px] uppercase tracking-[0.08em]"
+            style={labelStyle}
+          >
+            Seller
+          </span>
+          <p className="font-mono text-[12px] text-foreground mt-1">
+            {params.sellerWallet.slice(0, 8)}…{params.sellerWallet.slice(-4)}
           </p>
         </div>
         <div>
-          <span className="text-muted text-xs">Total</span>
-          <p className="font-semibold mt-0.5">
+          <span
+            className="text-subtle text-[11px] uppercase tracking-[0.08em]"
+            style={labelStyle}
+          >
+            Total
+          </span>
+          <p className="text-primary mt-1" style={labelStyle}>
             {formatUsdc(params.totalAmount)} USDC
           </p>
         </div>
       </div>
 
       <div className="space-y-1.5">
-        <span className="text-muted text-xs">
+        <span
+          className="text-subtle text-[11px] uppercase tracking-[0.08em]"
+          style={labelStyle}
+        >
           Milestones ({params.milestones.length})
         </span>
-        {params.milestones.map((m, i) => (
-          <div
-            key={i}
-            className="flex items-center justify-between text-xs bg-background/50 rounded-lg px-3 py-2"
-          >
-            <span className="truncate mr-2">
-              {i + 1}. {m.description}
-            </span>
-            <span className="shrink-0 font-mono">
-              {formatUsdc(m.amount)} USDC
-            </span>
-          </div>
-        ))}
+        <div className="space-y-1">
+          {params.milestones.map((m, i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between text-[12px] bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded-md px-3 py-2"
+            >
+              <span className="truncate mr-2 text-foreground">
+                <span className="text-subtle mr-1.5">{i + 1}.</span>
+                {m.description}
+              </span>
+              <span className="shrink-0 font-mono text-muted">
+                {formatUsdc(m.amount)}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {confirmed ? (
-        <div className="flex items-center gap-2 text-accent text-sm font-medium py-2">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <div
+          className="flex items-center gap-2 text-accent text-[13px] pt-1"
+          style={labelStyle}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            aria-hidden="true"
+          >
             <path d="M8 0a8 8 0 110 16A8 8 0 018 0zm3.78 5.22a.75.75 0 00-1.06 0L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.06 0l4.25-4.25a.75.75 0 000-1.06z" />
           </svg>
-          Negotiation started. Review terms.
+          Negotiation started — review terms
         </div>
       ) : (
         <button
           onClick={handleConfirm}
           disabled={disabled}
-          className="w-full bg-accent hover:bg-accent-hover text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn-primary w-full rounded-lg py-2.5 text-[13px]"
         >
-          {disabled ? "Connect wallet first" : "Start Negotiation"}
+          {disabled ? "Connect wallet first" : "Start negotiation"}
         </button>
       )}
     </div>
