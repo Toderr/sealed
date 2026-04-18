@@ -1,0 +1,1454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sealed — Pitch Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;400;500;590;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ===== TOKENS ===== */
+:root {
+  --bg: #08090a;
+  --panel: #0f1011;
+  --surface: #191a1b;
+  --text: #f7f8f8;
+  --muted: #8a8f98;
+  --dim: #5b5f66;
+  --brand: #5e6ad2;
+  --accent: #7170ff;
+  --magenta: #c47aff;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --border: rgba(255,255,255,0.08);
+  --border-strong: rgba(255,255,255,0.14);
+  --glass: rgba(255,255,255,0.03);
+  --glass-hi: rgba(255,255,255,0.05);
+
+  --glow-brand: 0 0 48px rgba(94,106,210,0.35);
+  --glow-accent: 0 0 48px rgba(113,112,255,0.35);
+  --glow-warning: 0 0 40px rgba(251,191,36,0.3);
+  --glow-danger: 0 0 40px rgba(248,113,113,0.3);
+  --glow-success: 0 0 32px rgba(74,222,128,0.25);
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --s: min(calc(100vw / 1920), calc(100vh / 1080));
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+body {
+  scroll-snap-type: y mandatory;
+  overflow-y: scroll;
+  height: 100vh;
+}
+
+/* ===== DECK FRAME ===== */
+.deck { display: block; }
+
+.slide {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  position: relative;
+  background: var(--bg);
+}
+
+.stage {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  transform: scale(var(--s));
+  transform-origin: center center;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ===== AMBIENT: GLOBAL LAYERS (per slide) ===== */
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(200px);
+  pointer-events: none;
+}
+.orb-brand    { background: rgba(94,106,210,0.55); }
+.orb-accent   { background: rgba(113,112,255,0.5); }
+.orb-magenta  { background: rgba(196,122,255,0.4); }
+.orb-warning  { background: rgba(251,191,36,0.5); }
+.orb-danger   { background: rgba(248,113,113,0.5); }
+
+.grain {
+  position: absolute; inset: 0; pointer-events: none;
+  opacity: 0.03; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+.scanlines {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image: repeating-linear-gradient(0deg, rgba(255,255,255,0.015) 0, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 40px);
+}
+
+.dotgrid {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.04) 1.2px, transparent 1.5px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+}
+
+.linegrid {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(0deg, rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at center, black 50%, transparent 85%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 50%, transparent 85%);
+}
+
+/* Diagonal light sweep (1 + 11) */
+.sweep {
+  position: absolute; top: -10%; left: -10%; width: 50%; height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  transform: rotate(30deg);
+  pointer-events: none;
+}
+
+/* Particles */
+.particle {
+  position: absolute; width: 3px; height: 3px; border-radius: 50%;
+  background: var(--brand); opacity: 0.4;
+  box-shadow: 0 0 6px rgba(94,106,210,0.6);
+}
+
+/* Watermark Sealed mark */
+.watermark {
+  position: absolute; top: 40px; right: 56px; width: 280px; height: 280px;
+  opacity: 0.03; pointer-events: none;
+}
+
+/* Concentric rings */
+.rings {
+  position: absolute; pointer-events: none; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+/* ===== GLOBAL RHYTHM: SLIDE COUNTER + PROGRESS RAIL ===== */
+.counter {
+  position: absolute; bottom: 40px; left: 48px;
+  font-family: var(--font-mono); font-size: 13px;
+  color: var(--muted); letter-spacing: 0.05em;
+}
+
+.rail {
+  position: absolute; top: 20%; right: 40px; height: 60%; width: 12px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  align-items: center;
+}
+.rail::before {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 50%;
+  width: 1px; background: rgba(255,255,255,0.08); transform: translateX(-50%);
+}
+.rail .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255,255,255,0.06);
+  position: relative; z-index: 1;
+}
+.rail .dot.past { background: rgba(255,255,255,0.25); }
+.rail .dot.current {
+  background: var(--brand); width: 8px; height: 8px;
+  box-shadow: 0 0 10px rgba(94,106,210,0.8);
+}
+
+/* Side annotation */
+.anno {
+  position: absolute; font-family: var(--font-mono);
+  font-style: italic; font-size: 11px; color: var(--muted);
+  opacity: 0.55;
+}
+
+/* Devnet pill */
+.devnet {
+  position: absolute; top: 40px; right: 88px; display: inline-flex; gap: 10px;
+  align-items: center; padding: 8px 16px; border-radius: 999px;
+  border: 1px solid var(--border); background: rgba(255,255,255,0.02);
+  font-family: var(--font-mono); font-size: 12px; color: var(--muted);
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+.devnet::before {
+  content: ''; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--success); box-shadow: 0 0 10px rgba(74,222,128,0.7);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 50% { opacity: 0.4; } }
+
+/* ===== TYPOGRAPHY HELPERS ===== */
+.eyebrow {
+  font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--muted); font-weight: 500;
+}
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.dim { color: var(--dim); }
+.brand { color: var(--brand); }
+.accent { color: var(--accent); }
+.success { color: var(--success); }
+.warning { color: var(--warning); }
+.danger { color: var(--danger); }
+.italic { font-style: italic; }
+
+h1.hero {
+  font-size: 72px; font-weight: 590; letter-spacing: -0.025em; line-height: 1.04;
+}
+h2.headline {
+  font-size: 56px; font-weight: 590; letter-spacing: -0.022em; line-height: 1.08;
+}
+h3.subhead {
+  font-size: 32px; font-weight: 590; letter-spacing: -0.015em; line-height: 1.15;
+}
+
+.big-stat {
+  font-family: var(--font-mono); font-size: 140px; font-weight: 500;
+  letter-spacing: -0.05em; line-height: 1;
+}
+.mid-stat {
+  font-family: var(--font-mono); font-size: 112px; font-weight: 500;
+  letter-spacing: -0.04em; line-height: 1;
+}
+.typo-texture {
+  position: absolute; font-size: 220px; font-weight: 200; letter-spacing: -0.02em;
+  color: rgba(255,255,255,0.028); white-space: nowrap; pointer-events: none;
+  text-transform: uppercase;
+}
+
+/* ===== GLASS CARDS ===== */
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  position: relative;
+}
+.glass.hi {
+  background: var(--glass-hi);
+}
+.glass::before {
+  content: ''; position: absolute; top: 0; left: 16px; right: 16px; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  pointer-events: none;
+}
+
+.pill {
+  display: inline-flex; gap: 8px; align-items: center;
+  padding: 8px 14px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--glass);
+  font-size: 13px; color: var(--text);
+}
+.pill.mono { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.02em; }
+
+.divider {
+  height: 1px; background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+}
+
+.divider-v {
+  width: 1px; background: var(--border);
+}
+
+/* ===== GLOWS ===== */
+.g-brand { text-shadow: var(--glow-brand); }
+.g-accent { text-shadow: var(--glow-accent); }
+.g-warning { text-shadow: var(--glow-warning); }
+.g-danger { text-shadow: var(--glow-danger); }
+.g-success { text-shadow: var(--glow-success); }
+
+/* ===== ACCENT UNDERLINE ===== */
+.underline-gradient {
+  position: relative; display: inline-block;
+}
+.underline-gradient::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -8px; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--brand), var(--accent), transparent);
+  border-radius: 2px;
+}
+
+/* ===== LUCIDE ICON DEFAULTS ===== */
+.icon { width: 24px; height: 24px; stroke: currentColor; stroke-width: 1.5; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.icon-sm { width: 18px; height: 18px; }
+.icon-lg { width: 32px; height: 32px; }
+
+/* ===== BADGE TILE (Slide 2 hero) ===== */
+.badge-tile {
+  width: 44px; height: 44px; border-radius: 10px;
+  display: grid; place-items: center;
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
+  position: relative;
+}
+
+/* ===== AGENT CIRCLE (Slide 3) ===== */
+.agent-circle {
+  width: 144px; height: 144px; border-radius: 50%;
+  display: grid; place-items: center;
+  border: 1.5px solid var(--brand);
+  background: rgba(94,106,210,0.05);
+  box-shadow: 0 0 32px rgba(94,106,210,0.25), inset 0 0 24px rgba(94,106,210,0.1);
+  position: relative; z-index: 2;
+}
+
+/* ===== BROWSER CHROME (Slide 4) ===== */
+.browser {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, #101114, #0c0d0f);
+  overflow: hidden;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.02) inset;
+}
+.browser-bar {
+  display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+  border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02);
+}
+.browser-dot { width: 11px; height: 11px; border-radius: 50%; background: rgba(255,255,255,0.12); }
+.browser-url {
+  flex: 1; padding: 6px 12px; border-radius: 6px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 12px; color: var(--muted);
+  display: inline-flex; gap: 8px; align-items: center;
+}
+
+/* ===== TIMELINE (Slide 8 + 10) ===== */
+.node {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: rgba(94,106,210,0.08);
+  border: 2px solid var(--brand);
+  display: grid; place-items: center;
+  position: relative; z-index: 2;
+  box-shadow: 0 0 24px rgba(94,106,210,0.4);
+}
+.node.dim-node { border-color: rgba(94,106,210,0.5); box-shadow: 0 0 16px rgba(94,106,210,0.2); opacity: 0.8; }
+
+/* ===== GAUGE BAR (Slide 6) ===== */
+.gauge {
+  height: 1px; background: rgba(255,255,255,0.08); position: relative; border-radius: 1px;
+}
+.gauge-fill {
+  position: absolute; left: 0; top: -1px; bottom: -1px;
+  background: linear-gradient(90deg, var(--brand), var(--accent));
+  border-radius: 2px; height: 3px;
+  box-shadow: 0 0 12px rgba(94,106,210,0.6);
+}
+
+/* ===== ENDMARK (Slide 11) ===== */
+.endmark {
+  display: inline-flex; align-items: center; gap: 0; width: 40px; height: 1px;
+  background: rgba(255,255,255,0.15); position: relative;
+}
+.endmark::after {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--brand); position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%); box-shadow: 0 0 8px rgba(94,106,210,0.8);
+}
+
+/* ===== REDUCED MOTION ===== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ===== PRINT / PDF EXPORT ===== */
+@media print {
+  @page { size: 1920px 1080px; margin: 0; }
+  html, body { overflow: visible !important; height: auto !important; scroll-snap-type: none !important; }
+  .slide {
+    page-break-after: always; break-after: page;
+    width: 1920px !important; height: 1080px !important;
+  }
+  .stage { transform: none !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ========================== SLIDE 1 · TITLE ========================== -->
+<section class="slide" id="s1" aria-label="Slide 1 of 11: Sealed title">
+  <div class="stage">
+    <div class="orb orb-brand"    style="top:-200px; left:-200px; width:900px; height:900px; opacity:.55"></div>
+    <div class="orb orb-accent"   style="bottom:-250px; right:-200px; width:900px; height:900px; opacity:.5"></div>
+    <div class="orb orb-magenta"  style="top:50%; left:50%; transform:translate(-50%,-50%); width:700px; height:700px; opacity:.25"></div>
+
+    <!-- concentric rings behind lockup -->
+    <div class="rings" style="width:900px; height:900px; top:50%; left:50%; transform:translate(-50%,-55%); opacity:.5"></div>
+    <div class="rings" style="width:1200px; height:1200px; top:50%; left:50%; transform:translate(-50%,-55%); opacity:.3"></div>
+    <div class="rings" style="width:1500px; height:1500px; top:50%; left:50%; transform:translate(-50%,-55%); opacity:.2"></div>
+
+    <div class="sweep" style="top:10%; left:-5%; width:60%;"></div>
+    <div class="scanlines"></div>
+    <div class="grain"></div>
+
+    <!-- floating particles -->
+    <div class="particle" style="top:22%; left:18%; opacity:.4"></div>
+    <div class="particle" style="top:38%; left:82%; opacity:.35"></div>
+    <div class="particle" style="top:68%; left:22%; opacity:.5"></div>
+    <div class="particle" style="top:82%; left:74%; opacity:.4"></div>
+    <div class="particle" style="top:30%; left:60%; opacity:.3; background:var(--accent)"></div>
+    <div class="particle" style="top:72%; left:48%; opacity:.25; background:var(--magenta)"></div>
+
+    <!-- top-right devnet pill -->
+    <div class="devnet">devnet</div>
+
+    <!-- lockup -->
+    <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-55%); text-align:center;">
+      <!-- Sealed mark -->
+      <svg viewBox="0 0 120 120" width="140" height="140" style="display:block; margin:0 auto 32px; filter: drop-shadow(0 0 48px rgba(94,106,210,0.45));">
+        <circle cx="60" cy="60" r="54" stroke="#f7f8f8" stroke-width="1.25" opacity="0.22" fill="none"/>
+        <g stroke="#f7f8f8" stroke-width="3" stroke-linecap="round">
+          <line x1="80" y1="48" x2="97" y2="45"/>
+          <line x1="80" y1="60" x2="97" y2="60"/>
+          <line x1="80" y1="72" x2="97" y2="75"/>
+          <line x1="40" y1="48" x2="23" y2="45"/>
+          <line x1="40" y1="60" x2="23" y2="60"/>
+          <line x1="40" y1="72" x2="23" y2="75"/>
+        </g>
+        <circle cx="60" cy="60" r="13" fill="#f7f8f8"/>
+      </svg>
+      <!-- Wordmark -->
+      <div style="font-size:220px; font-weight:600; letter-spacing:-0.05em; color:var(--text); line-height:.9;">SEALED</div>
+      <!-- gradient underline -->
+      <div style="width:420px; height:2px; margin:28px auto 0; background: linear-gradient(90deg, transparent, var(--brand), var(--accent), transparent); border-radius:2px;"></div>
+      <!-- tagline -->
+      <div class="italic muted" style="margin-top:40px; font-size:28px; letter-spacing:-0.005em;">People break promises. Code doesn't.</div>
+      <!-- sub -->
+      <div style="margin-top:20px; font-size:22px; color:var(--text); opacity:.85;">AI escrow for business deals. Any currency. Any chain.</div>
+    </div>
+
+    <!-- footer mono strip -->
+    <div class="mono" style="position:absolute; bottom:60px; left:48px; font-size:11px; color:var(--muted); letter-spacing:0.02em;">
+      Program ID&nbsp; 3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ &nbsp;·&nbsp; Solana devnet
+    </div>
+
+    <!-- global rhythm -->
+    <div class="counter">01 / 11</div>
+    <div class="rail"><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  </div>
+</section>
+
+<!-- ========================== SLIDE 2 · PROBLEM ========================== -->
+<section class="slide" id="s2" aria-label="Slide 2 of 11: The problem">
+  <div class="stage">
+    <div class="orb orb-warning" style="top:-150px; left:-100px; width:600px; height:600px; opacity:.18"></div>
+    <div class="orb orb-danger"  style="top:-150px; right:-100px; width:600px; height:600px; opacity:.18"></div>
+    <div class="orb orb-brand"   style="bottom:-250px; left:50%; transform:translateX(-50%); width:900px; height:900px; opacity:.25"></div>
+    <div class="scanlines"></div>
+    <div class="grain"></div>
+
+    <!-- watermark mark top-right -->
+    <svg class="watermark" viewBox="0 0 120 120">
+      <circle cx="60" cy="60" r="54" stroke="#f7f8f8" stroke-width="1.25" opacity="0.22" fill="none"/>
+      <g stroke="#f7f8f8" stroke-width="3" stroke-linecap="round">
+        <line x1="80" y1="48" x2="97" y2="45"/><line x1="80" y1="60" x2="97" y2="60"/><line x1="80" y1="72" x2="97" y2="75"/>
+        <line x1="40" y1="48" x2="23" y2="45"/><line x1="40" y1="60" x2="23" y2="60"/><line x1="40" y1="72" x2="23" y2="75"/>
+      </g>
+      <circle cx="60" cy="60" r="13" fill="#f7f8f8"/>
+    </svg>
+
+    <!-- typo texture -->
+    <div class="typo-texture" style="top:90px; left:48%; transform:translateX(-50%);">THE PROBLEM</div>
+
+    <!-- header -->
+    <div style="position:absolute; top:96px; left:96px; right:96px;">
+      <div class="eyebrow">THE PROBLEM</div>
+      <h2 class="headline" style="margin-top:18px;">Business deals break. Both sides lose.</h2>
+    </div>
+
+    <!-- two columns -->
+    <div style="position:absolute; top:320px; left:96px; right:96px; display:grid; grid-template-columns:1fr 1px 1fr; gap:0; height:440px;">
+      <!-- WEB2 -->
+      <div style="padding:40px 56px; position:relative;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div class="eyebrow warning">WEB2</div>
+          <div class="badge-tile"><svg class="icon" style="color:var(--warning)" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+        </div>
+        <div class="big-stat warning g-warning" style="margin-top:60px;">$15B</div>
+        <div class="muted" style="margin-top:24px; font-size:18px; max-width:400px;">lost to freelancer non-payment, 2025</div>
+        <div class="pill" style="margin-top:36px; border-color:rgba(251,191,36,0.3);">
+          <svg class="icon icon-sm" style="color:var(--warning)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          58% face unpaid invoices
+        </div>
+      </div>
+
+      <div class="divider-v"></div>
+
+      <!-- WEB3 -->
+      <div style="padding:40px 56px; position:relative;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div class="eyebrow danger">WEB3</div>
+          <div class="badge-tile"><svg class="icon" style="color:var(--danger)" viewBox="0 0 24 24"><path d="M19.69 14a6.9 6.9 0 0 0 .31-2V5l-8-3-3.16 1.18"/><path d="M4.73 4.73 4 5v7c0 6 8 10 8 10a20.29 20.29 0 0 0 5.62-4.38"/><line x1="1" y1="1" x2="23" y2="23"/></svg></div>
+        </div>
+        <div class="big-stat danger g-danger" style="margin-top:60px; letter-spacing:-0.03em;">NONE</div>
+        <div class="muted" style="margin-top:24px; font-size:18px; max-width:400px;">structured deal layer for on-chain agreements</div>
+        <!-- dashed gap rect -->
+        <div style="position:absolute; top:148px; right:56px; width:240px; height:120px; border:1px dashed rgba(255,255,255,0.08); border-radius:8px; pointer-events:none;"></div>
+        <div class="pill" style="margin-top:36px; border-color:rgba(248,113,113,0.3);">
+          <svg class="icon icon-sm" style="color:var(--danger)" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+          bare escrow locks funds, not promises
+        </div>
+      </div>
+    </div>
+
+    <!-- kicker strip -->
+    <div class="glass" style="position:absolute; bottom:112px; left:96px; right:96px; padding:36px 48px; text-align:center; border-radius:16px;">
+      <div class="italic" style="font-size:34px; font-weight:400; letter-spacing:-0.015em;">
+        One root cause. <span class="muted">·</span> No enforceable deal layer.
+      </div>
+    </div>
+
+    <!-- sources -->
+    <div class="mono" style="position:absolute; bottom:40px; right:48px; font-size:10px; color:var(--muted);">Source: Flexable 2025</div>
+
+    <!-- anno -->
+    <div class="anno" style="top:50%; right:24px; transform:translateY(-50%) rotate(-90deg); transform-origin:center;">// root cause, not symptom</div>
+
+    <!-- rhythm -->
+    <div class="counter">02 / 11</div>
+    <div class="rail"><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  </div>
+</section>
+
+<!-- ========================== SLIDE 3 · SOLUTION ========================== -->
+<section class="slide" id="s3" aria-label="Slide 3 of 11: The solution">
+  <div class="stage">
+    <div class="orb orb-brand" style="top:-250px; left:50%; transform:translateX(-50%); width:900px; height:900px; opacity:.35"></div>
+    <div class="dotgrid"></div>
+    <div class="scanlines"></div>
+    <div class="grain"></div>
+
+    <!-- concentric rings behind agent trio -->
+    <div class="rings" style="width:1000px; height:1000px; top:48%; left:50%; transform:translate(-50%,-50%); opacity:.3"></div>
+    <div class="rings" style="width:720px; height:720px; top:48%; left:50%; transform:translate(-50%,-50%); opacity:.4"></div>
+    <div class="rings" style="width:440px; height:440px; top:48%; left:50%; transform:translate(-50%,-50%); opacity:.5"></div>
+
+    <!-- header -->
+    <div style="position:absolute; top:96px; left:96px; right:96px; text-align:center;">
+      <div class="eyebrow">THE SOLUTION</div>
+      <h2 class="headline" style="margin-top:18px;">Three AI agents. One deal table.</h2>
+    </div>
+
+    <!-- left ornament: hairline + 3 dots -->
+    <div style="position:absolute; top:360px; left:56px; width:1px; height:240px; background:var(--border);"></div>
+    <div style="position:absolute; top:400px; left:49px;   width:14px; height:14px; border-radius:50%; background:var(--brand); box-shadow:0 0 12px rgba(94,106,210,0.8);"></div>
+    <div style="position:absolute; top:480px; left:49px;   width:14px; height:14px; border-radius:50%; background:var(--brand); box-shadow:0 0 12px rgba(94,106,210,0.8);"></div>
+    <div style="position:absolute; top:560px; left:49px;   width:14px; height:14px; border-radius:50%; background:var(--brand); box-shadow:0 0 12px rgba(94,106,210,0.8);"></div>
+
+    <!-- agent trio -->
+    <div style="position:absolute; top:320px; left:50%; transform:translateX(-50%); display:flex; gap:180px; align-items:center;">
+      <!-- Structurer -->
+      <div style="text-align:center;">
+        <div class="agent-circle" style="margin:0 auto;">
+          <svg class="icon" style="color:var(--text); width:48px; height:48px;" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+        <div class="brand" style="margin-top:24px; font-size:22px; font-weight:590;">Structurer</div>
+        <div class="muted" style="margin-top:6px; font-size:13px;">parses the deal</div>
+      </div>
+
+      <!-- connector -->
+      <div style="width:80px; height:1px; border-top:1px dashed rgba(255,255,255,0.2); position:absolute; left:180px; top:72px;"></div>
+
+      <!-- Negotiator -->
+      <div style="text-align:center;">
+        <div class="agent-circle" style="margin:0 auto;">
+          <svg class="icon" style="color:var(--text); width:48px; height:48px;" viewBox="0 0 24 24"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg>
+        </div>
+        <div class="brand" style="margin-top:24px; font-size:22px; font-weight:590;">Negotiator</div>
+        <div class="muted" style="margin-top:6px; font-size:13px;">reaches terms</div>
+      </div>
+
+      <div style="width:80px; height:1px; border-top:1px dashed rgba(255,255,255,0.2); position:absolute; right:180px; top:72px;"></div>
+
+      <!-- Verifier -->
+      <div style="text-align:center;">
+        <div class="agent-circle" style="margin:0 auto;">
+          <svg class="icon" style="color:var(--text); width:48px; height:48px;" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+        </div>
+        <div class="brand" style="margin-top:24px; font-size:22px; font-weight:590;">Verifier</div>
+        <div class="muted" style="margin-top:6px; font-size:13px;">reviews delivery</div>
+      </div>
+    </div>
+
+    <!-- micro strip -->
+    <div class="muted" style="position:absolute; top:632px; left:0; right:0; text-align:center; font-size:17px;">
+      Funds lock on-chain. <span class="brand">·</span> Release on milestone. <span class="brand">·</span> Mutual refund if it breaks.
+    </div>
+
+    <!-- closing card -->
+    <div class="glass" style="position:absolute; bottom:128px; left:160px; right:160px; padding:44px 60px; text-align:center; border-radius:18px;">
+      <div style="position:absolute; top:0; left:20%; right:20%; height:2px; background: linear-gradient(90deg, transparent, var(--brand), transparent);"></div>
+      <div class="italic" style="font-size:32px; font-weight:400; letter-spacing:-0.015em;">
+        No lawyer. <span class="dim">·</span> No bank. <span class="dim">·</span> No dispute hotline. <span class="dim">·</span> Just code that can't lie.
+      </div>
+    </div>
+
+    <!-- rhythm -->
+    <div class="counter">03 / 11</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  </div>
+</section>
+
+<!-- ========================== SLIDE 4 · PRODUCT ========================== -->
+<section class="slide" id="s4" aria-label="Slide 4 of 11: Product demo">
+  <div class="stage">
+    <div class="orb orb-brand"  style="top:-200px; right:-200px; width:800px; height:800px; opacity:.3"></div>
+    <div class="orb orb-accent" style="bottom:-300px; left:-150px; width:800px; height:800px; opacity:.2"></div>
+    <div class="dotgrid"></div>
+    <div class="scanlines"></div>
+    <div class="grain"></div>
+
+    <!-- watermark -->
+    <svg class="watermark" viewBox="0 0 120 120">
+      <circle cx="60" cy="60" r="54" stroke="#f7f8f8" stroke-width="1.25" opacity="0.22" fill="none"/>
+      <g stroke="#f7f8f8" stroke-width="3" stroke-linecap="round">
+        <line x1="80" y1="48" x2="97" y2="45"/><line x1="80" y1="60" x2="97" y2="60"/><line x1="80" y1="72" x2="97" y2="75"/>
+        <line x1="40" y1="48" x2="23" y2="45"/><line x1="40" y1="60" x2="23" y2="60"/><line x1="40" y1="72" x2="23" y2="75"/>
+      </g>
+      <circle cx="60" cy="60" r="13" fill="#f7f8f8"/>
+    </svg>
+
+    <!-- header -->
+    <div style="position:absolute; top:96px; left:96px; right:96px; display:flex; justify-content:space-between; align-items:flex-start;">
+      <div>
+        <div class="eyebrow">PRODUCT</div>
+        <h2 class="headline" style="margin-top:18px;">Live on Solana devnet today.</h2>
+      </div>
+      <div class="pill mono" style="border-color:rgba(74,222,128,0.3); background:rgba(74,222,128,0.04);">
+        <span style="width:7px; height:7px; border-radius:50%; background:var(--success); box-shadow:0 0 10px rgba(74,222,128,0.7); animation:pulse 2s ease-in-out infinite;"></span>
+        LIVE · DEVNET
+      </div>
+    </div>
+
+    <!-- program id mono pill -->
+    <div style="position:absolute; top:240px; left:96px; right:96px; display:flex; align-items:center; gap:12px;">
+      <div class="pill mono" style="flex:1; max-width:920px; border-left:2px solid var(--brand); padding:12px 18px; font-size:13px;">
+        <svg class="icon icon-sm" style="color:var(--muted)" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span class="muted">Program ID</span>&nbsp;
+        <span>3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ</span>
+      </div>
+    </div>
+
+    <!-- browser chrome hero -->
+    <div class="browser" style="position:absolute; top:320px; left:96px; right:96px; height:560px;">
+      <div class="browser-bar">
+        <div class="browser-dot"></div><div class="browser-dot"></div><div class="browser-dot"></div>
+        <div class="browser-url">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          sealed-nine.vercel.app
+        </div>
+        <span class="mono" style="font-size:11px; color:var(--dim);">devnet</span>
+      </div>
+      <!-- inner grid -->
+      <div style="display:grid; grid-template-columns:2fr 1fr 1fr; grid-template-rows:1fr 1fr; gap:12px; padding:16px; height:calc(100% - 46px);">
+        <!-- hero (2x2) -->
+        <div style="grid-column:1; grid-row:1 / span 2; border-radius:10px; border:1px solid var(--border); background:linear-gradient(135deg, rgba(94,106,210,0.08), rgba(113,112,255,0.03)); padding:24px; display:flex; flex-direction:column; justify-content:space-between; box-shadow:inset 0 0 60px rgba(94,106,210,0.08);">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div class="eyebrow brand">CHAT</div>
+            <svg class="icon icon-sm" style="color:var(--muted)" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div>
+            <div style="font-size:28px; font-weight:590; letter-spacing:-0.015em;">Sealed Agent</div>
+            <div class="muted" style="margin-top:12px; font-size:15px; max-width:420px;">"Draft an escrow for 500 USDC to settle the logo package. Release on delivery."</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <div class="pill mono" style="font-size:11px;"><span class="brand">·</span> structurer</div>
+            <div class="pill mono" style="font-size:11px;"><span class="brand">·</span> negotiator</div>
+            <div class="pill mono" style="font-size:11px;"><span class="brand">·</span> verifier</div>
+          </div>
+        </div>
+        <!-- four small -->
+        <div style="border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.02); padding:18px; display:flex; flex-direction:column; justify-content:space-between;">
+          <div class="eyebrow">NEGOTIATE</div>
+          <svg class="icon icon-lg" style="color:var(--brand)" viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></svg>
+          <div class="muted" style="font-size:12px;">terms agreed in 2 messages</div>
+        </div>
+        <div style="border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.02); padding:18px; display:flex; flex-direction:column; justify-content:space-between;">
+          <div class="eyebrow">FUND</div>
+          <svg class="icon icon-lg" style="color:var(--brand)" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <div class="muted mono" style="font-size:12px;">500 USDC locked</div>
+        </div>
+        <div style="border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.02); padding:18px; display:flex; flex-direction:column; justify-content:space-between;">
+          <div class="eyebrow">VERIFY</div>
+          <svg class="icon icon-lg" style="color:var(--brand)" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+          <div class="muted" style="font-size:12px;">proof review via AI</div>
+        </div>
+        <div style="border-radius:10px; border:1px solid var(--border); background:rgba(74,222,128,0.04); padding:18px; display:flex; flex-direction:column; justify-content:space-between;">
+          <div class="eyebrow success">RELEASE</div>
+          <svg class="icon icon-lg" style="color:var(--success)" viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+          <div class="mono success" style="font-size:12px;">settled · on-chain</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- flow labels + captions -->
+    <div style="position:absolute; bottom:60px; left:96px; right:96px; display:grid; grid-template-columns:1fr 1px 1fr; gap:32px; align-items:center;">
+      <div>
+        <div class="eyebrow brand">CORE FLOW</div>
+        <div class="mono" style="margin-top:8px; font-size:14px; color:var(--text);">chat → negotiate → fund → verify → release</div>
+      </div>
+      <div class="divider-v" style="height:40px;"></div>
+      <div>
+        <div class="eyebrow accent">RECOVERY FLOW</div>
+        <div class="mono" style="margin-top:8px; font-size:14px; color:var(--text);">AI Verifier proof review · mutual refund via 2-sig handoff</div>
+      </div>
+    </div>
+
+    <!-- anno -->
+    <div class="anno" style="top:50%; right:18px; transform:translateY(-50%) rotate(-90deg); transform-origin:center;">// deployed 2026-04 · solana devnet</div>
+
+    <!-- rhythm -->
+    <div class="counter">04 / 11</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  </div>
+</section>
+
+<!-- ========================== SLIDE 5 · WHY NOW ========================== -->
+<section class="slide" id="s5" aria-label="Slide 5 of 11: Why now">
+  <div class="stage">
+    <div class="orb orb-brand"    style="top:20%; left:12%; width:500px; height:500px; opacity:.2"></div>
+    <div class="orb orb-accent"   style="top:30%; left:50%; transform:translateX(-50%); width:500px; height:500px; opacity:.2"></div>
+    <div class="orb orb-magenta"  style="top:20%; right:12%; width:500px; height:500px; opacity:.15"></div>
+    <div class="scanlines"></div>
+    <div class="grain"></div>
+
+    <svg class="watermark" viewBox="0 0 120 120">
+      <circle cx="60" cy="60" r="54" stroke="#f7f8f8" stroke-width="1.25" opacity="0.22" fill="none"/>
+      <g stroke="#f7f8f8" stroke-width="3" stroke-linecap="round">
+        <line x1="80" y1="48" x2="97" y2="45"/><line x1="80" y1="60" x2="97" y2="60"/><line x1="80" y1="72" x2="97" y2="75"/>
+        <line x1="40" y1="48" x2="23" y2="45"/><line x1="40" y1="60" x2="23" y2="60"/><line x1="40" y1="72" x2="23" y2="75"/>
+      </g>
+      <circle cx="60" cy="60" r="13" fill="#f7f8f8"/>
+    </svg>
+
+    <div class="typo-texture" style="top:90px; left:96px;">WHY NOW</div>
+
+    <!-- header -->
+    <div style="position:absolute; top:96px; left:96px; right:96px;">
+      <div class="eyebrow">WHY NOW</div>
+      <h2 class="headline" style="margin-top:18px;">Three curves converging.</h2>
+    </div>
+
+    <!-- three columns -->
+    <div style="position:absolute; top:300px; left:96px; right:96px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:32px; height:460px;">
+
+      <div class="glass" style="padding:40px 36px; display:flex; flex-direction:column; justify-content:space-between; border-radius:18px;">
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div class="eyebrow brand">STABLECOIN B2B</div>
+            <svg class="icon" style="color:var(--brand)" viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+          </div>
+          <!-- mini line chart behind -->
+          <svg viewBox="0 0 240 80" preserveAspectRatio="none" style="width:100%; height:60px; margin-top:24px; opacity:.3;">
+            <polyline fill="none" stroke="#5e6ad2" stroke-width="1.5" points="0,72 40,68 80,60 120,48 160,32 200,18 240,6"/>
+          </svg>
+        </div>
+        <div>
+          <div class="big-stat brand g-brand" style="font-size:104px;">$226B</div>
+          <div class="muted" style="margin-top:18px; font-size:15px;">2025</div>
+          <div class="pill" style="margin-top:18px; border-color:rgba(251,191,36,0.3);">
+            <span class="warning mono" style="font-weight:500;">+733% YoY</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass" style="padding:40px 36px; display:flex; flex-direction:column; justify-content:space-between; border-radius:18px; position:relative;">
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div class="eyebrow warning">DEAL LAYER</div>
+            <svg class="icon" style="color:var(--warning)" viewBox="0 0 24 24"><path d="M19.69 14a6.9 6.9 0 0 0 .31-2V5l-8-3-3.16 1.18"/><path d="M4.73 4.73 4 5v7c0 6 8 10 8 10a20.29 20.29 0 0 0 5.62-4.38"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          </div>
+          <!-- dashed-outline gap where filled slot would be -->
+          <div style="margin-top:24px; width:100%; height:60px; border:1px dashed rgba(255,255,255,0.12); border-radius:6px;"></div>
+        </div>
+        <div>
+          <div class="big-stat warning g-warning" style="font-size:104px; letter-spacing:-0.03em;">MISSING</div>
+          <div class="muted" style="margin-top:18px; font-size:15px; max-width:280px;">no on-chain standard for structured B2B agreements</div>
+        </div>
+      </div>
+
+      <div class="glass" style="padding:40px 36px; display:flex; flex-direction:column; justify-content:space-between; border-radius:18px;">
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div class="eyebrow accent">AI AGENTS</div>
+            <svg class="icon" style="color:var(--accent)" viewBox="0 0 24 24"><path d="m12 3-1.5 4.5L6 9l4.5 1.5L12 15l1.5-4.5L18 9l-4.5-1.5z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
+          </div>
+          <div style="margin-top:24px; height:60px; display:flex; align-items:center; gap:8px; opacity:.3;">
+            <div style="width:8px; height:14px; background:var(--accent); border-radius:2px;"></div>
+            <div style="width:8px; height:22px; background:var(--accent); border-radius:2px;"></div>
+            <div style="width:8px; height:30px; background:var(--accent); border-radius:2px;"></div>
+            <div style="width:8px; height:42px; background:var(--accent); border-radius:2px;"></div>
+            <div style="width:8px; height:54px; background:var(--accent); border-radius:2px;"></div>
+            <div style="width:8px; height:60px; background:var(--accent); border-radius:2px;"></div>
+          </div>
+        </div>
+        <div>
+          <div class="big-stat accent g-accent" style="font-size:104px; letter-spacing:-0.03em;">NOW</div>
+          <div class="muted" style="margin-top:18px; font-size:15px;">good enough to parse messy deals</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- timeline axis -->
+    <div style="position:absolute; bottom:220px; left:96px; right:96px; height:40px;">
+      <div style="height:1px; background:rgba(255,255,255,0.08); margin-top:8px;"></div>
+      <div class="mono" style="display:flex; justify-content:space-between; font-size:10px; color:var(--dim); margin-top:6px;">
+        <span>'23</span><span>'24</span><span class="muted">'25</span><span class="muted">'26</span><span>'27</span>
+      </div>
+    </div>
+
+    <!-- emphasis line -->
+    <div class="glass" style="position:absolute; bottom:110px; left:160px; right:160px; padding:30px 44px; border-radius:16px;">
+      <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, transparent, var(--accent), transparent);"></div>
+      <div style="display:flex; align-items:center; gap:16px;">
+        <svg class="icon" style="color:var(--accent)" viewBox="0 0 24 24"><path d="m12 3-1.5 4.5L6 9l4.5 1.5L12 15l1.5-4.5L18 9l-4.5-1.5z"/></svg>
+        <div class="italic" style="font-size:26px; letter-spacing:-0.01em;">The plumbing is ready. <span class="accent">The trust layer isn't.</span> Yet.</div>
+      </div>
+    </div>
+
+    <div class="mono" style="position:absolute; bottom:40px; right:48px; font-size:10px; color:var(--muted);">Source: McKinsey Feb 2026</div>
+
+    <div class="counter">05 / 11</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  </div>
+</section>
+
+<!-- ========================== SLIDE 6 · WHY US ========================== -->
+<section class="slide" id="s6" aria-label="Slide 6 of 11: Why us">
+  <div class="stage">
+    <div class="orb orb-magenta" style="top:-200px; left:50%; transform:translateX(-50%); width:900px; height:900px; opacity:.28"></div>
+    <div class="dotgrid"></div>
+    <div class="scanlines"></div>
+    <div class="grain"></div>
+
+    <!-- anno left margin -->
+    <div class="anno" style="top:50%; left:18px; transform:translateY(-50%) rotate(-90deg); transform-origin:center;">// why we win</div>
+
+    <!-- eyebrow -->
+    <div style="position:absolute; top:96px; left:96px; right:96px;">
+      <div class="eyebrow">DIFFERENTIATION</div>
+    </div>
+
+    <!-- hero pull-quote -->
+    <div style="position:absolute; top:160px; left:96px; right:96px; padding-left:32px; border-left:3px solid var(--brand);">
+      <div style="font-size:58px; font-weight:590; letter-spacing:-0.022em; line-height:1.08; max-width:1400px;">
+        <span class="italic">Escrow is a</span>
+        <span class="italic brand underline-gradient">feature</span><span class="italic">.</span>
+        <span class="italic">Negotiation is the</span>
+        <span class="italic accent underline-gradient">product</span><span class="italic">.</span>
+      </div>
+    </div>
+
+    <!-- split comparison -->
+    <div style="position:absolute; top:440px; left:96px; right:96px; display:grid; grid-template-columns:1fr 1px 1fr; gap:40px; height:400px;">
+      <!-- bare escrow -->
+      <div class="glass" style="padding:32px 36px; border-radius:18px; position:relative; opacity:.9;">
+        <div class="eyebrow danger" style="margin-bottom:20px;">BARE ESCROW dApps</div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:10px; background:rgba(248,113,113,0.05); border:1px solid rgba(248,113,113,0.1);">
+            <svg class="icon icon-sm" style="color:var(--danger)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            <span class="muted" style="text-decoration:line-through;">Structure</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:10px; background:rgba(248,113,113,0.05); border:1px solid rgba(248,113,113,0.1);">
+            <svg class="icon icon-sm" style="color:var(--danger)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            <span class="muted" style="text-decoration:line-through;">Negotiate</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:10px; background:rgba(248,113,113,0.05); border:1px solid rgba(248,113,113,0.1);">
+            <svg class="icon icon-sm" style="color:var(--danger)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            <span class="muted" style="text-decoration:line-through;">Verify delivery</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:10px; background:rgba(94,106,210,0.08); border:1px solid rgba(94,106,210,0.15);">
+            <svg class="icon icon-sm" style="color:var(--brand)" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span>Release</span>
+          </div>
+        </div>
+        <div class="mono" style="position:absolute; bottom:20px; right:24px; font-size:11px; color:var(--muted);">1 of 4 covered</div>
+      </div>
+
+      <div class="divider-v"></div>
+
+      <!-- sealed -->
+      <div class="glass" style="padding:32px 36px; border-radius:18px; position:relative; background:rgba(94,106,210,0.04);">
+        <div class="eyebrow brand" style="margin-bottom:20px;">SEALED</div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:10px; background:rgba(94,106,210,0.1); border:1px solid rgba(94,106,210,0.2);">
+            <svg class="icon icon-sm" style="color:var(--success)" viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+            <span>Structurer</span>
+            <span class="muted mono" style="margin-left:auto; font-size:11px;">parses</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:10px; background:rgba(94,106,210,0.1); border:1px solid rgba(94,106,210,0.2);">
+            <svg class="icon icon-sm" style="color:var(--success)" viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+            <span>Negotiator</span>
+            <span class="muted mono" style="margin-left:auto; font-size:11px;">terms</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:10px; background:rgba(94,106,210,0.1); border:1px solid rgba(94,106,210,0.2);">
+            <svg class="icon icon-sm" style="color:var(--success)" viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+            <span>Verifier</span>
+            <span class="muted mono" style="margin-left:auto; font-size:11px;">proof</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:10px; background:rgba(94,106,210,0.1); border:1px solid rgba(94,106,210,0.2);">
+            <svg class="icon icon-sm" style="color:var(--success)" viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+            <span>On-chain release</span>
+            <span class="muted mono" style="margin-left:auto; font-size:11px;">settled</span>
+          </div>
+        </div>
+        <div class="mono brand" style="position:absolute; bottom:20px; right:24px; font-size:11px;">4 of 4 covered</div>
+      </div>
+    </div>
+
+    <!-- gauge hero bar -->
+    <div style="position:absolute; bottom:156px; left:160px; right:160px;">
+      <div class="mono" style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:8px;">
+        <span class="danger">Bare escrow · 10%</span>
+        <span class="brand">Sealed · 90%</span>
+      </div>
+      <div class="gauge">
+        <div class="gauge-fill" style="width:90%;"></div>
+      </div>
+    </div>
+
+    <!-- closing line -->
+    <div style="position:absolute; bottom:64px; left:96px; right:96px; text-align:center; font-size:22px; font-weight:510; letter-spacing:-0.005em;">
+      Our wedge is <span class="brand" style="font-weight:600;">AI-first</span>. Escrow is the <span class="accent" style="font-weight:600;">settlement rail</span> underneath.
+    </div>
+
+    <div class="counter">06 / 11</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  </div>
+</section>
+
+<!-- ========================== SLIDE 7 · BUSINESS MODEL ========================== -->
+<section class="slide" id="s7" aria-label="Slide 7 of 11: Business model">
+  <div class="stage">
+    <div class="orb orb-brand"  style="top:-200px; left:-100px; width:700px; height:700px; opacity:.28"></div>
+    <div class="orb orb-accent" style="top:30%; right:-100px; width:700px; height:700px; opacity:.2"></div>
+    <div class="scanlines"></div>
+    <div class="grain"></div>
+
+    <svg class="watermark" viewBox="0 0 120 120">
+      <circle cx="60" cy="60" r="54" stroke="#f7f8f8" stroke-width="1.25" opacity="0.22" fill="none"/>
+      <g stroke="#f7f8f8" stroke-width="3" stroke-linecap="round">
+        <line x1="80" y1="48" x2="97" y2="45"/><line x1="80" y1="60" x2="97" y2="60"/><line x1="80" y1="72" x2="97" y2="75"/>
+        <line x1="40" y1="48" x2="23" y2="45"/><line x1="40" y1="60" x2="23" y2="60"/><line x1="40" y1="72" x2="23" y2="75"/>
+      </g>
+      <circle cx="60" cy="60" r="13" fill="#f7f8f8"/>
+    </svg>
+
+    <div class="typo-texture" style="top:360px; left:50%; transform:translateX(-50%);">BUSINESS MODEL</div>
+
+    <div style="position:absolute; top:96px; left:96px; right:96px;">
+      <div class="eyebrow">BUSINESS MODEL</div>
+      <h2 class="headline" style="margin-top:18px;">Revenue at three points.</h2>
+    </div>
+
+    <!-- cards -->
+    <div style="position:absolute; top:280px; left:96px; right:96px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:28px;">
+      <!-- Card 1 -->
+      <div class="glass" style="padding:32px 32px 36px; border-radius:18px; position:relative;">
+        <div style="position:absolute; top:0; left:20px; right:20px; height:3px; background:linear-gradient(90deg, transparent, var(--brand), transparent); border-radius:3px;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="eyebrow brand">Platform fee</div>
+          <div class="badge-tile"><svg class="icon" style="color:var(--brand)" viewBox="0 0 24 24"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg></div>
+        </div>
+        <div class="mid-stat brand g-brand" style="margin-top:40px; font-size:120px;">1%</div>
+        <div class="muted" style="margin-top:12px; font-size:15px;">of deal value</div>
+        <div style="margin-top:28px; padding-top:22px; border-top:1px solid var(--border); font-size:15px; line-height:1.5; color:var(--text);">
+          Covers compute + infra from deal one.
+        </div>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="glass" style="padding:32px 32px 36px; border-radius:18px; position:relative;">
+        <div style="position:absolute; top:0; left:20px; right:20px; height:3px; background:linear-gradient(90deg, transparent, var(--accent), transparent); border-radius:3px;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="eyebrow accent">Premium AI</div>
+          <div class="badge-tile"><svg class="icon" style="color:var(--accent)" viewBox="0 0 24 24"><path d="m12 3-1.5 4.5L6 9l4.5 1.5L12 15l1.5-4.5L18 9l-4.5-1.5z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg></div>
+        </div>
+        <div class="mid-stat accent g-accent" style="margin-top:40px; font-size:120px;">+5%</div>
+        <div class="muted" style="margin-top:12px; font-size:15px;">markup on LLM provider pricing</div>
+        <div style="margin-top:28px; padding-top:22px; border-top:1px solid var(--border); font-size:15px; line-height:1.5; color:var(--text);">
+          Any provider <span class="muted">·</span> Anthropic, OpenAI, OpenRouter. Pass-through + 5%.
+        </div>
+        <div style="display:flex; gap:6px; margin-top:16px; flex-wrap:wrap;">
+          <span class="pill mono" style="font-size:10px; padding:4px 10px;">Anthropic</span>
+          <span class="pill mono" style="font-size:10px; padding:4px 10px;">OpenAI</span>
+          <span class="pill mono" style="font-size:10px; padding:4px 10px;">OpenRouter</span>
+        </div>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="glass" style="padding:32px 32px 36px; border-radius:18px; position:relative;">
+        <div style="position:absolute; top:0; left:20px; right:20px; height:3px; background:linear-gradient(90deg, transparent, var(--success), transparent); border-radius:3px;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="eyebrow success">Verified merchant</div>
+          <div class="badge-tile"><svg class="icon" style="color:var(--success)" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        </div>
+        <div class="mid-stat success g-success" style="margin-top:40px; font-size:120px;">$100</div>
+        <div class="muted" style="margin-top:12px; font-size:15px;">one-time</div>
+        <div style="margin-top:28px; padding-top:22px; border-top:1px solid var(--border); font-size:15px; line-height:1.5; color:var(--text);">
+          Filter for serious parties.
+        </div>
+        <!-- trust seal -->
+        <div style="position:absolute; bottom:28px; right:28px; width:36px; height:36px; border-radius:50%; background:rgba(74,222,128,0.15); display:grid; place-items:center; border:1px solid rgba(74,222,128,0.4);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round"><path d="m9 12 2 2 4-4"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- revenue flow arrows converging -->
+    <div style="position:absolute; top:800px; left:96px; right:96px; height:80px;">
+      <svg viewBox="0 0 1728 80" preserveAspectRatio="none" style="width:100%; height:100%;">
+        <defs>
+          <linearGradient id="arrFade" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#5e6ad2" stop-opacity="0"/>
+            <stop offset="50%" stop-color="#5e6ad2" stop-opacity="0.6"/>
+            <stop offset="100%" stop-color="#5e6ad2" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="M 288 0 Q 288 40, 864 60" fill="none" stroke="url(#arrFade)" stroke-width="1.5"/>
+        <path d="M 864 0 L 864 60" fill="none" stroke="url(#arrFade)" stroke-width="1.5"/>
+        <path d="M 1440 0 Q 1440 40, 864 60" fill="none" stroke="url(#arrFade)" stroke-width="1.5"/>
+      </svg>
+    </div>
+
+    <!-- closing glass strip -->
+    <div style="position:absolute; bottom:80px; left:96px; right:96px; padding-top:28px; border-top:1px solid var(--border); text-align:center;">
+      <div class="italic muted" style="font-size:16px; letter-spacing:0.002em;">
+        Verified merchants get premium placement and a trust badge.
+      </div>
+    </div>
+
+    <div class="counter">07 / 11</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  </div>
+</section>
+
+<!-- ========================== SLIDE 8 · GO TO MARKET ========================== -->
+<section class="slide" id="s8" aria-label="Slide 8 of 11: Go to market">
+  <div class="stage">
+    <div class="orb orb-brand"    style="top:-200px; left:-100px; width:800px; height:800px; opacity:.28"></div>
+    <div class="orb orb-magenta"  style="bottom:-200px; right:-100px; width:700px; height:700px; opacity:.18"></div>
+    <div class="linegrid"></div>
+    <div class="scanlines"></div>
+    <div class="grain"></div>
+
+    <svg class="watermark" viewBox="0 0 120 120">
+      <circle cx="60" cy="60" r="54" stroke="#f7f8f8" stroke-width="1.25" opacity="0.22" fill="none"/>
+      <g stroke="#f7f8f8" stroke-width="3" stroke-linecap="round">
+        <line x1="80" y1="48" x2="97" y2="45"/><line x1="80" y1="60" x2="97" y2="60"/><line x1="80" y1="72" x2="97" y2="75"/>
+        <line x1="40" y1="48" x2="23" y2="45"/><line x1="40" y1="60" x2="23" y2="60"/><line x1="40" y1="72" x2="23" y2="75"/>
+      </g>
+      <circle cx="60" cy="60" r="13" fill="#f7f8f8"/>
+    </svg>
+
+    <div class="typo-texture" style="top:90px; left:96px;">GO TO MARKET</div>
+
+    <!-- header -->
+    <div style="position:absolute; top:96px; left:96px; right:96px;">
+      <div class="eyebrow">GO TO MARKET</div>
+      <h2 class="headline" style="margin-top:18px;">Hide the crypto. Keep the guarantees.</h2>
+      <div class="muted" style="margin-top:16px; font-size:18px;">Most businesses don't hold crypto. We built the wrapper.</div>
+    </div>
+
+    <!-- wrapper pills -->
+    <div class="glass" style="position:absolute; top:340px; left:96px; right:96px; display:grid; grid-template-columns:1fr 1px 1fr 1px 1fr; padding:24px 0; border-radius:16px;">
+      <div style="padding:6px 40px; display:flex; align-items:center; gap:16px;">
+        <div class="badge-tile"><svg class="icon" style="color:var(--brand)" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg></div>
+        <span style="font-size:18px; font-weight:510;">Email / Google login</span>
+      </div>
+      <div class="divider-v"></div>
+      <div style="padding:6px 40px; display:flex; align-items:center; gap:16px;">
+        <div class="badge-tile"><svg class="icon" style="color:var(--brand)" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></div>
+        <span style="font-size:18px; font-weight:510;">Pay in local currency</span>
+      </div>
+      <div class="divider-v"></div>
+      <div style="padding:6px 40px; display:flex; align-items:center; gap:16px;">
+        <div class="badge-tile"><svg class="icon" style="color:var(--brand)" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <span style="font-size:18px; font-weight:510;">Plain-language deals</span>
+      </div>
+    </div>
+
+    <!-- timeline -->
+    <div style="position:absolute; top:520px; left:96px; right:96px; height:360px;">
+      <!-- rail -->
+      <div style="position:absolute; top:110px; left:6%; right:6%; height:2px; background:linear-gradient(90deg, transparent, var(--brand), var(--accent), var(--success), transparent); border-radius:2px;"></div>
+
+      <!-- nodes + cards -->
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:40px; align-items:start; padding:0 4%;">
+        <!-- node 1 -->
+        <div style="text-align:center;">
+          <div class="mono brand" style="font-size:14px; letter-spacing:0.05em;">
+            <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--brand); vertical-align:middle; margin-right:6px; box-shadow:0 0 8px rgba(94,106,210,0.7);"></span>
+            Weeks 1–4
+          </div>
+          <div class="node" style="margin:20px auto;">
+            <svg class="icon icon-lg" style="color:var(--brand); width:28px; height:28px;" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
+          </div>
+          <div class="glass" style="padding:18px 22px; border-radius:12px; text-align:left;">
+            <div style="font-size:15px; line-height:1.5;">
+              <span style="display:inline-flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5e6ad2" stroke-width="2" stroke-linecap="round"><path d="m9 12 2 2 4-4"/></svg>
+                10 beta deals
+              </span><br>
+              <span class="muted" style="font-size:13px;">cofounder's network</span>
+            </div>
+          </div>
+        </div>
+        <!-- node 2 -->
+        <div style="text-align:center;">
+          <div class="mono brand" style="font-size:14px; letter-spacing:0.05em;">
+            <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent); vertical-align:middle; margin-right:6px; box-shadow:0 0 8px rgba(113,112,255,0.7);"></span>
+            Months 2–6
+          </div>
+          <div class="node" style="margin:20px auto; border-color:var(--accent); box-shadow:0 0 24px rgba(113,112,255,0.4);">
+            <svg class="icon icon-lg" style="color:var(--accent); width:28px; height:28px;" viewBox="0 0 24 24"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+          </div>
+          <div class="glass" style="padding:18px 22px; border-radius:12px; text-align:left;">
+            <div style="font-size:15px; line-height:1.5;">
+              <span style="display:inline-flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7170ff" stroke-width="2" stroke-linecap="round"><path d="m9 12 2 2 4-4"/></svg>
+                Freelance · B2B · SEA mfg
+              </span><br>
+              <span class="muted" style="font-size:13px;">cross-border scale</span>
+            </div>
+          </div>
+        </div>
+        <!-- node 3 -->
+        <div style="text-align:center;">
+          <div class="mono" style="font-size:14px; letter-spacing:0.05em; color:var(--success);">
+            <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--success); vertical-align:middle; margin-right:6px; box-shadow:0 0 8px rgba(74,222,128,0.7);"></span>
+            Year 1
+          </div>
+          <div class="node" style="margin:20px auto; border-color:var(--success); box-shadow:0 0 24px rgba(74,222,128,0.4);">
+            <svg class="icon icon-lg" style="color:var(--success); width:28px; height:28px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          </div>
+          <div class="glass" style="padding:18px 22px; border-radius:12px; text-align:left;">
+            <div style="font-size:15px; line-height:1.5;">
+              <span style="display:inline-flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round"><path d="m9 12 2 2 4-4"/></svg>
+                Regional + power-user tier
+              </span><br>
+              <span class="muted" style="font-size:13px;">web3-native unlock</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEA geographic fragment bottom-right -->
+    <svg viewBox="0 0 300 200" style="position:absolute; bottom:40px; right:80px; width:200px; height:130px; opacity:.06; pointer-events:none;" fill="none" stroke="#f7f8f8" stroke-width="1">
+      <path d="M50 80 Q40 70 55 55 L90 50 L115 65 L125 85 L140 70 L165 78 L180 95 L175 115 L155 125 L135 120 L110 135 L80 145 L60 130 Z"/>
+      <path d="M170 140 L200 145 L215 160 L200 170 L180 165 Z"/>
+      <circle cx="100" cy="110" r="1.5" fill="#5e6ad2"/>
+    </svg>
+
+    <div class="counter">08 / 11</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  </div>
+</section>
+
+<!-- ========================== SLIDE 9 · TEAM ========================== -->
+<section class="slide" id="s9" aria-label="Slide 9 of 11: Team">
+  <div class="stage">
+    <div class="orb orb-brand"   style="top:-150px; right:-100px; width:700px; height:700px; opacity:.25"></div>
+    <div class="orb orb-magenta" style="bottom:-200px; left:-100px; width:600px; height:600px; opacity:.15"></div>
+    <div class="scanlines"></div>
+    <div class="grain"></div>
+
+    <div class="typo-texture" style="top:50%; left:50%; transform:translate(-50%,-50%); font-size:340px;">TEAM</div>
+
+    <!-- header -->
+    <div style="position:absolute; top:96px; left:96px; right:96px;">
+      <div class="eyebrow">TEAM</div>
+      <h2 class="headline" style="margin-top:18px;">Two founders. One bet.</h2>
+    </div>
+
+    <!-- two founder cards -->
+    <div style="position:absolute; top:340px; left:160px; right:160px; display:grid; grid-template-columns:1fr 1fr; gap:56px;">
+      <!-- Dev card -->
+      <div class="glass" style="padding:40px 44px; border-radius:20px; position:relative; overflow:hidden; min-height:460px;">
+        <!-- monogram bg -->
+        <div style="position:absolute; bottom:-80px; right:-40px; font-size:460px; font-weight:200; color:rgba(255,255,255,0.028); line-height:0.8; letter-spacing:-0.05em; pointer-events:none;">D</div>
+        <!-- specialty icon top-right -->
+        <div class="badge-tile" style="position:absolute; top:28px; right:28px;">
+          <svg class="icon" style="color:var(--brand)" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+
+        <!-- avatar row -->
+        <div style="display:flex; gap:24px; align-items:center;">
+          <div style="width:96px; height:96px; border-radius:50%; border:2px solid var(--brand); display:grid; place-items:center; background:rgba(94,106,210,0.08); box-shadow:0 0 32px rgba(94,106,210,0.3);">
+            <span style="font-size:42px; font-weight:600; color:var(--text);">D</span>
+          </div>
+          <div>
+            <div style="font-size:28px; font-weight:590; letter-spacing:-0.012em;">[Dev name]</div>
+            <div class="eyebrow" style="margin-top:6px;">BUILDS AI AGENTS</div>
+          </div>
+        </div>
+
+        <div style="margin-top:32px; font-size:16px; line-height:1.6; color:var(--text); position:relative; z-index:1;">
+          Previously shipped a DLMM agent that auto-screens, opens, and closes positions with self-learning.
+        </div>
+
+        <div style="position:absolute; bottom:32px; left:44px; right:44px; display:flex; gap:8px; flex-wrap:wrap;">
+          <span class="pill mono" style="font-size:11px; padding:5px 12px;">DLMM agent</span>
+          <span class="pill mono" style="font-size:11px; padding:5px 12px;">self-learning</span>
+        </div>
+      </div>
+
+      <!-- Partner card -->
+      <div class="glass" style="padding:40px 44px; border-radius:20px; position:relative; overflow:hidden; min-height:460px;">
+        <div style="position:absolute; bottom:-80px; right:-40px; font-size:460px; font-weight:200; color:rgba(255,255,255,0.028); line-height:0.8; letter-spacing:-0.05em; pointer-events:none;">T</div>
+        <div class="badge-tile" style="position:absolute; top:28px; right:28px;">
+          <svg class="icon" style="color:var(--brand)" viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        </div>
+
+        <div style="display:flex; gap:24px; align-items:center;">
+          <div style="width:96px; height:96px; border-radius:50%; border:2px solid var(--accent); display:grid; place-items:center; background:rgba(113,112,255,0.08); box-shadow:0 0 32px rgba(113,112,255,0.3);">
+            <span style="font-size:42px; font-weight:600; color:var(--text);">T</span>
+          </div>
+          <div>
+            <div style="font-size:28px; font-weight:590; letter-spacing:-0.012em;">[Partner name]</div>
+            <div class="eyebrow" style="margin-top:6px;">DISTRIBUTION + TRADING</div>
+          </div>
+        </div>
+
+        <div style="margin-top:32px; font-size:16px; line-height:1.6; color:var(--text); position:relative; z-index:1;">
+          Direct line to the target customer segment. Long track record in trading and crypto.
+        </div>
+
+        <div style="position:absolute; bottom:32px; left:44px; right:44px; display:flex; gap:8px; flex-wrap:wrap;">
+          <span class="pill mono" style="font-size:11px; padding:5px 12px;">trading</span>
+          <span class="pill mono" style="font-size:11px; padding:5px 12px;">crypto</span>
+          <span class="pill mono" style="font-size:11px; padding:5px 12px;">DLMM</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="counter">09 / 11</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span></div>
+  </div>
+</section>
+
+<!-- ========================== SLIDE 10 · ROADMAP ========================== -->
+<section class="slide" id="s10" aria-label="Slide 10 of 11: Roadmap">
+  <div class="stage">
+    <div class="orb orb-accent"   style="top:-200px; right:-100px; width:800px; height:800px; opacity:.28"></div>
+    <div class="orb orb-brand"    style="bottom:-200px; left:-100px; width:800px; height:800px; opacity:.28"></div>
+    <div class="orb orb-magenta"  style="top:50%; left:50%; transform:translate(-50%,-50%); width:600px; height:600px; opacity:.12"></div>
+    <div class="dotgrid"></div>
+    <div class="scanlines"></div>
+    <div class="grain"></div>
+
+    <svg class="watermark" viewBox="0 0 120 120">
+      <circle cx="60" cy="60" r="54" stroke="#f7f8f8" stroke-width="1.25" opacity="0.22" fill="none"/>
+      <g stroke="#f7f8f8" stroke-width="3" stroke-linecap="round">
+        <line x1="80" y1="48" x2="97" y2="45"/><line x1="80" y1="60" x2="97" y2="60"/><line x1="80" y1="72" x2="97" y2="75"/>
+        <line x1="40" y1="48" x2="23" y2="45"/><line x1="40" y1="60" x2="23" y2="60"/><line x1="40" y1="72" x2="23" y2="75"/>
+      </g>
+      <circle cx="60" cy="60" r="13" fill="#f7f8f8"/>
+    </svg>
+
+    <!-- anno -->
+    <div class="anno" style="top:50%; right:18px; transform:translateY(-50%) rotate(-90deg); transform-origin:center;">// targets, not promises</div>
+
+    <div style="position:absolute; top:96px; left:96px; right:96px;">
+      <div class="eyebrow">WHAT'S NEXT</div>
+      <h2 class="headline" style="margin-top:18px;">Where we go from here.</h2>
+    </div>
+
+    <!-- roadmap zigzag -->
+    <div style="position:absolute; top:320px; left:96px; right:96px; height:580px;">
+      <!-- curved rail -->
+      <svg viewBox="0 0 1728 400" preserveAspectRatio="none" style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none;">
+        <defs>
+          <linearGradient id="railGrad" x1="0" x2="1">
+            <stop offset="0%" stop-color="#4ade80" stop-opacity="0"/>
+            <stop offset="10%" stop-color="#4ade80" stop-opacity="0.9"/>
+            <stop offset="35%" stop-color="#5e6ad2" stop-opacity="0.9"/>
+            <stop offset="60%" stop-color="#7170ff" stop-opacity="0.7"/>
+            <stop offset="100%" stop-color="#7170ff" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <!-- solid part: Q2→Q3 -->
+        <path d="M 120 220 Q 432 180, 648 200 T 1080 200" fill="none" stroke="url(#railGrad)" stroke-width="3" stroke-linecap="round"/>
+        <!-- dashed part: Q3→2027 -->
+        <path d="M 1080 200 Q 1296 220, 1512 200 T 1620 195" fill="none" stroke="#7170ff" stroke-width="1.5" stroke-dasharray="4 6" opacity="0.6"/>
+      </svg>
+
+      <!-- stations -->
+      <!-- Q2 2026 (above rail) -->
+      <div style="position:absolute; top:0; left:5%; width:240px; text-align:center;">
+        <div class="glass" style="padding:22px 20px; border-radius:14px; border-color:rgba(74,222,128,0.3); background:rgba(74,222,128,0.04); position:relative;">
+          <div style="position:absolute; top:12px; right:12px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; justify-content:center;">
+            <svg class="icon icon-sm" style="color:var(--success)" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>
+            <div class="mono" style="font-size:13px; color:var(--success);">Q2 2026</div>
+          </div>
+          <div style="margin-top:12px; font-size:14px; font-weight:510; line-height:1.4;">Mainnet + web2 wrapper</div>
+          <div class="muted" style="margin-top:6px; font-size:12px;">social wallet, fiat ramps</div>
+        </div>
+        <!-- connector down -->
+        <div style="margin:10px auto 0; width:1px; height:40px; border-left:1px dashed rgba(94,106,210,0.5);"></div>
+        <div style="margin:0 auto; width:10px; height:10px; border-radius:50%; background:var(--success); box-shadow:0 0 10px rgba(74,222,128,0.8);"></div>
+      </div>
+
+      <!-- Q3 2026 (below) -->
+      <div style="position:absolute; top:240px; left:32%; width:240px; text-align:center;">
+        <div style="margin:0 auto 10px; width:10px; height:10px; border-radius:50%; background:var(--brand); box-shadow:0 0 10px rgba(94,106,210,0.8);"></div>
+        <div style="margin:0 auto 10px; width:1px; height:40px; border-left:1px dashed rgba(94,106,210,0.5);"></div>
+        <div class="glass" style="padding:22px 20px; border-radius:14px; border-color:rgba(94,106,210,0.3);">
+          <div style="display:flex; align-items:center; gap:10px; justify-content:center;">
+            <svg class="icon icon-sm" style="color:var(--brand)" viewBox="0 0 24 24"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>
+            <div class="mono brand" style="font-size:13px;">Q3 2026</div>
+          </div>
+          <div style="margin-top:12px; font-size:14px; font-weight:510; line-height:1.4;">Dispute resolution</div>
+          <div class="muted" style="margin-top:6px; font-size:12px;">+ optional arbitrator</div>
+        </div>
+      </div>
+
+      <!-- Q4 2026 (above, dashed) -->
+      <div style="position:absolute; top:0; left:59%; width:240px; text-align:center; opacity:.92;">
+        <div class="glass" style="padding:22px 20px; border-radius:14px; border:1.5px dashed rgba(113,112,255,0.4); background:rgba(113,112,255,0.03);">
+          <div style="display:flex; align-items:center; gap:10px; justify-content:center;">
+            <svg class="icon icon-sm" style="color:var(--accent)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <div class="mono accent" style="font-size:13px;">Q4 2026</div>
+          </div>
+          <div style="margin-top:12px; font-size:14px; font-weight:510; line-height:1.4;">Cross-border escrow</div>
+          <div class="muted" style="margin-top:6px; font-size:12px;">multi-currency routing</div>
+        </div>
+        <div style="margin:10px auto 0; width:1px; height:40px; border-left:1px dashed rgba(113,112,255,0.35);"></div>
+        <div style="margin:0 auto; width:8px; height:8px; border-radius:50%; background:rgba(113,112,255,0.5); border:1px solid var(--accent);"></div>
+      </div>
+
+      <!-- 2027 (below, dashed) -->
+      <div style="position:absolute; top:260px; left:86%; width:240px; text-align:center; transform:translateX(-50%); opacity:.8;">
+        <div style="margin:0 auto 10px; width:8px; height:8px; border-radius:50%; background:rgba(113,112,255,0.5); border:1px solid var(--accent);"></div>
+        <div style="margin:0 auto 10px; width:1px; height:40px; border-left:1px dashed rgba(113,112,255,0.35);"></div>
+        <div class="glass" style="padding:22px 20px; border-radius:14px; border:1.5px dashed rgba(113,112,255,0.4); background:rgba(113,112,255,0.03);">
+          <div style="display:flex; align-items:center; gap:10px; justify-content:center;">
+            <svg class="icon icon-sm" style="color:var(--accent)" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg>
+            <div class="mono accent" style="font-size:13px;">2027</div>
+          </div>
+          <div style="margin-top:12px; font-size:14px; font-weight:510; line-height:1.4;">Reputation NFTs</div>
+          <div class="muted" style="margin-top:6px; font-size:12px;">portable on-chain trust</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="counter">10 / 11</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span></div>
+  </div>
+</section>
+
+<!-- ========================== SLIDE 11 · CLOSING ========================== -->
+<section class="slide" id="s11" aria-label="Slide 11 of 11: Closing">
+  <div class="stage">
+    <div class="orb orb-brand"   style="top:-200px; left:-200px; width:900px; height:900px; opacity:.5"></div>
+    <div class="orb orb-accent"  style="bottom:-250px; right:-200px; width:900px; height:900px; opacity:.45"></div>
+    <div class="orb orb-magenta" style="top:50%; left:50%; transform:translate(-50%,-50%); width:700px; height:700px; opacity:.22"></div>
+
+    <!-- concentric rings -->
+    <div class="rings" style="width:900px; height:900px; top:48%; left:50%; transform:translate(-50%,-55%); opacity:.35"></div>
+    <div class="rings" style="width:1200px; height:1200px; top:48%; left:50%; transform:translate(-50%,-55%); opacity:.22"></div>
+    <div class="rings" style="width:1500px; height:1500px; top:48%; left:50%; transform:translate(-50%,-55%); opacity:.14"></div>
+
+    <div class="sweep" style="top:12%; left:-5%; width:55%;"></div>
+    <div class="scanlines"></div>
+    <div class="grain"></div>
+
+    <!-- particles quieter -->
+    <div class="particle" style="top:28%; left:22%; opacity:.3"></div>
+    <div class="particle" style="top:62%; left:78%; opacity:.28"></div>
+    <div class="particle" style="top:44%; left:68%; opacity:.22; background:var(--accent)"></div>
+    <div class="particle" style="top:78%; left:30%; opacity:.2"></div>
+
+    <div class="devnet">devnet</div>
+
+    <!-- stacked lockup -->
+    <div style="position:absolute; top:44%; left:50%; transform:translate(-50%,-55%); text-align:center;">
+      <svg viewBox="0 0 120 120" width="140" height="140" style="display:block; margin:0 auto 32px; filter: drop-shadow(0 0 48px rgba(94,106,210,0.45));">
+        <circle cx="60" cy="60" r="54" stroke="#f7f8f8" stroke-width="1.25" opacity="0.22" fill="none"/>
+        <g stroke="#f7f8f8" stroke-width="3" stroke-linecap="round">
+          <line x1="80" y1="48" x2="97" y2="45"/><line x1="80" y1="60" x2="97" y2="60"/><line x1="80" y1="72" x2="97" y2="75"/>
+          <line x1="40" y1="48" x2="23" y2="45"/><line x1="40" y1="60" x2="23" y2="60"/><line x1="40" y1="72" x2="23" y2="75"/>
+        </g>
+        <circle cx="60" cy="60" r="13" fill="#f7f8f8"/>
+      </svg>
+      <div style="font-size:200px; font-weight:600; letter-spacing:-0.05em; color:var(--text); line-height:.9;">SEALED</div>
+      <div style="width:380px; height:2px; margin:28px auto 0; background: linear-gradient(90deg, transparent, var(--brand), var(--accent), transparent); border-radius:2px;"></div>
+      <div class="italic muted" style="margin-top:36px; font-size:30px; letter-spacing:-0.005em;">People break promises. Code doesn't.</div>
+      <!-- endmark -->
+      <div style="margin-top:36px; display:flex; justify-content:center;">
+        <span class="endmark"></span>
+      </div>
+    </div>
+
+    <!-- contact rail bottom -->
+    <div class="glass" style="position:absolute; bottom:96px; left:280px; right:280px; padding:18px 28px; border-radius:999px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:0; align-items:center; border-top:1px solid rgba(255,255,255,0.12);">
+      <div style="display:flex; align-items:center; gap:12px; justify-content:center; padding:6px 16px; border-right:1px solid var(--border);">
+        <svg class="icon icon-sm" style="color:var(--brand)" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg>
+        <span class="mono" style="font-size:13px;">[email]</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; justify-content:center; padding:6px 16px; border-right:1px solid var(--border);">
+        <svg class="icon icon-sm" style="color:var(--brand)" viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        <span class="mono" style="font-size:13px;">github.com/Toderr/sealed</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; justify-content:center; padding:6px 16px;">
+        <svg class="icon icon-sm" style="color:var(--brand)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <span class="mono" style="font-size:13px;">sealed-nine.vercel.app</span>
+      </div>
+    </div>
+
+    <div class="counter">11 / 11</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span></div>
+  </div>
+</section>
+
+<script>
+// keyboard navigation (accessibility)
+document.addEventListener('keydown', (e) => {
+  const slides = document.querySelectorAll('.slide');
+  const vh = window.innerHeight;
+  const current = Math.round(window.scrollY / vh);
+  let target = current;
+  if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ' || e.key === 'ArrowRight') { target = Math.min(slides.length - 1, current + 1); e.preventDefault(); }
+  else if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'ArrowLeft') { target = Math.max(0, current - 1); e.preventDefault(); }
+  else if (e.key === 'Home') { target = 0; e.preventDefault(); }
+  else if (e.key === 'End') { target = slides.length - 1; e.preventDefault(); }
+  if (target !== current && slides[target]) slides[target].scrollIntoView({ behavior: 'smooth' });
+});
+
+// click anywhere on right-edge rail to jump (optional, subtle)
+document.querySelectorAll('.rail .dot').forEach((dot, i) => {
+  dot.style.cursor = 'pointer';
+  dot.addEventListener('click', () => {
+    const slides = document.querySelectorAll('.slide');
+    if (slides[i]) slides[i].scrollIntoView({ behavior: 'smooth' });
+  });
+});
+</script>
+</body>
+</html>
