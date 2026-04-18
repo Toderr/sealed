@@ -30,7 +30,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
-      <body className="h-screen overflow-hidden">
+      <body className="min-h-screen">
         <WalletProvider>
           <ToastProvider>{children}</ToastProvider>
         </WalletProvider>
