@@ -4,6 +4,8 @@ import { useState } from "react";
 import Header from "@/components/Header";
 import ChatInterface from "@/components/ChatInterface";
 import DealDashboard from "@/components/DealDashboard";
+import { useToast } from "@/components/Toast";
+import { useDealsStore } from "@/lib/deals-store";
 import {
   DealParams,
   DealStatus,
@@ -12,32 +14,24 @@ import {
 } from "@/lib/types";
 import type { Deal } from "@/lib/types";
 import { PublicKey } from "@solana/web3.js";
-import { useWallet } from "@solana/wallet-adapter-react";
-import { useConnection } from "@solana/wallet-adapter-react";
+import {
+  useConnection,
+  useWallet,
+} from "@solana/wallet-adapter-react";
 import { buildCreateDealIx, sendTx } from "@/lib/escrow-client";
 
-// Set to true once the program is deployed to devnet
-const ON_CHAIN_ENABLED = false;
+// Program deployed to devnet: 3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ
+const ON_CHAIN_ENABLED = true;
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<"chat" | "deals">("chat");
-  const [deals, setDeals] = useState<Deal[]>([]);
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const { publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
+  const { deals, addDeal } = useDealsStore(publicKey ?? null);
+  const toast = useToast();
 
   async function handleDealCreated(params: DealParams) {
-    // Try on-chain creation if enabled
-    if (ON_CHAIN_ENABLED && publicKey && signTransaction) {
-      try {
-        const ix = await buildCreateDealIx(publicKey, params);
-        await sendTx(connection, ix, signTransaction);
-      } catch (err) {
-        console.error("On-chain deal creation failed:", err);
-      }
-    }
-
-    // Always add to local state for immediate UI feedback
     const now = Math.floor(Date.now() / 1000);
     const newDeal: Deal = {
       dealId: params.dealId,
@@ -60,8 +54,54 @@ export default function Home() {
       updatedAt: now,
       bump: 0,
     };
-    setDeals((prev) => [newDeal, ...prev]);
+
+    addDeal(newDeal);
     setActiveTab("deals");
+
+    if (!ON_CHAIN_ENABLED) {
+      toast.show({
+        variant: "info",
+        title: "Deal drafted",
+        description: `${params.dealId} saved locally. Connect wallet to fund on-chain.`,
+      });
+      return;
+    }
+
+    if (!publicKey || !signTransaction) {
+      toast.show({
+        variant: "info",
+        title: "Deal drafted (offline)",
+        description: "Connect your wallet to push this deal on-chain.",
+      });
+      return;
+    }
+
+    const pendingId = toast.show({
+      variant: "loading",
+      title: "Creating deal on-chain",
+      description: `Submitting ${params.dealId} to devnet...`,
+      duration: 0,
+    });
+
+    try {
+      const ix = await buildCreateDealIx(publicKey, params);
+      const sig = await sendTx(connection, ix, signTransaction);
+      toast.update(pendingId, {
+        variant: "success",
+        title: "Deal created on-chain",
+        description: `${params.dealId} confirmed on devnet.`,
+        actionHref: `https://solscan.io/tx/${sig}?cluster=devnet`,
+        actionLabel: "View on Solscan",
+      });
+    } catch (err) {
+      console.error("On-chain deal creation failed:", err);
+      toast.update(pendingId, {
+        variant: "error",
+        title: "On-chain submit failed",
+        description:
+          err instanceof Error ? err.message : "Unknown error — saved locally.",
+      });
+    }
   }
 
   return (
