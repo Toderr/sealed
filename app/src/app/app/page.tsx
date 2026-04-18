@@ -5,8 +5,10 @@ import Header from "@/components/Header";
 import ChatInterface from "@/components/ChatInterface";
 import DealDashboard from "@/components/DealDashboard";
 import SettingsModal from "@/components/SettingsModal";
+import NegotiationView from "@/components/NegotiationView";
 import { useToast } from "@/components/Toast";
 import { useDealsStore } from "@/lib/deals-store";
+import { useBusinessMemory } from "@/memory/localstorage-store";
 import {
   DealParams,
   DealStatus,
@@ -15,25 +17,48 @@ import {
 } from "@/lib/types";
 import type { Deal } from "@/lib/types";
 import { PublicKey } from "@solana/web3.js";
-import {
-  useConnection,
-  useWallet,
-} from "@solana/wallet-adapter-react";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { buildCreateDealIx, sendTx } from "@/lib/escrow-client";
 
-// Program deployed to devnet: 3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ
 const ON_CHAIN_ENABLED = true;
 
+type View = "chat" | "deals" | "negotiation";
+
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<"chat" | "deals">("chat");
+  const [view, setView] = useState<View>("chat");
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [negotiatingParams, setNegotiatingParams] = useState<DealParams | null>(
+    null
+  );
+
   const { publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
   const { deals, addDeal } = useDealsStore(publicKey ?? null);
+  const { memory } = useBusinessMemory(publicKey ?? null);
   const toast = useToast();
 
-  async function handleDealCreated(params: DealParams) {
+  // Enters negotiation stage rather than going straight on-chain. The final
+  // terms come back from NegotiationView after both agents reach agreement.
+  function handleDealDrafted(params: DealParams) {
+    if (!publicKey) {
+      toast.show({
+        variant: "info",
+        title: "Connect wallet first",
+        description: "The Negotiator agent needs your identity to bargain.",
+      });
+      return;
+    }
+    setNegotiatingParams(params);
+    setView("negotiation");
+  }
+
+  async function handleNegotiationAccepted(finalTerms: DealParams) {
+    setNegotiatingParams(null);
+    await pushDealOnChain(finalTerms);
+  }
+
+  async function pushDealOnChain(params: DealParams) {
     const now = Math.floor(Date.now() / 1000);
     const newDeal: Deal = {
       dealId: params.dealId,
@@ -58,13 +83,13 @@ export default function Home() {
     };
 
     addDeal(newDeal);
-    setActiveTab("deals");
+    setView("deals");
 
     if (!ON_CHAIN_ENABLED) {
       toast.show({
         variant: "info",
         title: "Deal drafted",
-        description: `${params.dealId} saved locally. Connect wallet to fund on-chain.`,
+        description: `${params.dealId} saved locally.`,
       });
       return;
     }
@@ -106,16 +131,34 @@ export default function Home() {
     }
   }
 
+  const onTabChange = (tab: "chat" | "deals") => {
+    setView(tab);
+    if (tab === "chat") setNegotiatingParams(null);
+  };
+
+  const activeTab: "chat" | "deals" = view === "deals" ? "deals" : "chat";
+
   return (
     <div className="flex flex-col h-screen">
       <Header
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={onTabChange}
         onOpenSettings={() => setSettingsOpen(true)}
       />
       <main className="flex-1 overflow-hidden">
-        {activeTab === "chat" ? (
-          <ChatInterface onDealCreated={handleDealCreated} />
+        {view === "negotiation" && negotiatingParams && publicKey && memory ? (
+          <NegotiationView
+            initialTerms={negotiatingParams}
+            buyerWallet={publicKey.toBase58()}
+            buyerBoundaries={memory.boundaries}
+            onAccept={handleNegotiationAccepted}
+            onCancel={() => {
+              setNegotiatingParams(null);
+              setView("chat");
+            }}
+          />
+        ) : view === "chat" ? (
+          <ChatInterface onDealCreated={handleDealDrafted} />
         ) : (
           <DealDashboard
             deals={deals}

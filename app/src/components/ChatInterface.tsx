@@ -280,11 +280,11 @@ function DealPreview({
       </div>
 
       {confirmed ? (
-        <div className="flex items-center gap-2 text-success text-sm font-medium py-2">
+        <div className="flex items-center gap-2 text-accent text-sm font-medium py-2">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <path d="M8 0a8 8 0 110 16A8 8 0 018 0zm3.78 5.22a.75.75 0 00-1.06 0L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.06 0l4.25-4.25a.75.75 0 000-1.06z" />
           </svg>
-          Deal created. Switch to My Deals tab.
+          Negotiation started. Review terms.
         </div>
       ) : (
         <button
@@ -292,7 +292,7 @@ function DealPreview({
           disabled={disabled}
           className="w-full bg-accent hover:bg-accent-hover text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {disabled ? "Connect wallet first" : "Create Deal"}
+          {disabled ? "Connect wallet first" : "Start Negotiation"}
         </button>
       )}
     </div>
