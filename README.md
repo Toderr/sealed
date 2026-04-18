@@ -1,20 +1,37 @@
 # Sealed
 
-**AI agent for autonomous B2B deal execution on Solana.**
+**AI escrow for business deals. Any currency. Any chain.**
 
-Businesses describe a deal in plain language. An AI agent structures it into milestones, negotiates on behalf of both parties, locks USDC into an on-chain escrow, reviews the seller's proof of delivery, and releases payment, all without banks, lawyers, or manual coordination.
+Businesses describe a deal in plain language. Three AI agents structure it, negotiate terms on behalf of both parties, lock funds into an on-chain Solana escrow, review proof of delivery, and release payment. No banks, no lawyers, no manual coordination.
 
-Built for the Colosseum hackathon. Target users: Indonesian pengusaha who want crypto's settlement guarantees without the crypto UX.
+Built for the Colosseum hackathon. Designed for any business that still closes deals on a handshake, whether or not they've ever touched crypto.
 
 ---
 
 ## Why this exists
 
-Cross-border B2B deals run on trust infrastructure (banks, lawyers, escrow agents) that is slow, expensive, and inaccessible for mid-market business owners in emerging markets. Stablecoin escrow solves the money rail. But raw on-chain tooling is unusable for the people who actually sign these deals.
+Business deals break. Both sides lose.
 
-Sealed closes that gap with an AI agent layer on top: the user talks to the agent, the agent handles the chain.
+- **Web2.** Freelancers lost `$15B` to non-payment in 2025. **58%** face unpaid invoices. **79%** of companies were targeted by payment fraud in 2024. *(Flexable 2025 Freelance Payment Report.)*
+- **Web3.** Crypto scams took `$17B` in 2025. Impersonation fraud up **1,400%**. AI-enabled scams are 4.5x more profitable than traditional ones. *(Chainalysis 2026 Crypto Crime Report.)*
+
+Two different worlds. One root cause: no enforceable deal layer.
+
+Sealed closes that gap. An AI agent layer on top of Solana escrow gives any two parties a deal table that enforces itself. The chain guarantees settlement; the agents handle structuring, negotiation, and delivery verification.
 
 Message: **"People break promises. Code doesn't."**
+
+---
+
+## Who it's for
+
+Two modes, one product.
+
+**Web2 mode (primary onboarding).** For businesses that don't hold crypto and don't want to. Email / Google login via social wallet. Pay in local currency (IDR, USD, more) with auto on/off-ramp through Xendit, MoonPay, Transak. USDC and Solana are invisible plumbing. Users see a deal table, not a blockchain.
+
+**Web3 mode (power users).** For teams that already hold stablecoin. Bring your own wallet, skip the ramp fees, settle directly in USDC on Solana.
+
+Shipped today: the web3 mode. Web2 wrapper (social wallet + fiat ramps) lands in Q2 2026 (see Roadmap).
 
 ---
 
@@ -86,6 +103,7 @@ sealed/
 ├── Anchor.toml                  Cluster = devnet
 ├── ARCHITECTURE.md              Forward-compat agent system + data model
 ├── PITCH_DECK.md                Colosseum submission pitch
+├── DECK_BRIEF.md                Structured brief for claude.ai/design
 └── DEMO.md                      Step-by-step demo script
 ```
 
@@ -94,9 +112,11 @@ sealed/
 ## Tech stack
 
 - **Frontend**: Next.js 16 (Turbopack), React 19, Tailwind v4, Linear-inspired design system
-- **Wallet**: `@solana/wallet-adapter` (Phantom, Solflare, Backpack)
+- **Wallet (web3 mode)**: `@solana/wallet-adapter` (Phantom, Solflare, Backpack)
+- **Wallet (web2 mode, upcoming)**: Privy or Turnkey social wallet (email / Google login)
+- **Fiat ramps (upcoming)**: Xendit / Midtrans (IDR), MoonPay / Transak (global)
 - **Chain**: Solana devnet, Anchor 0.30, USDC SPL token
-- **AI**: Claude (Anthropic direct or via OpenRouter)
+- **AI**: Claude (Anthropic direct or via OpenRouter). BYO-key supported.
 - **State**: per-wallet localStorage for deals + BusinessMemory; no backend needed for MVP
 
 ---
@@ -135,7 +155,7 @@ npm run lint         # ESLint
 npx tsc --noEmit     # Typecheck
 ```
 
-### 4. Wallet + devnet USDC
+### 4. Wallet + devnet USDC (web3 mode today)
 
 - Install Phantom or Solflare, switch to **Devnet**.
 - Airdrop SOL: `solana airdrop 2 <your-pubkey> --url devnet`
@@ -167,6 +187,16 @@ Program ID is pinned in `Anchor.toml` and `NEXT_PUBLIC_PROGRAM_ID`; redeploy pre
 
 ---
 
+## Pricing
+
+| Stream | Price | Note |
+|---|---|---|
+| **Platform fee** | `1%` of deal value | Covers compute + infra from deal one |
+| **Premium AI** | `$53.90`/mo | BYO LLM key (Anthropic, OpenAI, OpenRouter) or use ours |
+| **Verified merchant** | `$100` one-time | Trust badge + premium placement |
+
+---
+
 ## Hackathon demo
 
 See **[DEMO.md](./DEMO.md)** for the step-by-step walkthrough covering the full deal lifecycle (chat → negotiate → fund → proof → release → completed) plus the mutual-refund path.
@@ -175,11 +205,12 @@ See **[DEMO.md](./DEMO.md)** for the step-by-step walkthrough covering the full 
 
 ## Roadmap after hackathon
 
-1. **Scout agents**: `PurchasingScout` and `SalesScout` roles that discover counter-parties from a shared listings registry. Agent-to-agent matching before any human is involved.
-2. **On-chain reputation**: move the completed-deals counter into the `Reputation` PDA. Portable, composable, permissionless.
-3. **Supabase backend**: swap `LocalStorageMemoryStore` for `SupabaseMemoryStore` (same interface) to enable cross-device state + listings discovery.
-4. **Dispute resolution**: third-party arbiter role for the `Disputed` status path.
-5. **Multi-currency**: IDR stablecoin and native IDR on/off ramps for the pengusaha market.
+1. **Web2 wrapper (Q2 2026)**: social wallet via Privy or Turnkey (email / Google login, no seed phrases) + fiat on/off-ramp via Xendit, MoonPay, Transak. USDC becomes invisible plumbing.
+2. **Dispute resolution (Q3 2026)**: optional third-party arbiter role for the `Disputed` status path.
+3. **Cross-border escrow (Q4 2026)**: multi-currency stablecoin routing, IDR stablecoin + native IDR on/off ramps.
+4. **Portable reputation (2027)**: move the completed-deals counter into the `Reputation` PDA. Portable, composable, permissionless. Potentially as NFT.
+5. **Scout agents**: `PurchasingScout` and `SalesScout` roles that discover counter-parties from a shared listings registry. Agent-to-agent matching before any human is involved.
+6. **Supabase backend**: swap `LocalStorageMemoryStore` for `SupabaseMemoryStore` (same interface) to enable cross-device state + listings discovery.
 
 ---
 
