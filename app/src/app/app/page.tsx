@@ -4,6 +4,7 @@ import { useState } from "react";
 import Header from "@/components/Header";
 import ChatInterface from "@/components/ChatInterface";
 import DealDashboard from "@/components/DealDashboard";
+import SettingsModal from "@/components/SettingsModal";
 import { useToast } from "@/components/Toast";
 import { useDealsStore } from "@/lib/deals-store";
 import {
@@ -26,6 +27,7 @@ const ON_CHAIN_ENABLED = true;
 export default function Home() {
   const [activeTab, setActiveTab] = useState<"chat" | "deals">("chat");
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const { publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
   const { deals, addDeal } = useDealsStore(publicKey ?? null);
@@ -106,7 +108,11 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen">
-      <Header activeTab={activeTab} onTabChange={setActiveTab} />
+      <Header
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
       <main className="flex-1 overflow-hidden">
         {activeTab === "chat" ? (
           <ChatInterface onDealCreated={handleDealCreated} />
@@ -118,6 +124,9 @@ export default function Home() {
           />
         )}
       </main>
+      {settingsOpen && (
+        <SettingsModal onClose={() => setSettingsOpen(false)} />
+      )}
     </div>
   );
 }
