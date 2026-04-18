@@ -2,15 +2,15 @@
 
 :root {
   --background: #0a0a0a;
-  --foreground: #ededed;
+  --foreground: #e5e5e5;
   --card: #141414;
-  --card-border: #262626;
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --muted: #71717a;
+  --card-border: #2d2d3a;
+  --accent: #818cf8;
+  --accent-hover: #a5b4fc;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --muted: #e0e7ff;
 }
 
 @theme inline {
@@ -60,3 +60,4 @@ body {
   background: var(--card-border);
   border-radius: 3px;
 }
+

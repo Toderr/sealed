@@ -1,21 +1,25 @@
 import Link from "next/link";
+import GlobalBackground from "@/components/GlobalBackground";
 
 const PROGRAM_ID = "3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ";
 
 export default function Landing() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <SiteHeader />
-      <main>
-        <Hero />
-        <TrustStrip />
-        <Problem />
-        <Solution />
-        <HowItWorks />
-        <TeamTrust />
-        <FinalCTA />
-      </main>
-      <SiteFooter />
+    <div className="relative min-h-screen bg-background text-foreground isolate">
+      <GlobalBackground />
+      <div className="relative z-10">
+        <SiteHeader />
+        <main>
+          <Hero />
+          <TrustStrip />
+          <Problem />
+          <Solution />
+          <HowItWorks />
+          <TeamTrust />
+          <FinalCTA />
+        </main>
+        <SiteFooter />
+      </div>
     </div>
   );
 }
@@ -47,9 +51,8 @@ function SiteHeader() {
 
 function Hero() {
   return (
-    <section className="relative overflow-hidden">
-      <BackgroundGrid />
-      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-20 sm:pt-28 pb-16 sm:pb-24">
+    <section className="relative">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-20 sm:pt-28 pb-16 sm:pb-24">
         <div className="max-w-3xl">
           <span className="inline-flex items-center gap-2 rounded-full border border-card-border bg-card px-3 py-1 text-xs font-medium text-muted">
             <span className="relative flex h-1.5 w-1.5">
@@ -58,15 +61,15 @@ function Hero() {
             </span>
             Live on Solana devnet
           </span>
-          <h1 className="mt-5 text-4xl sm:text-5xl md:text-6xl font-semibold tracking-tight leading-[1.05]">
-            Trust infrastructure,
+          <h1 className="mt-5 text-4xl sm:text-5xl md:text-6xl font-semibold tracking-tight leading-[1.05] text-white">
+            People break promises.
             <br className="hidden sm:block" />
-            <span className="text-muted"> not crypto.</span>
+            <span className="text-accent"> Code doesn&apos;t.</span>
           </h1>
-          <p className="mt-5 text-base sm:text-lg text-muted max-w-2xl leading-relaxed">
+          <p className="mt-5 text-base sm:text-lg text-foreground max-w-2xl leading-relaxed">
             Sealed is an AI agent that represents your business on an on-chain deal table.
             It negotiates terms, holds escrow, verifies milestones, and releases payment
-            automatically — so deals close without a bank, a lawyer, or a leap of faith.
+            automatically, so deals close without a bank, a lawyer, or a leap of faith.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row gap-3">
             <Link
@@ -99,9 +102,9 @@ function Hero() {
 function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
     <div>
-      <dd className="text-xl sm:text-2xl font-semibold tracking-tight">{value}</dd>
+      <dd className="text-xl sm:text-2xl font-semibold tracking-tight text-white">{value}</dd>
       <dt className="mt-1 text-xs uppercase tracking-wider text-muted">{label}</dt>
-      <p className="mt-0.5 text-xs text-muted/80">{hint}</p>
+      <p className="mt-0.5 text-xs text-muted">{hint}</p>
     </div>
   );
 }
@@ -124,7 +127,7 @@ function TrustStrip() {
 function TrustItem({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
     <div className="inline-flex items-center gap-2">
-      <span className="text-foreground/70">{icon}</span>
+      <span className="text-accent">{icon}</span>
       <span>{text}</span>
     </div>
   );
@@ -151,12 +154,12 @@ function Problem() {
   return (
     <section className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
       <SectionEyebrow>The problem</SectionEyebrow>
-      <h2 className="mt-3 text-3xl sm:text-4xl font-semibold tracking-tight max-w-3xl">
+      <h2 className="mt-3 text-3xl sm:text-4xl font-semibold tracking-tight max-w-3xl text-white">
         Every handshake deal breaks the same way.
       </h2>
-      <p className="mt-4 text-muted max-w-2xl">
-        Business owners already use crypto rails for cross-border settlement — but
-        they still settle the trust layer on WhatsApp screenshots and transfer slips.
+      <p className="mt-4 text-foreground max-w-2xl">
+        Business owners already use crypto rails for cross-border settlement. They
+        still settle the trust layer on WhatsApp screenshots and transfer slips.
       </p>
       <div className="mt-12 grid md:grid-cols-3 gap-4">
         {items.map((i) => (
@@ -164,8 +167,8 @@ function Problem() {
             key={i.title}
             className="rounded-2xl border border-card-border bg-card p-6"
           >
-            <h3 className="font-semibold text-[15px]">{i.title}</h3>
-            <p className="mt-2 text-sm text-muted leading-relaxed">{i.body}</p>
+            <h3 className="font-semibold text-[15px] text-white">{i.title}</h3>
+            <p className="mt-2 text-sm text-foreground leading-relaxed">{i.body}</p>
           </div>
         ))}
       </div>
@@ -179,7 +182,7 @@ function Solution() {
       icon: <ChatIcon />,
       title: "AI agent does the paperwork.",
       body:
-        "Describe the deal in plain language — Indonesian or English. The agent extracts milestones, amounts, and counterparty details, then drafts the escrow.",
+        "Describe the deal in plain language. Indonesian or English both work. The agent extracts milestones, amounts, and counterparty details, then drafts the escrow.",
     },
     {
       icon: <VaultIcon />,
@@ -191,7 +194,7 @@ function Solution() {
       icon: <ReceiptIcon />,
       title: "Portable reputation.",
       body:
-        "Every completed deal counts toward the counterparty's on-chain record. You bring your track record with you — not stuck in one platform.",
+        "Every completed deal counts toward the counterparty's on-chain record. You bring your track record with you, not stuck in one platform.",
     },
   ];
   return (
@@ -201,7 +204,7 @@ function Solution() {
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
         <SectionEyebrow>What Sealed does</SectionEyebrow>
-        <h2 className="mt-3 text-3xl sm:text-4xl font-semibold tracking-tight max-w-3xl">
+        <h2 className="mt-3 text-3xl sm:text-4xl font-semibold tracking-tight max-w-3xl text-white">
           A neutral third party, enforced by code.
         </h2>
         <div className="mt-12 grid md:grid-cols-3 gap-4">
@@ -213,8 +216,8 @@ function Solution() {
               <div className="h-10 w-10 rounded-lg bg-accent/10 text-accent flex items-center justify-center">
                 {f.icon}
               </div>
-              <h3 className="mt-5 font-semibold text-[15px]">{f.title}</h3>
-              <p className="mt-2 text-sm text-muted leading-relaxed">{f.body}</p>
+              <h3 className="mt-5 font-semibold text-[15px] text-white">{f.title}</h3>
+              <p className="mt-2 text-sm text-foreground leading-relaxed">{f.body}</p>
             </article>
           ))}
         </div>
@@ -241,13 +244,13 @@ function HowItWorks() {
       n: "03",
       title: "Release on delivery.",
       body:
-        "When the seller ships a milestone, you confirm in one tap. The contract releases only that milestone — not the whole pot.",
+        "When the seller ships a milestone, you confirm in one tap. The contract releases only that milestone, not the whole pot.",
     },
   ];
   return (
     <section id="how" className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
       <SectionEyebrow>How it works</SectionEyebrow>
-      <h2 className="mt-3 text-3xl sm:text-4xl font-semibold tracking-tight max-w-3xl">
+      <h2 className="mt-3 text-3xl sm:text-4xl font-semibold tracking-tight max-w-3xl text-white">
         Three steps. One signature per milestone.
       </h2>
       <ol className="mt-12 grid md:grid-cols-3 gap-4">
@@ -257,8 +260,8 @@ function HowItWorks() {
             className="relative rounded-2xl border border-card-border bg-card p-6"
           >
             <span className="text-xs font-mono text-accent">{s.n}</span>
-            <h3 className="mt-2 font-semibold text-[15px]">{s.title}</h3>
-            <p className="mt-2 text-sm text-muted leading-relaxed">{s.body}</p>
+            <h3 className="mt-2 font-semibold text-[15px] text-white">{s.title}</h3>
+            <p className="mt-2 text-sm text-foreground leading-relaxed">{s.body}</p>
           </li>
         ))}
       </ol>
@@ -275,13 +278,13 @@ function TeamTrust() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28 grid md:grid-cols-2 gap-10 md:gap-16">
         <div>
           <SectionEyebrow>Why trust us</SectionEyebrow>
-          <h2 className="mt-3 text-3xl sm:text-4xl font-semibold tracking-tight">
+          <h2 className="mt-3 text-3xl sm:text-4xl font-semibold tracking-tight text-white">
             Built by operators who have already lived the problem.
           </h2>
-          <p className="mt-4 text-muted leading-relaxed">
+          <p className="mt-4 text-foreground leading-relaxed">
             Sealed is built in the open by two founders with direct access to the
-            Indonesian pengusaha community — the people who send real business
-            wires every week and know exactly where handshake deals fail.
+            Indonesian pengusaha community. These are the people who send real
+            business wires every week and know exactly where handshake deals fail.
           </p>
           <dl className="mt-8 space-y-5">
             <Credential
@@ -298,11 +301,11 @@ function TeamTrust() {
           <p className="text-xs uppercase tracking-wider text-muted">
             Verify for yourself
           </p>
-          <p className="mt-2 text-sm text-muted">
+          <p className="mt-2 text-sm text-foreground">
             The escrow program is deployed and upgradeable to a multisig authority.
             Inspect it on Solana devnet:
           </p>
-          <div className="mt-4 rounded-lg border border-card-border bg-background px-3 py-2.5 font-mono text-xs break-all text-foreground/90">
+          <div className="mt-4 rounded-lg border border-card-border bg-background px-3 py-2.5 font-mono text-xs break-all text-foreground">
             {PROGRAM_ID}
           </div>
           <a
@@ -334,8 +337,8 @@ function Credential({ role, detail }: { role: string; detail: string }) {
         aria-hidden="true"
       />
       <div>
-        <dt className="font-medium text-[15px]">{role}</dt>
-        <dd className="text-sm text-muted mt-0.5 leading-relaxed">{detail}</dd>
+        <dt className="font-medium text-[15px] text-white">{role}</dt>
+        <dd className="text-sm text-foreground mt-0.5 leading-relaxed">{detail}</dd>
       </div>
     </div>
   );
@@ -345,7 +348,7 @@ function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="text-xs text-muted">{label}</p>
-      <p className="mt-0.5 font-medium">{value}</p>
+      <p className="mt-0.5 font-medium text-white">{value}</p>
     </div>
   );
 }
@@ -363,12 +366,12 @@ function FinalCTA() {
           aria-hidden="true"
         />
         <div className="relative max-w-2xl">
-          <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
+          <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-white">
             Your next deal closes itself.
           </h2>
-          <p className="mt-4 text-muted leading-relaxed">
-            Sealed is in early access on devnet. Bring a real deal — we will walk
-            you through it.
+          <p className="mt-4 text-foreground leading-relaxed">
+            Sealed is in early access on devnet. Bring a real deal and we will
+            walk you through it.
           </p>
           <div className="mt-7 flex flex-col sm:flex-row gap-3">
             <Link
@@ -432,31 +435,6 @@ function SectionEyebrow({ children }: { children: React.ReactNode }) {
   );
 }
 
-function BackgroundGrid() {
-  return (
-    <div aria-hidden="true" className="absolute inset-0 -z-10 overflow-hidden">
-      <div
-        className="absolute inset-0 opacity-[0.35]"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle at 15% 10%, rgba(99,102,241,0.18), transparent 45%), radial-gradient(circle at 85% 0%, rgba(99,102,241,0.08), transparent 40%)",
-        }}
-      />
-      <div
-        className="absolute inset-0 opacity-[0.12]"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)",
-          backgroundSize: "44px 44px",
-          maskImage:
-            "radial-gradient(ellipse at top, black 40%, transparent 75%)",
-          WebkitMaskImage:
-            "radial-gradient(ellipse at top, black 40%, transparent 75%)",
-        }}
-      />
-    </div>
-  );
-}
 
 function SealedMark() {
   return (

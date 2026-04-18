@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sealed — AI-Powered B2B Escrow",
+  title: "Sealed: AI-Powered B2B Escrow",
   description:
     "Autonomous B2B deal execution with milestone-based escrow on Solana",
 };

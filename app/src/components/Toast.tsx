@@ -127,7 +127,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold">{t.title}</p>
                 {t.description && (
-                  <p className="text-xs mt-0.5 text-foreground/80 break-words">
+                  <p className="text-xs mt-0.5 text-foreground break-words">
                     {t.description}
                   </p>
                 )}
@@ -144,7 +144,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               </div>
               <button
                 onClick={() => dismiss(t.id)}
-                className="text-foreground/60 hover:text-foreground text-sm leading-none"
+                className="text-foreground hover:text-accent text-sm leading-none"
                 aria-label="Dismiss"
               >
                 ×
