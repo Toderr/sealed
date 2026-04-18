@@ -2,6 +2,8 @@
 
 **AI escrow for business deals. Any currency. Any chain.**
 
+**Live demo:** https://sealed-nine.vercel.app (Solana devnet)
+
 Businesses describe a deal in plain language. Three AI agents structure it, negotiate terms on behalf of both parties, lock funds into an on-chain Solana escrow, review proof of delivery, and release payment. No banks, no lawyers, no manual coordination.
 
 Built for the Colosseum hackathon. Designed for any business that still closes deals on a handshake, whether or not they've ever touched crypto.

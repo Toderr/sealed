@@ -165,7 +165,7 @@ Two people. Four weeks. Working product on mainnet-adjacent infrastructure.
 
 **Contact:** [email]
 **GitHub:** github.com/Toderr/sealed
-**Live demo:** [url]
+**Live demo:** sealed-nine.vercel.app
 
 ---
 
@@ -196,7 +196,7 @@ Two people. Four weeks. Working product on mainnet-adjacent infrastructure.
 **Blockers before submission:**
 - [ ] 3-min pitch video uploaded
 - [ ] Under-3-min technical walkthrough uploaded
-- [ ] Live demo URL (Vercel)
+- [x] Live demo URL (Vercel): sealed-nine.vercel.app
 - [ ] Contact email filled in Slide 10
 - [ ] Team bios: replace `[Dev name]` + `[Partner name]` in Slide 9
 - [ ] Track selection on Colosseum portal
