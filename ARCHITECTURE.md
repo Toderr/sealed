@@ -4,15 +4,15 @@ Forward-compatible design covering current Step 1-4 work + future Scout agents.
 
 ## Agent Role System
 
-Not hardcoded "buyer/seller" — role-based, so new roles plug in without rewrite.
+Not hardcoded "buyer/seller". Role-based, so new roles plug in without rewrite.
 
 ```ts
 enum AgentRole {
   Structurer     = "structurer",      // parse NL → deal params (current)
   Negotiator     = "negotiator",      // counter-propose on behalf of party (Step 2)
   Verifier       = "verifier",        // review milestone proof (Step 4)
-  PurchasingScout = "purchasing_scout", // FUTURE — finds sellers matching criteria
-  SalesScout     = "sales_scout",     // FUTURE — finds buyers matching criteria
+  PurchasingScout = "purchasing_scout", // FUTURE: finds sellers matching criteria
+  SalesScout     = "sales_scout",     // FUTURE: finds buyers matching criteria
 }
 
 type AgentConfig = {
@@ -32,7 +32,7 @@ Each role gets its own prompt template + tool allowlist. Adding Scout later = ne
 ### Current (Step 1-4)
 
 ```ts
-// Step 1 — Business Memory (per wallet, localStorage → later Supabase)
+// Step 1: Business Memory (per wallet, localStorage → later Supabase)
 type BusinessMemory = {
   walletAddress: string;
   completedDeals: number;
@@ -52,7 +52,7 @@ type BusinessMemory = {
   reputationScore?: number;
 };
 
-// Step 2 — Negotiation
+// Step 2: Negotiation
 type Proposal = {
   id: string;
   origin: ProposalOrigin;             // "manual" | "scout_matched" (future)
@@ -73,7 +73,7 @@ type Revision = {
   timestamp: number;
 };
 
-// Step 3 — Summary
+// Step 3: Summary
 type NegotiationSummary = {
   pros: string[];
   cons: string[];
@@ -83,7 +83,7 @@ type NegotiationSummary = {
   dualSignRequired: boolean;
 };
 
-// Step 4 — Proof
+// Step 4: Proof
 type MilestoneProof = {
   milestoneIndex: number;
   proofType: "file" | "url" | "oracle";
@@ -99,7 +99,7 @@ type MilestoneProof = {
 ### Forward-Compat (Scout update)
 
 ```ts
-// Listings registry — agents publish intent
+// Listings registry: agents publish intent
 type Listing = {
   id: string;
   ownerWallet: string;
@@ -116,7 +116,7 @@ type Listing = {
   status: "open" | "matched" | "closed";
 };
 
-// Scout match — agent found A and B compatible
+// Scout match: agent found A and B compatible
 type Match = {
   id: string;
   buyerListingId: string;
@@ -154,14 +154,14 @@ type SalesProfile = {
 ### Current (Step 1-4)
 
 ```
-POST /api/agent              existing — Structurer role
-POST /api/negotiate          NEW — runs Negotiator ↔ Negotiator rounds
-POST /api/verify-milestone   NEW — Verifier reviews proof
-GET  /api/memory/:wallet     NEW — retrieve BusinessMemory
-POST /api/memory/:wallet     NEW — update BusinessMemory
+POST /api/agent              existing, Structurer role
+POST /api/negotiate          NEW, runs Negotiator ↔ Negotiator rounds
+POST /api/verify-milestone   NEW, Verifier reviews proof
+GET  /api/memory/:wallet     NEW, retrieve BusinessMemory
+POST /api/memory/:wallet     NEW, update BusinessMemory
 ```
 
-### Future (Scout update) — already shaped compatibly
+### Future (Scout update), already shaped compatibly
 
 ```
 POST /api/listings                   CRUD listings

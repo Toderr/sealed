@@ -10,7 +10,7 @@ import {
 } from "@/lib/types";
 import DealDetail from "@/components/DealDetail";
 
-// Linear-style status pills — semi-transparent fill, matching semantic tokens.
+// Linear-style status pills: semi-transparent fill, matching semantic tokens.
 const STATUS_STYLES: Record<DealStatus, string> = {
   [DealStatus.Created]:
     "bg-[rgba(113,112,255,0.10)] text-accent border border-[rgba(113,112,255,0.22)]",

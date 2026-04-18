@@ -1,54 +1,43 @@
-# Sealed — Pitch Deck Draft
+# Sealed Pitch Deck
 
 Target: Colosseum Frontier Hackathon submission (3-min video + deck)
 Audience: Judges, potential angels, Solana ecosystem partners
 
 ---
 
-## Slide 1 — Title
+## Slide 1 · Title
 
 **SEALED**
 
 *People break promises. Code doesn't.*
 
-AI-powered B2B escrow on Solana.
+AI escrow for business deals. Any currency. Any chain.
 
-Built for business owners who already use crypto rails but still settle deals on handshake.
-
-**Speaker notes:** Open with the headline on screen for 3 seconds of silence before speaking. Let it land.
+**Speaker notes:** Hold on the wordmark for 3 seconds of silence before speaking.
 
 ---
 
-## Slide 2 — Problem
+## Slide 2 · Problem
 
-### 64 million Indonesian MSMEs close deals on trust alone.
+### Business deals break. Both sides lose.
 
-Indonesia's B2B ecommerce market is projected to reach ~$14B in 2026 and grow at 18.74% CAGR through 2031. Most of it still settles over WhatsApp and bank transfers.
+**Web2.** Freelancers lost **$15B** to non-payment in 2025. **58%** face unpaid invoices. **79%** of companies were targeted by payment fraud in 2024.
 
-- No escrow.
-- No enforceable milestones.
-- No shared source of truth.
+**Web3.** Crypto scams took **$17B** in 2025. Impersonation fraud up **1,400%**. AI-driven scams are 4.5× more profitable than traditional ones.
 
-When a deal goes wrong, the options are ugly: eat the loss, hire a lawyer, or send a debt collector.
+One root cause: no enforceable deal layer.
 
-> *"I shipped 40% of the order. The buyer ghosted. I have no recourse."*
-> — pengusaha in our community
-
-*Sources: Mordor Intelligence, trade.gov (Indonesia ecommerce 2026).*
+*Sources: Flexable 2025 Freelance Payment Report · Chainalysis 2026 Crypto Crime Report.*
 
 ---
 
-## Slide 3 — Solution
+## Slide 3 · Solution
 
-### Three AI agents. One on-chain deal table.
+### Three AI agents. One deal table.
 
-*Structurer, Negotiator, Verifier — sharing one engine, each with its own role.*
+**Structurer** parses the deal. **Negotiator** reaches terms for both sides. **Verifier** reviews delivery.
 
-1. **Chat** — describe your deal in plain language (Bahasa Indonesia or English). The **Structurer** agent parses it into milestones, amounts, and release conditions.
-2. **Negotiate** — both parties get their own **Negotiator** agent carrying their BusinessMemory (deal history, red-lines, style). The agents counter-offer until they agree, then summarize pros, cons, and risk flags.
-3. **Sign + fund** — both wallets approve. USDC locks in a Solana PDA-owned vault.
-4. **Verify + settle** — seller submits proof per milestone. The **Verifier** agent scores confidence and recommends approve / reject / request clarification. Buyer releases with one signature.
-5. **Exit** — mutual refund via 2-sig partial-sign handoff if the deal unwinds.
+Funds lock on-chain. Release on milestone. Mutual refund if it breaks.
 
 No lawyer. No bank. No dispute hotline.
 
@@ -56,132 +45,123 @@ Just code that can't lie.
 
 ---
 
-## Slide 4 — Product Demo
+## Slide 4 · Product Demo
 
 ### Live on Solana devnet today.
 
 **Program ID:** `3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ`
 
-**[Screenshot or GIF grid]**
+**[Screenshot grid]**
 
 **Core flow**
-- Chat intake → deal preview card
-- Dual-agent negotiation view (counter-offers, concessions, risk summary)
-- On-chain deal creation (Solscan link)
-- Fund escrow with USDC
-- Milestone release transaction
+chat → negotiate → fund → verify → release.
 
-**Recovery flow** *(the stuff judges usually don't see shipped)*
-- Seller proof submission + AI Verifier review
-- Mutual refund via 2-sig partial-sign handoff
-
-**Built in 4 weeks by a team of 2.** 4 Anchor instructions, 3 AI agent roles, end-to-end typed — no mocks.
+**Recovery flow**
+AI Verifier proof review + mutual refund via 2-sig partial-sign handoff.
 
 Full walkthrough in [DEMO.md](./DEMO.md) and the technical video.
 
 ---
 
-## Slide 5 — Why Now / Market
+## Slide 5 · Why Now
 
 ### Three curves converging.
 
-- **Stablecoin B2B payments** hit **$226B annually** (McKinsey/Artemis, Feb 2026), up **733% YoY**. Asia drives 60% of global stablecoin payment volume.
-- **Indonesia** ranks **#7 in the Chainalysis 2025 Global Crypto Adoption Index**, with **~39 million crypto holders** (3rd globally by user count).
-- **AI agents** finally good enough to parse messy business intent into structured contracts.
+**$226B** in stablecoin B2B payments in 2025, up **733% YoY** (McKinsey/Artemis, Feb 2026).
 
-Pengusaha (Indonesian business owners) already hold USDT on exchanges. They move millions off-chain because on-chain tooling was built for traders, not merchants.
+**$17B** lost to crypto scams in 2025 = demand for verifiable trust (Chainalysis 2026).
 
-**Sealed is the first escrow layer built for them, not for DeFi natives.**
+**AI agents** finally good enough to turn messy business intent into structured contracts.
 
-*Sources: [McKinsey Feb 2026](https://www.mckinsey.com/industries/financial-services/our-insights/stablecoins-in-payments-what-the-raw-transaction-numbers-miss), [Chainalysis 2025 Index](https://www.chainalysis.com/blog/2025-global-crypto-adoption-index/).*
+The plumbing is ready. The trust layer isn't. Yet.
 
 ---
 
-## Slide 6 — Why us, not another escrow dApp
+## Slide 6 · Why us
 
 > **Escrow is a feature. Negotiation is the product.**
 
-Bare on-chain escrow already exists — and nobody in our target market uses it, because locking funds into a contract is the *last* 10% of the work. The first 90% is:
+Bare on-chain escrow already exists. Nobody in our target market uses it, because locking funds is the *last* 10% of the work.
 
-- Structuring a messy WhatsApp deal into milestones
-- Negotiating terms without a lawyer
-- Judging whether delivery actually happened
+The first 90% is:
+- structuring a messy deal into milestones,
+- negotiating terms without a lawyer,
+- judging whether delivery actually happened.
 
-Every incumbent skips straight to "sign this smart contract." We built the agent layer that gets two businesses **to the signature** — and a Verifier that helps them decide **whether to release**.
+Every incumbent skips to "sign this smart contract." We built the agent layer that gets two parties **to the signature**, plus a Verifier that helps them decide **whether to release**.
 
-That's why our wedge is AI-first; escrow is the settlement rail underneath.
+Our wedge is AI-first. Escrow is the settlement rail underneath.
 
 ---
 
-## Slide 7 — Business Model
+## Slide 7 · Business Model
 
-### Revenue at three points.
-
-| Stream | Pricing | Why it works |
+| Stream | Price | Why |
 |---|---|---|
-| **Platform fee** | 0.5% of deal value | Cheaper than notary, lawyer, or bank escrow |
-| **Premium AI** | $49/mo per business | Dispute drafting, contract templates, analytics |
-| **Reputation layer** | Paid verification | Verified merchants get premium placement |
+| **Platform fee** | **1%** of deal value | Pays compute + infra from deal one |
+| **Premium AI** | **$53.90/mo** | Bring your own LLM, or use ours |
+| **Verified merchant** | **$100** one-time | Filter for serious parties |
 
-**Unit economics:** one $50,000 deal pays $250. Break-even on compute + infra at ~20 deals per month.
-
----
-
-## Slide 8 — Go To Market
-
-### We don't need to find users. We already know them.
-
-Our partner has 18 years in trading, investing, and crypto, with direct relationships inside the Indonesian pengusaha community.
-
-**Week 1–4 (post-hackathon):**
-- 10 closed-beta deals from our network. Real money, real stakes.
-
-**Month 2–6:**
-- Founder-led sales. One community at a time.
-- Content in Bahasa Indonesia. Demo booths at pengusaha meetups.
-
-**Year 1:**
-- Regional expansion into Vietnam, Philippines, Thailand. Same archetype, same pain.
+One **$50,000** deal = **$500** platform fee. Verified merchants get premium placement and a trust badge other parties actually look for.
 
 ---
 
-## Slide 9 — Traction + Team
+## Slide 8 · Go To Market
+
+### Hide the crypto. Keep the guarantees.
+
+Most businesses don't hold crypto. Our cofounder's 18-year network is web2. So we built the wrapper.
+
+- **Email / Google login** via social wallet. No seed phrases.
+- **Pay in local currency.** Auto on/off-ramp: IDR, USD, and more via Xendit, MoonPay, Transak.
+- **Deal table in plain language.** USDC is invisible plumbing, not the product.
+
+**Week 1–4:** 10 closed-beta deals from cofounder's pengusaha network. Real money, real stakes.
+
+**Month 2–6:** Freelance agencies, cross-border B2B, SEA manufacturing.
+
+**Year 1:** Regional expansion + web3-native power-user tier (bring your own wallet, lower fees).
+
+---
+
+## Slide 9 · Traction + Team
 
 ### Already shipping.
 
 - Anchor program on devnet: `create_deal`, `fund_escrow`, `release_milestone`, `refund`
 - Full deal lifecycle working end-to-end: chat → negotiate → fund → proof → verify → release → complete
 - Dual-agent negotiation engine with BusinessMemory per wallet
-- AI Verifier scoring milestone proofs (approve / reject / request-clarification)
-- Mutual refund via 2-sig partial-sign handoff — no trusted relay needed
+- AI Verifier scoring milestone proofs
+- Mutual refund via 2-sig partial-sign handoff. No trusted relay.
 - Anthropic direct + OpenRouter both supported
-- Linear-grade UI — not a hackathon-looking app
+
+**Next:** Social wallet + fiat on/off-ramp for web2 onboarding.
 
 ---
 
 ### Team
 
-- **[Dev name]** — builds AI agents. Previously shipped a DLMM agent that auto-screens, opens, and closes positions with self-learning.
-- **[Partner name]** — 18 years in trading, investing, crypto, and DLMM valuation. Direct line to target customer segment.
+- **[Dev name]** builds AI agents. Previously shipped a DLMM agent that auto-screens, opens, and closes positions with self-learning.
+- **[Partner name]** has 18 years in trading, investing, crypto, and DLMM valuation. Direct line to target customer segment.
 
 Two people. Four weeks. Working product on mainnet-adjacent infrastructure.
 
 ---
 
-## Slide 10 — Ask + Roadmap
+## Slide 10 · Ask + Roadmap
 
 ### What we're building next.
 
-**Q2 2026:** Mainnet launch. First 10 paying businesses.
+**Q2 2026:** Mainnet launch + web2 wrapper (social wallet, fiat on/off-ramp).
 **Q3 2026:** Dispute resolution layer. Optional arbitrator network.
-**Q4 2026:** Cross-border escrow with multi-currency stablecoin routing.
-**2027:** Reputation NFTs portable across platforms.
+**Q4 2026:** Multi-currency cross-border escrow.
+**2027:** Portable on-chain reputation NFTs.
 
-### The ask.
+### The ask
 
-- **$250K pre-seed** to get to 100 active businesses and $1M TVL.
-- **Ecosystem partners** on the Solana side: stablecoin issuers, wallet providers, on-ramps.
-- **Design partners** in SEA B2B verticals: manufacturing, logistics, agriculture trade.
+- **$250K pre-seed** to reach 100 active businesses and $1M TVL.
+- **Ecosystem partners:** stablecoin issuers, wallet providers, fiat ramps.
+- **Design partners:** SEA B2B verticals (manufacturing, logistics, agri-trade).
 
 **Contact:** [email]
 **GitHub:** github.com/Toderr/sealed
@@ -191,23 +171,23 @@ Two people. Four weeks. Working product on mainnet-adjacent infrastructure.
 
 ## Video Pitch Script (3 min)
 
-**0:00–0:15 — Hook**
+**0:00–0:15 · Hook**
 "Every day, billions of dollars in business deals close on nothing but a handshake. When it works, it's beautiful. When it breaks, there's no recourse."
 
-**0:15–0:45 — Problem**
-"Indonesia has 64 million MSMEs. B2B ecommerce hits 14 billion dollars in 2026 and grows 18% a year. Almost all of it still settles over WhatsApp and bank transfers. When the buyer ghosts after 40% delivery, the seller eats it."
+**0:15–0:45 · Problem**
+"Freelancers lost fifteen billion to broken promises last year. Crypto users lost seventeen billion to scams. Two different worlds, one broken trust layer."
 
-**0:45–1:15 — Solution intro**
-"Sealed is an AI agent that represents your business on an on-chain deal table. You describe the deal in plain language. The agent structures it. Solana locks the funds. Milestones release automatically when delivery is confirmed."
+**0:45–1:15 · Solution**
+"Sealed is an AI agent that runs the deal table. Describe the deal in plain language. Three agents handle structuring, negotiation, and delivery verification. Funds lock on Solana, release on milestone."
 
-**1:15–2:15 — Product walkthrough**
+**1:15–2:15 · Product walkthrough**
 [Screen recording: chat, deal preview, wallet sign, on-chain confirmation, milestone release]
 
-**2:15–2:45 — Why us**
-"Two people, four weeks. Three AI agents — Structurer, Negotiator, Verifier — on top of a four-instruction Anchor escrow. My partner has eighteen years in trading and a direct line to business owners who will never touch a DEX but will happily use this if it feels like chat. That's our wedge."
+**2:15–2:45 · Why us**
+"We hide the crypto behind email login and auto on/off-ramp, so any business can use Sealed, not just web3 natives. My cofounder has eighteen years in business networks that never touched a DEX. That's our wedge: the crypto is invisible plumbing; the product is trust."
 
-**2:45–3:00 — Close**
-"People break promises. Code doesn't. Sealed makes the deal table that enforces itself — for the 99% of business that still runs on handshakes."
+**2:45–3:00 · Close**
+"People break promises. Code doesn't. Sealed makes the deal table that enforces itself, for every business that still runs on handshakes."
 
 ---
 
@@ -218,11 +198,11 @@ Two people. Four weeks. Working product on mainnet-adjacent infrastructure.
 - [ ] Under-3-min technical walkthrough uploaded
 - [ ] Live demo URL (Vercel)
 - [ ] Contact email filled in Slide 10
-- [ ] Team bios — replace `[Dev name]` + `[Partner name]` in Slide 9
+- [ ] Team bios: replace `[Dev name]` + `[Partner name]` in Slide 9
 - [ ] Track selection on Colosseum portal
-- [ ] Screenshot/GIF grid for Slide 4
+- [ ] Screenshot grid for Slide 4
 
 **Done:**
-- [x] Project name + one-line tagline
-- [x] GitHub repo (public, README, demo script) — github.com/Toderr/sealed
-- [x] Tech stack listed — in README
+- [x] Project name + tagline
+- [x] GitHub repo (public, README, demo script): github.com/Toderr/sealed
+- [x] Tech stack listed in README

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * Sealed — Linear-inspired design tokens.
+ * Sealed: Linear-inspired design tokens.
  * Refs: DESIGN.md §2 (palette), §3 (typography), §6 (elevation).
  * Dark-mode-native. No chromatic color outside brand violet + status.
  */
@@ -100,14 +100,14 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Focus ring — 2px accent ring, consistent across app (WCAG focus-visible). */
+/* Focus ring: 2px accent ring, consistent across app (WCAG focus-visible). */
 *:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
   border-radius: 6px;
 }
 
-/* Respect prefers-reduced-motion — disable non-essential animations. */
+/* Respect prefers-reduced-motion: disable non-essential animations. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -119,7 +119,7 @@ body {
   }
 }
 
-/* --- Wallet adapter overrides — match Linear CTA --- */
+/* --- Wallet adapter overrides: match Linear CTA --- */
 .wallet-adapter-button {
   background-color: var(--brand) !important;
   border-radius: 6px !important;
@@ -146,7 +146,7 @@ body {
   color: var(--primary) !important;
 }
 
-/* --- Scrollbar — subtle, Linear-style --- */
+/* --- Scrollbar: subtle, Linear-style --- */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -174,7 +174,7 @@ body {
   border: 1px solid var(--card-border-subtle);
 }
 
-/* Ghost button — DESIGN.md §4 Ghost Button spec. */
+/* Ghost button, DESIGN.md §4 Ghost Button spec. */
 .btn-ghost {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--card-border);
@@ -186,7 +186,7 @@ body {
   border-color: rgba(255, 255, 255, 0.14);
 }
 
-/* Primary brand button — DESIGN.md §4 Primary spec. */
+/* Primary brand button, DESIGN.md §4 Primary spec. */
 .btn-primary {
   background: var(--brand);
   color: #ffffff;
@@ -201,7 +201,7 @@ body {
   cursor: not-allowed;
 }
 
-/* Subtle pill — DESIGN.md §4 Neutral Pill. */
+/* Subtle pill, DESIGN.md §4 Neutral Pill. */
 .pill-neutral {
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.08);

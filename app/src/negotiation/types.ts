@@ -1,4 +1,4 @@
-// Negotiation data model — per ARCHITECTURE.md.
+// Negotiation data model. See ARCHITECTURE.md.
 // A Proposal carries the full history of Revisions between two agents.
 
 import type { DealParams } from "@/lib/types";

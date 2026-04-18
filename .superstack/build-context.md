@@ -1,9 +1,9 @@
-# Build Context — Live
+# Build Context (Live)
 
 ## Stack
 - **smart_contract**: Anchor 0.30.1, Rust, Solana CLI 2.2.7
 - **frontend**: Next.js 16 (App Router, Turbopack), TypeScript, Tailwind CSS v4
-- **ai_agent**: Claude API (@anthropic-ai/sdk) — Anthropic direct OR OpenRouter
+- **ai_agent**: Claude API (@anthropic-ai/sdk). Anthropic direct OR OpenRouter.
 - **wallet**: Wallet Standard (@solana/wallet-adapter-react)
 - **rpc**: Solana devnet (upgrade to Helius for production)
 - **stablecoin**: USDC (SPL Token)
@@ -46,16 +46,16 @@
 - Windows dev: frontend native, smart contract via WSL
 - On-chain transactions gated behind `ON_CHAIN_ENABLED` flag in `page.tsx`
 - Using raw instruction builders instead of Anchor Program class (avoids TS deep instantiation errors)
-- Linear design system codified in `globals.css` via `@theme inline` bridge — Inter Variable (cv01+ss03), weight 510 emphasis, luminance-stepped elevation via rgba, `--shadow-dialog` for modals
+- Linear design system codified in `globals.css` via `@theme inline` bridge: Inter Variable (cv01+ss03), weight 510 emphasis, luminance-stepped elevation via rgba, `--shadow-dialog` for modals
 - 2-sig refund uses `Transaction.serialize({ requireAllSignatures: false })` + cross-wallet localStorage slot (`sealed:refund-handoffs`) for same-browser demo handoff; cross-browser uses paste-blob fallback
-- Dual LLM providers supported — `OPENROUTER_API_KEY` takes priority over `ANTHROPIC_API_KEY` when both set
+- Dual LLM providers supported: `OPENROUTER_API_KEY` takes priority over `ANTHROPIC_API_KEY` when both set
 - Role-based agent engine (not class-based) so future Scout roles = prompt + tool allowlist, not engine rewrite (see `ARCHITECTURE.md`)
 
 ## Now
 Source of truth for current state:
-- **`DEMO.md`** — step-by-step hackathon demo walkthrough
-- **`PITCH_DECK.md`** — Colosseum submission pitch (10 slides + 3-min video script)
-- **`DECK_BRIEF.md`** — structured input for claude.ai/design to render the visual deck
-- **`ARCHITECTURE.md`** — agent system + data model + forward-compat Scout design
+- **`DEMO.md`**: step-by-step hackathon demo walkthrough
+- **`PITCH_DECK.md`**: Colosseum submission pitch (10 slides + 3-min video script)
+- **`DECK_BRIEF.md`**: structured input for claude.ai/design to render the visual deck
+- **`ARCHITECTURE.md`**: agent system + data model + forward-compat Scout design
 
 Remaining before submission: team bios in Slide 9, contact email + Vercel URL in Slide 10, screenshot grid for Slide 4, video uploads, track selection.

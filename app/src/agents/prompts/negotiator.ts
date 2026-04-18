@@ -78,7 +78,7 @@ Rules:
 - if a red line is crossed, action = "reject" (reasoning must cite the red line)
 - otherwise action = "counter" with improved terms for your side but moving toward middle ground
 - keep reasoning SHORT. This is negotiation, not an essay.
-- do not invent new deal metadata — only modify totalAmount and milestones
+- do not invent new deal metadata; only modify totalAmount and milestones
 `;
 }
 

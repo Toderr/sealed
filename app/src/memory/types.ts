@@ -1,4 +1,4 @@
-// BusinessMemory — per-wallet preferences, history, and negotiation boundaries.
+// BusinessMemory: per-wallet preferences, history, and negotiation boundaries.
 // User-settable via Settings UI; Negotiator agent consumes this as constraints.
 
 export type NegotiationStyle = "conservative" | "balanced" | "aggressive";
@@ -27,7 +27,7 @@ export interface NegotiationBoundaries {
   // Payment terms the agent is authorized to accept
   acceptedPaymentTerms: PaymentTerm[];
 
-  // Deal breakers — auto-reject if proposal violates any of these (free text)
+  // Deal breakers. Auto-reject if proposal violates any of these (free text).
   redLines: string[];
 
   // Autonomy envelope

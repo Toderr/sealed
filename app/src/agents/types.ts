@@ -1,4 +1,4 @@
-// Agent role system — per ARCHITECTURE.md
+// Agent role system. See ARCHITECTURE.md.
 // Role-based design so new agent types (PurchasingScout, SalesScout) can be
 // added without rewriting the negotiation engine.
 

@@ -2,7 +2,7 @@
 
 **AI agent for autonomous B2B deal execution on Solana.**
 
-Businesses describe a deal in plain language. An AI agent structures it into milestones, negotiates on behalf of both parties, locks USDC into an on-chain escrow, reviews the seller's proof of delivery, and releases payment — without banks, lawyers, or manual coordination.
+Businesses describe a deal in plain language. An AI agent structures it into milestones, negotiates on behalf of both parties, locks USDC into an on-chain escrow, reviews the seller's proof of delivery, and releases payment, all without banks, lawyers, or manual coordination.
 
 Built for the Colosseum hackathon. Target users: Indonesian pengusaha who want crypto's settlement guarantees without the crypto UX.
 
@@ -10,7 +10,7 @@ Built for the Colosseum hackathon. Target users: Indonesian pengusaha who want c
 
 ## Why this exists
 
-Cross-border B2B deals run on trust infrastructure — banks, lawyers, escrow agents — that is slow, expensive, and inaccessible for mid-market business owners in emerging markets. Stablecoin escrow solves the money rail. But raw on-chain tooling is unusable for the people who actually sign these deals.
+Cross-border B2B deals run on trust infrastructure (banks, lawyers, escrow agents) that is slow, expensive, and inaccessible for mid-market business owners in emerging markets. Stablecoin escrow solves the money rail. But raw on-chain tooling is unusable for the people who actually sign these deals.
 
 Sealed closes that gap with an AI agent layer on top: the user talks to the agent, the agent handles the chain.
 
@@ -54,7 +54,7 @@ Message: **"People break promises. Code doesn't."**
 └─────────────────────────────────────────────────────────────┘
 ```
 
-Agents are role-based (`Structurer`, `Negotiator`, `Verifier`) sharing one engine — prompt template + tool allowlist per role. Adding future roles (Scout agents that discover counter-parties) is a prompt + tool registration, not an engine rewrite. Full design in [ARCHITECTURE.md](./ARCHITECTURE.md).
+Agents are role-based (`Structurer`, `Negotiator`, `Verifier`) sharing one engine. Each role gets its own prompt template and tool allowlist. Adding future roles (Scout agents that discover counter-parties) is a prompt + tool registration, not an engine rewrite. Full design in [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ---
 
@@ -75,7 +75,7 @@ sealed/
 │   │       ├── deals-store.ts       Per-wallet deal index (localStorage)
 │   │       └── types.ts             Deal, DealStatus, USDC constants
 │   └── .env.example
-├── programs/escrow/             Anchor program — Rust
+├── programs/escrow/             Anchor program (Rust)
 │   └── src/
 │       ├── lib.rs               create_deal | fund_escrow | release_milestone | refund
 │       ├── state.rs             Deal, Milestone, DealStatus, Reputation
@@ -94,7 +94,7 @@ sealed/
 ## Tech stack
 
 - **Frontend**: Next.js 16 (Turbopack), React 19, Tailwind v4, Linear-inspired design system
-- **Wallet**: `@solana/wallet-adapter` — Phantom / Solflare / Backpack
+- **Wallet**: `@solana/wallet-adapter` (Phantom, Solflare, Backpack)
 - **Chain**: Solana devnet, Anchor 0.30, USDC SPL token
 - **AI**: Claude (Anthropic direct or via OpenRouter)
 - **State**: per-wallet localStorage for deals + BusinessMemory; no backend needed for MVP
@@ -146,7 +146,7 @@ npx tsc --noEmit     # Typecheck
 The program is already deployed to devnet. To rebuild:
 
 ```bash
-# Requires WSL on Windows — Anchor CLI doesn't run natively
+# Requires WSL on Windows. Anchor CLI doesn't run natively.
 anchor build
 anchor deploy
 ```
@@ -157,13 +157,13 @@ Program ID is pinned in `Anchor.toml` and `NEXT_PUBLIC_PROGRAM_ID`; redeploy pre
 
 ## Key features
 
-- **Plain-language deal intake** — the Structurer agent parses `"build landing page for 500 USDC in 3 milestones"` into a `DealParams` with description, amount, and milestone breakdown.
-- **Dual-agent negotiation** — both buyer and seller get their own Negotiator with BusinessMemory (deal history, red-lines, negotiation style). The engine runs counter-offers until agreement, then produces a pros/cons/risks summary.
-- **On-chain milestone escrow** — USDC locked in a PDA-owned vault; buyer releases per milestone. Each release is one signature, one tx.
-- **AI milestone verification** — seller uploads proof (file hash / URL / oracle ref), Verifier scores confidence and recommends approve / reject / request-clarification. Buyer retains final authority.
-- **Mutual refund with 2-sig handoff** — because a browser wallet only holds one key, the refund ceremony splits in two: initiator partial-signs and exports a base64 blob; counter-party imports, co-signs, broadcasts. Same-browser demos hand off automatically via `refund-handoff.ts`; cross-browser pairs paste the blob manually.
-- **Pre-funding cancel** — if no USDC has been escrowed, either party cancels locally without touching the chain.
-- **Reputation-ready** — Anchor state already has a `Reputation` account shape; completed-deals counter is tracked in local BusinessMemory and portable to the PDA when we launch the on-chain version.
+- **Plain-language deal intake**: the Structurer agent parses `"build landing page for 500 USDC in 3 milestones"` into a `DealParams` with description, amount, and milestone breakdown.
+- **Dual-agent negotiation**: both buyer and seller get their own Negotiator with BusinessMemory (deal history, red-lines, negotiation style). The engine runs counter-offers until agreement, then produces a pros/cons/risks summary.
+- **On-chain milestone escrow**: USDC locked in a PDA-owned vault; buyer releases per milestone. Each release is one signature, one tx.
+- **AI milestone verification**: seller uploads proof (file hash, URL, oracle ref), Verifier scores confidence and recommends approve / reject / request-clarification. Buyer retains final authority.
+- **Mutual refund with 2-sig handoff**: because a browser wallet only holds one key, the refund ceremony splits in two. The initiator partial-signs and exports a base64 blob, the counter-party imports, co-signs, and broadcasts. Same-browser demos hand off automatically via `refund-handoff.ts`; cross-browser pairs paste the blob manually.
+- **Pre-funding cancel**: if no USDC has been escrowed, either party cancels locally without touching the chain.
+- **Reputation-ready**: Anchor state already has a `Reputation` account shape. The completed-deals counter is tracked in local BusinessMemory and portable to the PDA when we launch the on-chain version.
 
 ---
 
@@ -175,11 +175,11 @@ See **[DEMO.md](./DEMO.md)** for the step-by-step walkthrough covering the full 
 
 ## Roadmap after hackathon
 
-1. **Scout agents** — `PurchasingScout` and `SalesScout` roles that discover counter-parties from a shared listings registry. Agent-to-agent matching before any human is involved.
-2. **On-chain reputation** — move the completed-deals counter into the `Reputation` PDA. Portable, composable, permissionless.
-3. **Supabase backend** — swap `LocalStorageMemoryStore` for `SupabaseMemoryStore` (same interface) to enable cross-device state + listings discovery.
-4. **Dispute resolution** — third-party arbiter role for the `Disputed` status path.
-5. **Multi-currency** — IDR stablecoin and native IDR on/off ramps for the pengusaha market.
+1. **Scout agents**: `PurchasingScout` and `SalesScout` roles that discover counter-parties from a shared listings registry. Agent-to-agent matching before any human is involved.
+2. **On-chain reputation**: move the completed-deals counter into the `Reputation` PDA. Portable, composable, permissionless.
+3. **Supabase backend**: swap `LocalStorageMemoryStore` for `SupabaseMemoryStore` (same interface) to enable cross-device state + listings discovery.
+4. **Dispute resolution**: third-party arbiter role for the `Disputed` status path.
+5. **Multi-currency**: IDR stablecoin and native IDR on/off ramps for the pengusaha market.
 
 ---
 

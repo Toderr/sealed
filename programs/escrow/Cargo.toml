@@ -1,7 +1,7 @@
 [package]
 name = "escrow"
 version = "0.1.0"
-description = "Sealed — milestone-based escrow with USDC support"
+description = "Sealed: milestone-based escrow with USDC support"
 edition = "2021"
 
 [lib]

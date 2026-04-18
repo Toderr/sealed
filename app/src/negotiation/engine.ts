@@ -1,4 +1,4 @@
-// Negotiation engine — runs alternating rounds between buyer and seller
+// Negotiation engine. Runs alternating rounds between buyer and seller
 // agents until one accepts, rejects, or max rounds is reached. Server-side.
 
 import { AgentRole } from "@/agents/types";
@@ -65,7 +65,7 @@ function buildTurnPrompt(
   const history = transcript
     .map(
       (r) =>
-        `Round ${r.round} — ${r.onBehalfOf.toUpperCase()} (${r.action}): ${r.reasoning}`
+        `Round ${r.round}, ${r.onBehalfOf.toUpperCase()} (${r.action}): ${r.reasoning}`
     )
     .join("\n");
 
@@ -204,7 +204,7 @@ async function runSummarizer(
 ): Promise<NegotiationSummary> {
   const transcript = revisions
     .map(
-      (r) => `[Round ${r.round} — ${r.onBehalfOf} (${r.action})]
+      (r) => `[Round ${r.round}, ${r.onBehalfOf} (${r.action})]
   reasoning: ${r.reasoning}
   concessions: ${r.concessions.join("; ") || "none"}
   asks: ${r.asks.join("; ") || "none"}
@@ -230,7 +230,7 @@ Produce the summary JSON now.`;
       pros: [],
       cons: ["Summarizer output could not be parsed. Review transcript manually."],
       keyConcessions: [],
-      riskFlags: ["Summary generation failed — human review recommended"],
+      riskFlags: ["Summary generation failed; human review recommended"],
       confidenceScore: 0.3,
       recommendation: "renegotiate",
       recommendationReasoning:

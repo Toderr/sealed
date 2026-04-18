@@ -1,12 +1,12 @@
-# Sealed — AI-Powered Autonomous Escrow on Solana
+# Sealed: AI-Powered Autonomous Escrow on Solana
 
 ## Project Overview
-AI agent that represents businesses on an on-chain deal table — negotiates, manages escrow, verifies deliverables, and releases payment autonomously on Solana.
+AI agent that represents businesses on an on-chain deal table. It negotiates, manages escrow, verifies deliverables, and releases payment autonomously on Solana.
 
 ## Architecture
-- **Smart Contract**: Anchor program in `programs/escrow/` — milestone-based escrow with USDC
-- **Frontend**: Next.js app in `app/` — deal dashboard + AI chat interface
-- **AI Agent**: Claude API via Next.js API route — parses natural language → structured deal params
+- **Smart Contract**: Anchor program in `programs/escrow/`. Milestone-based escrow with USDC.
+- **Frontend**: Next.js app in `app/`. Deal dashboard + AI chat interface.
+- **AI Agent**: Claude API via Next.js API route. Parses natural language into structured deal params.
 
 ## Key Commands
 
@@ -38,4 +38,4 @@ solana program deploy target/deploy/escrow.so  # Manual deploy
 - Windows: Use WSL Ubuntu for `anchor build` and `anchor test`
 - Frontend works natively on Windows
 - Wallet adapter auto-detects Phantom, Solflare, Backpack
-- AI agent uses Claude API — set ANTHROPIC_API_KEY in app/.env.local
+- AI agent uses Claude API. Set ANTHROPIC_API_KEY in app/.env.local.

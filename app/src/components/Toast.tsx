@@ -35,7 +35,7 @@ export function useToast() {
   return ctx;
 }
 
-// Accent color per variant — border + icon only. Body uses shared surface.
+// Accent color per variant: border + icon only. Body uses shared surface.
 const VARIANT_ACCENT: Record<ToastVariant, string> = {
   success: "text-success",
   error: "text-danger",

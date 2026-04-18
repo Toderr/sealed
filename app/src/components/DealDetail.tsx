@@ -793,7 +793,7 @@ function MilestoneProofSection({
         <ProofDisplay proof={milestone.proof} dealId={dealId} index={index} />
       )}
 
-      {/* Seller upload form — only if no proof yet and deal is active */}
+      {/* Seller upload form. Only if no proof yet and deal is active. */}
       {isSeller && !milestone.proof && dealActive && (
         <div className="bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded-lg p-3 space-y-3">
           <div className="flex items-center justify-between">
@@ -895,7 +895,7 @@ function MilestoneProofSection({
         </div>
       )}
 
-      {/* Buyer release button — always allowed, AI is advisory */}
+      {/* Buyer release button. Always allowed, AI is advisory. */}
       {canRelease && (
         <button
           className="inline-flex items-center gap-1.5 bg-[rgba(16,185,129,0.12)] text-success hover:bg-[rgba(16,185,129,0.20)] border border-[rgba(16,185,129,0.30)] rounded-md px-3 py-1.5 text-[12px] transition-colors"
@@ -1023,7 +1023,7 @@ function ReviewCard({ review }: { review: VerifierReview }) {
         {review.notes}
       </p>
       <p className="text-[10px] text-subtle">
-        Advisory only — buyer has final say on release.
+        Advisory only. Buyer has final say on release.
       </p>
     </div>
   );
@@ -1033,7 +1033,7 @@ function ReviewCard({ review }: { review: VerifierReview }) {
 //
 // Pre-funding cancel: if status === Created && fundedAmount === 0 the buyer
 // can cancel locally (nothing was escrowed on-chain). Post-funding, refund
-// needs both signatures — we use a partial-sign handoff via the shared
+// needs both signatures, so we use a partial-sign handoff via the shared
 // refund-handoff store so the counter-party (in the same browser, or via
 // copied base64 blob) can co-sign and broadcast.
 
@@ -1092,7 +1092,7 @@ function RefundPanel({
     try {
       const ix = await buildRefundIx(deal.buyer, deal.seller, deal.dealId);
       const blockhash = (await connection.getLatestBlockhash()).blockhash;
-      // feePayer = whichever side initiates (either works — both sign anyway)
+      // feePayer = whichever side initiates (either works, both sign anyway)
       const partialTxB64 = await buildAndPartialSign(
         connection,
         [ix],
@@ -1201,7 +1201,7 @@ function RefundPanel({
           Refund
         </h3>
         <span className="text-[11px] text-subtle">
-          {unfunded ? "Unilateral cancel" : "Mutual — two signatures"}
+          {unfunded ? "Unilateral cancel" : "Mutual, two signatures"}
         </span>
       </div>
 
@@ -1318,7 +1318,7 @@ function RefundPanel({
         </>
       )}
 
-      {/* Cross-browser paste fallback — only show if no in-browser handoff */}
+      {/* Cross-browser paste fallback. Only show if no in-browser handoff. */}
       {!unfunded && !handoff && (
         <details className="group">
           <summary className="text-[11px] text-subtle hover:text-muted cursor-pointer select-none flex items-center gap-1 transition-colors">

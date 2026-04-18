@@ -3,7 +3,7 @@ import GlobalBackground from "@/components/GlobalBackground";
 
 const PROGRAM_ID = "3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ";
 
-// Linear display-scale inline styles — weights and tracking don't fit neatly
+// Linear display-scale inline styles. Weights and tracking don't fit neatly
 // into Tailwind utilities, so we keep them as typed style objects per section.
 const headlineStyle: React.CSSProperties = {
   fontWeight: 510,
@@ -111,7 +111,7 @@ function Hero() {
           <p className="mt-6 text-[17px] sm:text-[18px] text-foreground max-w-2xl leading-relaxed">
             Sealed is an AI agent that represents your business on an on-chain
             deal table. It negotiates terms, holds escrow, verifies milestones,
-            and releases payment automatically — so deals close without a bank,
+            and releases payment automatically, so deals close without a bank,
             a lawyer, or a leap of faith.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row gap-3">
@@ -270,14 +270,14 @@ function Solution() {
       icon: <ChatIcon />,
       title: "Turns a chat into a deal.",
       body:
-        "Describe what you are buying in plain language — Bahasa Indonesia or English. The Structurer extracts counterparty, amount, and milestones, then drafts the escrow.",
+        "Describe what you are buying in plain language. Bahasa Indonesia or English both work. The Structurer extracts counterparty, amount, and milestones, then drafts the escrow.",
     },
     {
       role: "Negotiator",
       icon: <HandshakeIcon className="w-5 h-5" />,
       title: "Speaks for each side.",
       body:
-        "Both wallets get their own Negotiator, carrying BusinessMemory — red-lines, style, past deals. The agents counter-offer until they agree, then summarize pros, cons, and risks.",
+        "Both wallets get their own Negotiator, carrying BusinessMemory (red-lines, style, past deals). The agents counter-offer until they agree, then summarize pros, cons, and risks.",
     },
     {
       role: "Verifier",
@@ -289,7 +289,7 @@ function Solution() {
   ];
   const primitives = [
     { label: "Program-held escrow", detail: "USDC locked in a PDA vault; neither side withdraws alone." },
-    { label: "Mutual refund", detail: "2-sig partial-sign handoff — no trusted relay, no griefing vector." },
+    { label: "Mutual refund", detail: "2-sig partial-sign handoff. No trusted relay, no griefing vector." },
     { label: "Portable reputation", detail: "Completed-deals counter tracked per wallet, portable to the reputation PDA." },
   ];
   return (
@@ -306,7 +306,7 @@ function Solution() {
           Three AI agents. One on-chain deal table.
         </h2>
         <p className="mt-4 text-[17px] text-foreground max-w-2xl leading-relaxed">
-          Structurer, Negotiator, Verifier — one engine, different roles. Each
+          Structurer, Negotiator, Verifier: one engine, different roles. Each
           one does the piece a bank or lawyer would otherwise charge you for.
         </p>
         <div className="mt-12 grid md:grid-cols-3 gap-3">
@@ -387,7 +387,7 @@ function HowItWorks() {
       n: "05",
       title: "Release.",
       body:
-        "You confirm delivery in one tap. The contract releases that milestone only — not the whole pot.",
+        "You confirm delivery in one tap. The contract releases that milestone only, not the whole pot.",
     },
   ];
   return (
@@ -432,8 +432,8 @@ function HowItWorks() {
             Recovery path, also shipped.
           </p>
           <p className="mt-1 text-[13.5px] text-muted leading-relaxed">
-            If the deal unwinds, mutual refund returns the remaining USDC —
-            both parties partial-sign, no trusted relay, no griefing vector.
+            If the deal unwinds, mutual refund returns the remaining USDC.
+            Both parties partial-sign, no trusted relay, no griefing vector.
             Pre-funding deals cancel locally without touching the chain.
           </p>
         </div>
@@ -459,7 +459,7 @@ function TeamTrust() {
           </h2>
           <p className="mt-4 text-[17px] text-foreground leading-relaxed">
             Sealed is built in the open by two founders with direct access to
-            the Indonesian pengusaha community — the people who send real
+            the Indonesian pengusaha community: the people who send real
             business wires every week and know exactly where handshake deals
             fail.
           </p>

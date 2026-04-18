@@ -179,7 +179,7 @@ export async function buildReleaseMilestoneIx(
   });
 }
 
-// Mutual refund — requires BOTH buyer and seller signatures. Used when
+// Mutual refund. Requires BOTH buyer and seller signatures. Used when
 // parties cancel a funded deal before completion (escrow returns the
 // unreleased remainder to the buyer's ATA).
 export async function buildRefundIx(
@@ -210,7 +210,7 @@ export async function buildRefundIx(
 
 // --- ATA helper ---
 
-// Idempotent create-ATA ix — safe to include unconditionally; on-chain program
+// Idempotent create-ATA ix, safe to include unconditionally. On-chain program
 // short-circuits if the ATA already exists. Prevents silent fund/release
 // failures when buyer or seller has never held USDC.
 export async function buildEnsureAtaIx(
@@ -256,7 +256,7 @@ export async function sendTx(
 //
 // Transaction.serialize({ requireAllSignatures: false }) preserves the first
 // signature so the counter-party can complete it. Both wallets must agree on
-// the same recent blockhash window (~90s) — after that the tx expires and a
+// the same recent blockhash window (~90s). After that the tx expires and a
 // fresh partial-sign round is required.
 
 export async function buildAndPartialSign(
