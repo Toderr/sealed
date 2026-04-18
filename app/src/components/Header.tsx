@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { SealedMark } from "@/components/SealedLogo";
 
 const WalletMultiButton = dynamic(
   () =>
@@ -22,24 +23,10 @@ export default function Header({
   return (
     <header className="flex items-center justify-between px-4 sm:px-6 h-14 border-b border-card-border-subtle bg-panel">
       <div className="flex items-center gap-6">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-accent/15 text-accent">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-4 w-4"
-              aria-hidden="true"
-            >
-              <path d="M12 2 4 6v6c0 5 3.4 9.3 8 10 4.6-.7 8-5 8-10V6l-8-4Z" />
-              <path d="m9 12 2 2 4-4" />
-            </svg>
-          </span>
+        <div className="flex items-center gap-2 text-primary">
+          <SealedMark size={26} title="Sealed" />
           <span
-            className="text-[15px] font-medium tracking-tight text-primary"
+            className="text-[15px] font-medium tracking-tight"
             style={{ fontWeight: 510 }}
           >
             Sealed

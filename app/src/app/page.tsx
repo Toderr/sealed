@@ -1,5 +1,6 @@
 import Link from "next/link";
 import GlobalBackground from "@/components/GlobalBackground";
+import { SealedMark } from "@/components/SealedLogo";
 
 const PROGRAM_ID = "3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ";
 
@@ -48,12 +49,12 @@ function SiteHeader() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
         <Link
           href="/"
-          className="flex items-center gap-2 group"
+          className="flex items-center gap-2 group text-primary"
           aria-label="Sealed home"
         >
-          <SealedMark />
+          <SealedMark size={28} />
           <span
-            className="text-[15px] tracking-tight text-primary"
+            className="text-[15px] tracking-tight"
             style={{ fontWeight: 510 }}
           >
             Sealed
@@ -601,12 +602,10 @@ function SiteFooter() {
   return (
     <footer className="border-t border-card-border-subtle">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-[13px] text-muted">
-        <div className="flex items-center gap-2">
-          <SealedMark />
-          <span className="text-primary" style={{ fontWeight: 510 }}>
-            Sealed
-          </span>
-          <span className="ml-1">AI-powered escrow on Solana.</span>
+        <div className="flex items-center gap-2 text-primary">
+          <SealedMark size={22} ring={false} />
+          <span style={{ fontWeight: 510 }}>Sealed</span>
+          <span className="ml-1 text-muted">AI-powered escrow on Solana.</span>
         </div>
         <div className="flex items-center gap-5" style={{ fontWeight: 510 }}>
           <Link href="/app" className="hover:text-primary transition-colors">
@@ -640,26 +639,6 @@ function SectionEyebrow({ children }: { children: React.ReactNode }) {
     >
       {children}
     </p>
-  );
-}
-
-function SealedMark() {
-  return (
-    <span className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-accent/15 text-accent">
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-4 w-4"
-        aria-hidden="true"
-      >
-        <path d="M12 2 4 6v6c0 5 3.4 9.3 8 10 4.6-.7 8-5 8-10V6l-8-4Z" />
-        <path d="m9 12 2 2 4-4" />
-      </svg>
-    </span>
   );
 }
 
