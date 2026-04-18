@@ -17,18 +17,23 @@ import {
 import {
   buildFundEscrowIx,
   buildReleaseMilestoneIx,
+  buildRefundIx,
   buildEnsureAtaIx,
+  buildAndPartialSign,
+  coSignAndSend,
   findDealPDA,
   getUsdcMint,
   sendTx,
 } from "@/lib/escrow-client";
 import { useToast } from "@/components/Toast";
 import { useDealsStore } from "@/lib/deals-store";
+import { useRefundHandoffs } from "@/lib/refund-handoff";
 import {
   getAssociatedTokenAddress,
   getAccount,
   TokenAccountNotFoundError,
 } from "@solana/spl-token";
+import { Connection } from "@solana/web3.js";
 
 const labelStyle: React.CSSProperties = {
   fontWeight: 510,
@@ -556,6 +561,21 @@ export default function DealDetail({
           </div>
         </div>
 
+        {/* Refund */}
+        <RefundPanel
+          deal={deal}
+          isBuyer={!!isBuyer}
+          isSeller={!!isSeller}
+          connection={connection}
+          onRefunded={(nextStatus) =>
+            updateDeal(deal.dealId, (d) => ({
+              ...d,
+              status: nextStatus,
+              updatedAt: Math.floor(Date.now() / 1000),
+            }))
+          }
+        />
+
         {/* Timestamps */}
         <div className="text-[11px] text-subtle text-center flex items-center justify-center gap-4 pt-2">
           <span>
@@ -1005,6 +1025,337 @@ function ReviewCard({ review }: { review: VerifierReview }) {
       <p className="text-[10px] text-subtle">
         Advisory only — buyer has final say on release.
       </p>
+    </div>
+  );
+}
+
+// --- Mutual refund coordination ---
+//
+// Pre-funding cancel: if status === Created && fundedAmount === 0 the buyer
+// can cancel locally (nothing was escrowed on-chain). Post-funding, refund
+// needs both signatures — we use a partial-sign handoff via the shared
+// refund-handoff store so the counter-party (in the same browser, or via
+// copied base64 blob) can co-sign and broadcast.
+
+function RefundPanel({
+  deal,
+  isBuyer,
+  isSeller,
+  connection,
+  onRefunded,
+}: {
+  deal: Deal;
+  isBuyer: boolean;
+  isSeller: boolean;
+  connection: Connection;
+  onRefunded: (nextStatus: DealStatus) => void;
+}) {
+  const { publicKey, signTransaction } = useWallet();
+  const toast = useToast();
+  const { handoffs, setHandoff, clearHandoff } = useRefundHandoffs();
+  const handoff = handoffs[deal.dealId];
+  const [pasteBlob, setPasteBlob] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (!isBuyer && !isSeller) return null;
+  if (
+    deal.status === DealStatus.Completed ||
+    deal.status === DealStatus.Refunded
+  )
+    return null;
+
+  const unfunded =
+    deal.status === DealStatus.Created && deal.fundedAmount === 0;
+  const requestedByMe =
+    handoff && publicKey && handoff.requestedBy === publicKey.toBase58();
+  const requestedByCounterparty = handoff && !requestedByMe;
+
+  async function handlePreFundingCancel() {
+    onRefunded(DealStatus.Refunded);
+    toast.show({
+      variant: "success",
+      title: "Deal cancelled",
+      description: "Nothing was escrowed, so no on-chain action was needed.",
+    });
+  }
+
+  async function handleRequestRefund() {
+    if (!publicKey || !signTransaction) return;
+    setBusy(true);
+    const pendingId = toast.show({
+      variant: "loading",
+      title: "Preparing refund",
+      description: "Building mutual refund transaction…",
+      duration: 0,
+    });
+    try {
+      const ix = await buildRefundIx(deal.buyer, deal.seller, deal.dealId);
+      const blockhash = (await connection.getLatestBlockhash()).blockhash;
+      // feePayer = whichever side initiates (either works — both sign anyway)
+      const partialTxB64 = await buildAndPartialSign(
+        connection,
+        [ix],
+        publicKey,
+        signTransaction
+      );
+      setHandoff({
+        dealId: deal.dealId,
+        requestedBy: publicKey.toBase58(),
+        requestedAt: Math.floor(Date.now() / 1000),
+        partialTxB64,
+        blockhash,
+      });
+      toast.update(pendingId, {
+        variant: "success",
+        title: "Refund requested",
+        description:
+          "Share the handoff blob with your counter-party so they can co-sign.",
+      });
+    } catch (err) {
+      toast.update(pendingId, {
+        variant: "error",
+        title: "Refund request failed",
+        description:
+          err instanceof Error ? err.message : "Wallet rejected signature.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleApprove(source: "shared" | "pasted") {
+    if (!publicKey || !signTransaction) return;
+    const blob =
+      source === "pasted" ? pasteBlob.trim() : handoff?.partialTxB64;
+    if (!blob) {
+      toast.show({
+        variant: "error",
+        title: "No partial transaction",
+        description: "Paste the base64 handoff blob first.",
+      });
+      return;
+    }
+    setBusy(true);
+    const pendingId = toast.show({
+      variant: "loading",
+      title: "Broadcasting refund",
+      description: "Co-signing and submitting to devnet…",
+      duration: 0,
+    });
+    try {
+      const sig = await coSignAndSend(connection, blob, signTransaction);
+      clearHandoff(deal.dealId);
+      onRefunded(DealStatus.Refunded);
+      toast.update(pendingId, {
+        variant: "success",
+        title: "Refund complete",
+        description: `Remaining escrow returned to buyer.`,
+        actionHref: `https://solscan.io/tx/${sig}?cluster=devnet`,
+        actionLabel: "View on Solscan",
+      });
+      setPasteBlob("");
+    } catch (err) {
+      toast.update(pendingId, {
+        variant: "error",
+        title: "Refund failed",
+        description:
+          err instanceof Error ? err.message : "Blockhash may have expired.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCopyBlob() {
+    if (!handoff) return;
+    try {
+      await navigator.clipboard.writeText(handoff.partialTxB64);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.show({
+        variant: "error",
+        title: "Copy failed",
+        description: "Clipboard unavailable.",
+      });
+    }
+  }
+
+  function handleCancelRequest() {
+    clearHandoff(deal.dealId);
+    toast.show({
+      variant: "info",
+      title: "Refund request cancelled",
+      description: "Partial-sign handoff cleared.",
+    });
+  }
+
+  return (
+    <div className="surface-card rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3
+          className="text-[13px] text-primary"
+          style={labelStyle}
+        >
+          Refund
+        </h3>
+        <span className="text-[11px] text-subtle">
+          {unfunded ? "Unilateral cancel" : "Mutual — two signatures"}
+        </span>
+      </div>
+
+      {unfunded && (
+        <>
+          <p className="text-[12px] text-muted leading-relaxed">
+            Nothing is escrowed yet, so {isBuyer ? "you" : "the buyer"} can
+            cancel this deal locally without an on-chain transaction.
+          </p>
+          {isBuyer && (
+            <button
+              onClick={handlePreFundingCancel}
+              disabled={busy}
+              className="btn-ghost w-full rounded-lg py-2 text-[13px] hover:border-[rgba(248,113,113,0.35)] hover:text-danger"
+              style={labelStyle}
+            >
+              Cancel deal
+            </button>
+          )}
+        </>
+      )}
+
+      {!unfunded && !handoff && (
+        <>
+          <p className="text-[12px] text-muted leading-relaxed">
+            Refund returns the unreleased{" "}
+            <span className="font-mono text-foreground">
+              {formatUsdc(
+                lamportsToUsdc(deal.fundedAmount - deal.releasedAmount)
+              )}{" "}
+              USDC
+            </span>{" "}
+            to the buyer. Both parties must sign within a ~90s blockhash
+            window.
+          </p>
+          <button
+            onClick={handleRequestRefund}
+            disabled={busy}
+            className="btn-ghost w-full rounded-lg py-2 text-[13px] hover:border-[rgba(248,113,113,0.35)] hover:text-danger"
+            style={labelStyle}
+          >
+            Request mutual refund
+          </button>
+        </>
+      )}
+
+      {handoff && requestedByMe && (
+        <>
+          <div className="rounded-lg border border-[rgba(251,191,36,0.25)] bg-[rgba(251,191,36,0.05)] p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-warning animate-pulse" />
+              <span
+                className="text-[11px] uppercase tracking-[0.08em] text-warning"
+                style={labelStyle}
+              >
+                Awaiting counter-party
+              </span>
+            </div>
+            <p className="text-[12px] text-foreground leading-relaxed">
+              You&apos;ve partial-signed. Your counter-party must open this
+              deal in their wallet and click{" "}
+              <span style={labelStyle} className="text-primary">
+                Approve refund
+              </span>
+              . If they&apos;re in a different browser, copy the blob below.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCopyBlob}
+                className="btn-ghost rounded-md px-3 py-1.5 text-[12px]"
+                style={labelStyle}
+              >
+                {copied ? "Copied" : "Copy handoff blob"}
+              </button>
+              <button
+                onClick={handleCancelRequest}
+                className="text-[12px] text-subtle hover:text-primary transition-colors"
+              >
+                Cancel request
+              </button>
+            </div>
+            <p className="text-[10px] text-subtle font-mono">
+              Expires when blockhash goes stale (~90s). Re-request if it
+              expires.
+            </p>
+          </div>
+        </>
+      )}
+
+      {handoff && requestedByCounterparty && (
+        <>
+          <div className="rounded-lg border border-[rgba(113,112,255,0.25)] bg-[rgba(113,112,255,0.05)] p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+              <span
+                className="text-[11px] uppercase tracking-[0.08em] text-accent"
+                style={labelStyle}
+              >
+                Counter-party requested refund
+              </span>
+            </div>
+            <p className="text-[12px] text-foreground leading-relaxed">
+              Your counter-party already partial-signed. Click approve to add
+              your signature and broadcast the refund.
+            </p>
+            <button
+              onClick={() => handleApprove("shared")}
+              disabled={busy}
+              className="btn-primary w-full rounded-md py-2 text-[12px]"
+            >
+              {busy ? "Broadcasting…" : "Approve & submit refund"}
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Cross-browser paste fallback — only show if no in-browser handoff */}
+      {!unfunded && !handoff && (
+        <details className="group">
+          <summary className="text-[11px] text-subtle hover:text-muted cursor-pointer select-none flex items-center gap-1 transition-colors">
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              className="transition-transform group-open:rotate-90"
+            >
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+            Received a handoff blob from counter-party?
+          </summary>
+          <div className="mt-2 space-y-2">
+            <textarea
+              value={pasteBlob}
+              onChange={(e) => setPasteBlob(e.target.value)}
+              rows={3}
+              placeholder="Paste base64 handoff blob…"
+              className="w-full bg-[rgba(255,255,255,0.02)] border border-card-border rounded-md px-3 py-2 text-[11px] font-mono text-foreground placeholder:text-subtle resize-none hover:border-[rgba(255,255,255,0.14)] focus:outline-none transition-colors"
+            />
+            <button
+              onClick={() => handleApprove("pasted")}
+              disabled={busy || !pasteBlob.trim()}
+              className="btn-primary w-full rounded-md py-2 text-[12px]"
+            >
+              {busy ? "Broadcasting…" : "Approve pasted refund"}
+            </button>
+          </div>
+        </details>
+      )}
     </div>
   );
 }

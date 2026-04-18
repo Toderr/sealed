@@ -179,6 +179,35 @@ export async function buildReleaseMilestoneIx(
   });
 }
 
+// Mutual refund — requires BOTH buyer and seller signatures. Used when
+// parties cancel a funded deal before completion (escrow returns the
+// unreleased remainder to the buyer's ATA).
+export async function buildRefundIx(
+  buyer: PublicKey,
+  seller: PublicKey,
+  dealId: string
+): Promise<TransactionInstruction> {
+  const [dealPDA] = findDealPDA(dealId);
+  const [escrowVault] = findEscrowVaultPDA(dealId);
+  const mint = getUsdcMint();
+  const buyerATA = await getAssociatedTokenAddress(mint, buyer);
+
+  const disc = await sha256Discriminator("refund");
+
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: buyer, isSigner: true, isWritable: true },
+      { pubkey: seller, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+      { pubkey: escrowVault, isSigner: false, isWritable: true },
+      { pubkey: buyerATA, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: disc,
+  });
+}
+
 // --- ATA helper ---
 
 // Idempotent create-ATA ix — safe to include unconditionally; on-chain program
@@ -214,6 +243,46 @@ export async function sendTx(
   tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
   const signed = await signTransaction(tx);
   const sig = await connection.sendRawTransaction(signed.serialize());
+  await connection.confirmTransaction(sig, "confirmed");
+  return sig;
+}
+
+// --- Multi-sig partial-sign handoff (used for mutual refund) ---
+//
+// Because mutual refund requires both buyer and seller signatures and a
+// browser wallet only ever holds one key, we split the ceremony in two:
+//   1. Initiator builds the tx, wallet partial-signs, tx serializes to base64
+//   2. Counter-party deserializes, wallet adds their signature, broadcasts
+//
+// Transaction.serialize({ requireAllSignatures: false }) preserves the first
+// signature so the counter-party can complete it. Both wallets must agree on
+// the same recent blockhash window (~90s) — after that the tx expires and a
+// fresh partial-sign round is required.
+
+export async function buildAndPartialSign(
+  connection: Connection,
+  ixs: TransactionInstruction[],
+  feePayer: PublicKey,
+  signTransaction: (tx: Transaction) => Promise<Transaction>
+): Promise<string> {
+  const tx = new Transaction();
+  ixs.forEach((ix) => tx.add(ix));
+  tx.feePayer = feePayer;
+  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+  const partial = await signTransaction(tx);
+  const bytes = partial.serialize({ requireAllSignatures: false });
+  return Buffer.from(bytes).toString("base64");
+}
+
+export async function coSignAndSend(
+  connection: Connection,
+  partialTxB64: string,
+  signTransaction: (tx: Transaction) => Promise<Transaction>
+): Promise<string> {
+  const bytes = Buffer.from(partialTxB64, "base64");
+  const tx = Transaction.from(bytes);
+  const fullySigned = await signTransaction(tx);
+  const sig = await connection.sendRawTransaction(fullySigned.serialize());
   await connection.confirmTransaction(sig, "confirmed");
   return sig;
 }
