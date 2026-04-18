@@ -1,290 +1,239 @@
 # Sealed: Deck Brief for claude.ai/design
 
-**What this file is:** a design-ready brief you paste into [claude.ai/design](https://claude.ai/design) to render the 10-slide Colosseum pitch deck. Not a deck itself.
+**What this is:** a design-ready brief for claude.ai/design to render a 10-slide Colosseum pitch deck. Paste it, iterate per slide.
 
-**How to use:**
+**Prompt to paste alongside this file:**
 
-1. Open claude.ai/design
-2. Paste this entire file
-3. Prompt: *"Generate a 10-slide 16:9 dark pitch deck matching the design system and per-slide content below. Keep copy minimal (one primary message per slide). Don't invent stats. Use exactly what's provided."*
-4. Iterate slide-by-slide if layouts miss.
+> *Generate a 10-slide 16:9 dark pitch deck matching the design system and per-slide spec below. **Strict rules:** one primary message per slide. Keep copy to the exact strings under "Text (verbatim)". Never invent stats, sentences, or additional bullets. If a slide looks empty, add ambient visual depth (orbs, grain, dot grid), not more copy. The visual should carry the weight.*
+
+**How to iterate slide-by-slide:**
+Pick one slide, paste only that slide's section (plus the Design System block), and prompt: *"Re-render slide N only. Keep the verbatim copy. Re-design the layout."*
 
 ---
 
-## Design System
+## Density budget (hard rules)
 
-**Palette** (dark mode, Linear-inspired):
+These exist because the previous draft was text-heavy. Enforce on every slide.
+
+- **Headline:** ≤10 words.
+- **Body copy:** ≤30 words per slide (stats, sub-labels, and captions count).
+- **Bullets:** ≤5 per slide, each ≤8 words. Prefer tags over sentences.
+- **No explanatory paragraphs.** If a point needs a paragraph, it's a speaker-notes line, not a slide line.
+- **Numbers and brand terms in mono.** Dollar amounts, program IDs, wallet addresses, `USDC`, `SOL`.
+- **No emoji. No decorative punctuation runs.** Lucide icons only.
+
+If a slide feels sparse, add ambient depth (gradient orbs, grain, dot grid, typography-as-texture), not more words.
+
+---
+
+## Design system
+
+**Palette** (dark, Linear-inspired):
 
 | Token | Hex | Use |
 |---|---|---|
-| Background | `#08090a` | Slide background |
-| Panel | `#0f1011` | Raised panels |
-| Surface | `#191a1b` | Cards, callouts |
+| Background | `#08090a` | Slide bg |
+| Panel | `#0f1011` | Raised blocks |
+| Surface | `#191a1b` | Cards |
 | Text primary | `#f7f8f8` | Headlines, body |
 | Text muted | `#8a8f98` | Eyebrows, metadata |
 | Brand indigo | `#5e6ad2` | Primary emphasis |
 | Accent indigo | `#7170ff` | Secondary emphasis |
 | Success | `#4ade80` | Positive data |
-| Warning | `#fbbf24` | Alerts, stat callouts |
-| Danger | `#f87171` | Risk, scam framing |
+| Warning | `#fbbf24` | Alert stats |
+| Danger | `#f87171` | Risk, scam stats |
 | Border | `rgba(255,255,255,0.08)` | Hairlines |
 
 **Typography:**
-
-- **Headings**: Inter, weight 590, letter-spacing −0.02em at display sizes
-- **Body**: Inter, weight 400
-- **Emphasis inline**: weight 510
-- **Numerics**: JetBrains Mono for dollar amounts, program IDs, wallet addresses
+- Headings: Inter 590, letter-spacing −0.02em at display sizes
+- Body: Inter 400
+- Emphasis inline: Inter 510
+- Numerics: JetBrains Mono (dollar amounts, IDs, addresses)
 
 **Layout rules:**
-
-- 16:9, generous padding (≥80px outer)
-- **One primary message per slide.** Minimal text. Let the visual carry the weight.
-- No emoji. Minimal stroked SVG glyphs only (Lucide-style).
+- 16:9, ≥80px outer padding
 - Eyebrow labels: uppercase, tracked +0.1em, 12–14pt, muted
 - Pull-quotes: italic, left-border accent in brand indigo
 - Tables: hairline borders only, no filled cells
 
-**Tone references** (copy verbatim where called for):
-- "People break promises. Code doesn't." (primary tagline)
-- "No lawyer. No bank. No dispute hotline. Just code that can't lie."
-- "Escrow is a feature. Negotiation is the product."
+**Tone strings** (copy verbatim where called for):
+- Tagline: `People break promises. Code doesn't.`
+- Closing: `No lawyer. No bank. No dispute hotline. Just code that can't lie.`
+- Wedge line: `Escrow is a feature. Negotiation is the product.`
 
 ---
 
-## Supporting Elements Library
+## Ambient elements library
 
-Reference Linear.app's product pages. Dark but never plain. Every surface has ambient depth. **Don't leave slides flat black.**
+Apply 2–4 per slide. Varies per slide so the deck doesn't look like one wallpaper.
 
-### 1. Gradient mesh backdrops (every slide)
-
-Layer 2–3 overlapping radial gradient orbs, each 15–30% of slide width, 8–15% opacity, ~200px blur:
-
-- Primary orb: brand indigo `#5e6ad2`
-- Secondary orb: accent indigo `#7170ff` (opposite corner, dimmer)
-- Warmth orb: magenta `#c47aff` at 5% (breaks cool palette)
-
-Vary orb position per slide so the deck doesn't feel like one wallpaper.
-
-### 2. Noise / grain overlay
-
-2–3% opacity monochrome grain on every background.
-
-### 3. Grid / dot patterns (technical slides: 3, 4, 6)
-
-- Dot grid: 24px spacing, 1.5px dots, 4% white opacity
-- Radially masked so it fades at edges
-
-### 4. Glass cards (emphasis blocks)
-
-- Fill: `rgba(255,255,255,0.03)`
-- Backdrop blur: 20px
-- Border: 1px `rgba(255,255,255,0.08)`
-- Inner top highlight: 1px `rgba(255,255,255,0.05)`
-- Corner radius: 12–16px
-- Optional drop shadow: `0 24px 64px rgba(0,0,0,0.4)`
-
-### 5. Glow effects
-
-- Primary: `0 0 48px rgba(94,106,210,0.35)` (brand indigo, hero words)
-- Warning: `0 0 40px rgba(251,191,36,0.3)` (alarming stats)
-- Success: `0 0 32px rgba(74,222,128,0.25)` (shipped markers)
-- Danger: `0 0 40px rgba(248,113,113,0.3)` (scam/fraud stats)
-
-Subtle. Should register, not scream.
-
-### 6. Icon set: Lucide, stroked (1.5px)
-
-Common mappings:
-- Chat `message-square` · Handshake `handshake` · Lock `lock`
-- Shield `shield-check` · Release `arrow-up-right` · Refund `rotate-ccw`
-- Problem `x-circle` · Check `check-circle-2`
-- Chart `trending-up` · Map `map-pin` · Team `users`
-- Program `terminal` · Wallet `wallet` · Fraud `alert-triangle`
-
-### 7. Data-viz primitives (stat slides 2, 5, 7)
-
-- Oversized numbers: 120–180pt mono, glow, subtle white → muted gradient
-- Mini line charts: behind stats, 1.5px stroke, brand indigo, 30% opacity, rising
-- Stat cards: glass + oversized number + caption
-
-### 8. Flow primitives (Slide 3)
-
-- Agent nodes: 96px glass circles with brand-indigo border + icon + label
-- Connector lines: 1px dashed muted, or 2px solid brand indigo for active
-- Hub-and-spoke or horizontal chain
-
-### 9. Screenshot treatment (Slide 4)
-
-- Floating card frame: 16–20px radius, 1px hairline, drop shadow `0 32px 80px rgba(0,0,0,0.5)`
-- Subtle brand-indigo glow behind
-- Multi-screenshot grid: slight z-stagger so it feels like a product
-
-### 10. Typography as texture
-
-- Oversized section eyebrow: 140pt weight 200 in `rgba(255,255,255,0.04)` behind main content
-- Accent underlines under hero words: 2px brand-indigo gradient stroke
+1. **Gradient orbs.** 2–3 per slide, 15–30% of width, 8–15% opacity, ~200px blur. Brand indigo + accent indigo always; magenta `#c47aff` at 5% for warmth on select slides.
+2. **Grain overlay.** 2–3% monochrome noise on every slide.
+3. **Dot / line grids** (technical slides only: 3, 4, 6). 24px dot spacing, 4% white, radially masked to fade at edges.
+4. **Glass cards.** `rgba(255,255,255,0.03)` fill + 20px backdrop blur + hairline border + inner top highlight + 12–16px radius. Optional `0 24px 64px rgba(0,0,0,0.4)` shadow.
+5. **Glows** (hero words, key numbers only). Brand `0 0 48px rgba(94,106,210,0.35)` · Warning `0 0 40px rgba(251,191,36,0.3)` · Danger `0 0 40px rgba(248,113,113,0.3)` · Success `0 0 32px rgba(74,222,128,0.25)`.
+6. **Lucide icons** (1.5px stroke): `terminal`, `handshake`, `shield-check`, `message-square`, `lock`, `arrow-up-right`, `rotate-ccw`, `x-circle`, `check-circle-2`, `trending-up`, `alert-triangle`, `sparkles`, `map-pin`, `users`, `banknote`, `network`, `globe`, `rocket`, `scale`, `badge-check`, `percent`, `mail`, `credit-card`.
+7. **Typography as texture.** Oversized section eyebrow (140pt, weight 200, `rgba(255,255,255,0.04)`) behind main content on stat-heavy slides.
+8. **Accent underline.** 2px brand-indigo gradient stroke (fades transparent at both ends) under hero words.
 
 ---
 
 ## Slide 1 · Title
 
 **Eyebrow:** (none)
-**Wordmark:** `SEALED`
-**Tagline (italic, muted):** *People break promises. Code doesn't.*
-**Sub-copy:** AI escrow for business deals. Any currency. Any chain.
-**Footer (mono, muted):** Program ID `3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ` · Solana devnet
+
+**Text (verbatim):**
+- Wordmark: `SEALED`
+- Tagline (italic, muted): *People break promises. Code doesn't.*
+- Sub: `AI escrow for business deals. Any currency. Any chain.`
+- Footer (mono, muted): `Program ID 3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ · Solana devnet`
 
 **Visual:**
-- Triple gradient orb backdrop (brand indigo top-left, accent bottom-right, magenta center behind wordmark). 200px blur.
+- Triple gradient orb: brand indigo top-left, accent bottom-right, magenta warmth center behind wordmark. 200px blur.
 - Wordmark: ~180pt display weight, letter-spacing −0.03em, soft glow `0 0 80px rgba(94,106,210,0.4)`.
-- Gradient accent underline (fades transparent → brand indigo → transparent) beneath wordmark.
-- Tagline sits 40px below, italic, muted.
-- 6–12 floating 2–4px brand-indigo particles in negative space, 30–50% opacity.
+- Gradient accent underline beneath wordmark.
+- 6–12 floating brand-indigo particles (2–4px) in negative space at 30–50% opacity.
 - Top-right: hairline pill "devnet" with pulsing green dot.
+- Footer mono strip bottom-left.
 
-**Tone:** Confident, quiet. Breathes but never barren.
+**Tone:** Confident, quiet. Breathes.
 
 ---
 
 ## Slide 2 · Problem
 
 **Eyebrow:** THE PROBLEM
-**Headline:** Business deals break. Both sides lose.
-**Body (two stat columns):**
+**Headline:** `Business deals break. Both sides lose.`
 
-**Web2:**
-- `$15B` lost to freelancer non-payment in 2025
-- `58%` face unpaid invoices
-- `79%` of companies targeted by payment fraud in 2024
-
-**Web3:**
-- `$17B` stolen in crypto scams in 2025
-- `1,400%` jump in impersonation fraud
-- AI scams 4.5× more profitable than traditional
-
-**Kicker (pull-quote style, centered):** *One root cause. No enforceable deal layer.*
-
-**Footer (mono, muted):** Sources: Flexable 2025 Freelance Payment Report · Chainalysis 2026 Crypto Crime Report
+**Text (verbatim):**
+- Column A (label): `WEB2`
+  - Hero stat: `$15B`
+  - Caption: `lost to freelancer non-payment, 2025`
+  - Tag: `58% face unpaid invoices`
+- Column B (label): `WEB3`
+  - Hero stat: `$17B`
+  - Caption: `lost to crypto scams, 2025`
+  - Tag: `impersonation fraud +1,400%`
+- Kicker (italic, centered): *One root cause. No enforceable deal layer.*
+- Footer (mono, muted): `Sources: Flexable 2025 · Chainalysis 2026`
 
 **Visual:**
-- Background: danger-red orb top-left at 8% + warning-yellow orb top-right at 8% (both sides have a fraud problem). Brand indigo orb bottom-center at 10% (implies solution coming). Grain 3%.
-- **Split layout (60% top / 40% bottom)**:
-  - Top half: two stat columns side-by-side, hairline vertical divider between.
-    - **Left column "WEB2"**: eyebrow label in warning-yellow. Oversized display `$15B` in mono 140pt with warning glow. Three stat chips stacked below: "58% face unpaid invoices" · "79% hit by fraud in 2024" · "broken promises, no recourse". Small Lucide `alert-triangle` icon top-right of column.
-    - **Right column "WEB3"**: eyebrow label in danger-red. Oversized display `$17B` in mono 140pt with danger glow. Three stat chips stacked below: "1,400% impersonation spike" · "AI scams 4.5× more profitable" · "crypto trust crisis". Small Lucide `x-circle` icon top-right.
-  - Horizontal divider below (1px gradient, transparent → brand indigo → transparent).
-  - Bottom half: kicker line as full-width glass card, italic 32–40pt, centered. Small brand-indigo pipe `·` separator between the two short sentences.
-- Optional ambient: "THE PROBLEM" at 140pt weight 200 in 3% white behind the column headers.
+- Bg: warning-yellow orb top-left at 8% + danger-red orb top-right at 8% (both sides have a problem). Brand-indigo orb bottom-center at 10% (solution signal). Grain 3%.
+- **Top 60% split into two stat columns**, hairline vertical divider between:
+  - Left `WEB2`: eyebrow warning-yellow. `$15B` mono 140pt with warning glow. Caption below in muted 14pt. One tag pill beneath ("58% face unpaid invoices"). Small Lucide `alert-triangle` icon top-right of column.
+  - Right `WEB3`: eyebrow danger-red. `$17B` mono 140pt with danger glow. Caption + tag pill. Small `x-circle` icon top-right.
+- Hairline horizontal divider (gradient, transparent → brand indigo → transparent).
+- **Bottom 40%**: kicker as full-width glass card, italic 32–40pt, centered. `·` pipe separator.
+- Ambient: "THE PROBLEM" at 140pt weight 200 in 3% white behind column headers.
 - Sources: mono 10pt muted, bottom-right.
 
-**Tone:** Analytical, urgent. The numbers tell the story. Keep text count minimal.
+**Tone:** Analytical, urgent. Numbers carry the slide.
 
 ---
 
 ## Slide 3 · Solution
 
 **Eyebrow:** THE SOLUTION
-**Headline:** Three AI agents. One deal table.
-**Body (single-line descriptions):**
+**Headline:** `Three AI agents. One deal table.`
 
-- **Structurer** parses the deal.
-- **Negotiator** reaches terms for both sides.
-- **Verifier** reviews delivery.
-
-**Closing row (muted body):** Funds lock on-chain. Release on milestone. Mutual refund if it breaks.
-
-**Pull-line (large, centered, bottom):** *No lawyer. No bank. No dispute hotline. Just code that can't lie.*
+**Text (verbatim):**
+- Agent 1: `Structurer` — parses the deal.
+- Agent 2: `Negotiator` — reaches terms.
+- Agent 3: `Verifier` — reviews delivery.
+- Micro-line (muted): `Funds lock on-chain. Release on milestone. Mutual refund if it breaks.`
+- Closing (large, italic, centered): *No lawyer. No bank. No dispute hotline. Just code that can't lie.*
 
 **Visual:**
-- Background: dot-grid pattern (24px, 1.5px dots, 4% opacity, radially masked). Brand-indigo orb top-center at 10%. Grain 2%.
-- **Top band**: three 96px glass circles in a row, spaced generously. Each has 1.5px brand-indigo border + soft glow with a Lucide icon: `terminal` (Structurer) · `handshake` (Negotiator) · `shield-check` (Verifier). Agent name below each in weight 590 brand indigo, one-line role below in muted 12pt. Dashed 1px connector lines between circles (shared engine).
-- **Middle band**: single-line summary row in muted body text. Brand-indigo dot delimiters between the three short sentences.
-- **Bottom band**: full-width glass card centered at 32–40pt italic, 2px gradient top-border (transparent → brand indigo → transparent). The four short sentences separated by faint `·` pipe dividers.
+- Bg: dot grid (24px, 1.5px dots, 4% opacity, radially masked). Brand-indigo orb top-center at 10%. Grain 2%.
+- **Top band: three 96px glass circles** spaced generously. Each has 1.5px brand-indigo border + soft glow with centered Lucide icon: `terminal` · `handshake` · `shield-check`. Agent name below each in weight 590 brand indigo, role in muted 12pt one-liner. Dashed 1px connector lines between circles.
+- **Middle strip:** single-line micro-sentence in muted body text. Brand-indigo `·` pipe delimiters between the three short clauses.
+- **Bottom band:** full-width glass card with the closing line centered at 32–40pt italic. 2px gradient top-border (transparent → brand indigo → transparent). The four short sentences separated by faint `·` dividers.
 - Side ornament (far left): 1px vertical hairline with three 8px brand-indigo dots aligned to the agents above.
 
-**Tone:** Confident, minimal. Let whitespace do work.
+**Tone:** Confident, minimal. Whitespace does work.
 
 ---
 
 ## Slide 4 · Product Demo
 
 **Eyebrow:** PRODUCT
-**Headline:** Live on Solana devnet today.
-**Sub-line (mono):** Program ID `3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ`
+**Headline:** `Live on Solana devnet today.`
 
-**Body (two tight groups):**
-
-**Core flow:** chat → negotiate → fund → verify → release
-
-**Recovery flow:** AI Verifier proof review + mutual refund via 2-sig handoff
+**Text (verbatim):**
+- Sub-line (mono): `Program ID 3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ`
+- Grid section A label: `CORE FLOW`
+- Grid section B label: `RECOVERY FLOW`
+- Core flow caption (one line): `chat → negotiate → fund → verify → release`
+- Recovery flow caption (one line): `AI Verifier proof review · mutual refund via 2-sig handoff`
 
 **Visual:**
-- Background: brand-indigo orb top-right at 10%, accent indigo bottom-left at 8%. Dot grid at 3%. Grain 2%.
-- Top-left: pulsing 8px success-green dot + "LIVE · DEVNET" pill (hairline border, mono 11pt, muted).
-- Program ID in mono code pill, centered under headline, 1px hairline, 6px radius, slight brand-indigo left-border accent, with copy icon.
-- **Screenshot grid (hero visual, takes ~60% of slide height)**:
-  - 2 rows × 3 columns = 6 frames, top-left frame 2× scale (hero shot).
-  - Each frame: 12–16px radius, 1px hairline border, drop shadow `0 32px 80px rgba(0,0,0,0.5)`, subtle brand-indigo glow behind.
+- Bg: brand-indigo orb top-right at 10%, accent indigo bottom-left at 8%. Dot grid at 3%. Grain 2%.
+- Top-left: pulsing 8px success-green dot + `LIVE · DEVNET` pill (hairline, mono 11pt, muted).
+- Program ID in mono code pill, centered under headline: 1px hairline, 6px radius, slight brand-indigo left-border accent, with copy icon.
+- **Screenshot grid (hero, ~60% of slide height)**:
+  - 2 rows × 3 columns = 6 frames. Top-left frame 2× scale (hero shot, 2 cols × 2 rows).
+  - Each frame: 12–16px radius, 1px hairline, drop shadow `0 32px 80px rgba(0,0,0,0.5)`, subtle brand-indigo glow behind.
   - Hero frame: perspective-rotate 6° clockwise for prominence.
-  - Caption under each frame: 11pt muted, tight.
-  - If no screenshots: labeled placeholder rectangles with view name + tiny Lucide icon.
-- Label the grid halves with 2 tiny section eyebrows inline: "CORE FLOW" above the first 4 frames, "RECOVERY FLOW" above the remaining 2. Hairline vertical divider between groups.
-- **No logo wall. No "built in 4 weeks" line.** Keep the slide breathable.
+  - Frame caption: 11pt muted, tight.
+  - If no screenshots: labeled placeholder rectangles with tiny Lucide icon matching the step.
+- Section eyebrows inline above groups: `CORE FLOW` and `RECOVERY FLOW`. Hairline vertical divider between groups.
+- **Do NOT add:** "built in 4 weeks" badge, logo wall, or any bottom strip. Leave the slide breathable.
 
-**Tone:** Evidentiary. The screenshots do the talking.
+**Tone:** Evidentiary. Screenshots do the talking.
 
 ---
 
 ## Slide 5 · Why Now
 
 **Eyebrow:** WHY NOW
-**Headline:** Three curves converging.
-**Body (3 stat blocks):**
+**Headline:** `Three curves converging.`
 
-1. **Stablecoin B2B payments:** `$226B` in 2025, up **733% YoY** (McKinsey/Artemis, Feb 2026).
-2. **Trust crisis:** `$17B` lost to crypto scams in 2025 = demand for verifiable trust (Chainalysis 2026).
-3. **AI agents** finally good enough to parse messy business intent into structured contracts.
-
-**Emphasis line (brand-indigo accent, bottom):** The plumbing is ready. The trust layer isn't. Yet.
-
-**Footer (mono, muted):** Sources: McKinsey (Feb 2026) · Chainalysis 2026
+**Text (verbatim):**
+- Stat 1 label: `STABLECOIN B2B`
+  - Hero: `$226B`
+  - Caption: `2025, +733% YoY`
+- Stat 2 label: `TRUST CRISIS`
+  - Hero: `$17B`
+  - Caption: `lost to crypto scams, 2025`
+- Stat 3 label: `AI AGENTS`
+  - Hero: `NOW`
+  - Caption: `good enough to parse messy deals`
+- Emphasis line (italic, brand-indigo accent): *The plumbing is ready. The trust layer isn't. Yet.*
+- Footer (mono, muted): `Sources: McKinsey Feb 2026 · Chainalysis 2026`
 
 **Visual:**
-- Background: three subtle orbs behind each stat column: brand indigo · accent indigo · warmth magenta. 10% opacity, heavy blur. Grain 2%.
-- Decorative eyebrow: "WHY NOW" at 140pt weight 200 in `rgba(255,255,255,0.03)` behind headline.
+- Bg: three subtle orbs behind each stat column: brand indigo · accent indigo · warmth magenta. 10% opacity each, heavy blur. Grain 2%.
+- Ambient eyebrow: "WHY NOW" at 140pt weight 200 in `rgba(255,255,255,0.03)` behind headline.
 - **Three stat columns** as glass cards, hairline dividers between:
-  - **Column 1**: Lucide `trending-up` icon (brand indigo, 32px). Display stat `$226B` mono 120pt with indigo glow. Behind number: rising line chart (6–8 points, 1.5px brand-indigo stroke, 25% opacity). Caption: "Stablecoin B2B payments, 2025" + warning-yellow tag pill "+733% YoY".
-  - **Column 2**: Lucide `alert-triangle` icon (danger red). Display stat `$17B` mono 120pt with danger glow. Caption: "Lost to crypto scams, 2025" + tag pill "Impersonation +1,400%".
-  - **Column 3**: Lucide `sparkles` icon. Display phrase `NOW` mono 120pt with indigo glow. Caption: "AI agents can finally parse messy business intent."
-- **Emphasis line**: as a distinct glass card at bottom, 2px accent-indigo top-border highlight, small spark glyph. Italic 28–32pt.
+  - Column 1: Lucide `trending-up` icon (brand indigo, 32px). `$226B` mono 120pt with indigo glow. Rising mini line-chart (6–8 points, 1.5px brand-indigo stroke, 25% opacity) behind the number. Warning-yellow `+733% YoY` tag pill.
+  - Column 2: Lucide `alert-triangle` icon (danger red). `$17B` mono 120pt with danger glow. Caption + tag pill.
+  - Column 3: Lucide `sparkles` icon. Display phrase `NOW` mono 120pt with indigo glow. Caption only (no tag).
+- **Emphasis line** at bottom as distinct glass card with 2px accent-indigo top-border, small spark glyph left. Italic 28–32pt.
 - Sources: mono 10pt muted, bottom-right.
 
-**Tone:** Analytical, urgency-building. Numbers carry the slide.
+**Tone:** Analytical, urgency-building. Numbers carry.
 
 ---
 
 ## Slide 6 · Why us
 
 **Eyebrow:** DIFFERENTIATION
-**Hero pull-quote (dominant):** *Escrow is a feature. Negotiation is the product.*
+**Hero pull-quote (dominant, takes ~30% vertical):** *Escrow is a feature. Negotiation is the product.*
 
-**Body (tight):**
-Bare on-chain escrow already exists. Nobody in our target market uses it, because locking funds is the *last* 10% of the work.
-
-The first 90% is structuring, negotiating, judging delivery.
-
-**Closing line:** Our wedge is AI-first. Escrow is the settlement rail underneath.
+**Text (verbatim):**
+- Body (muted, tight): `Bare on-chain escrow already exists. Nobody uses it, because locking funds is the last 10% of the work.`
+- Sub-body: `The first 90% is structuring, negotiating, judging delivery.`
+- Closing line (bolded words as indicated): `Our wedge is **AI-first**. Escrow is the **settlement rail** underneath.`
 
 **Visual:**
-- Background: warmth magenta orb top-center at 10% (breaks cool palette, signals spicy). Grain 2%.
-- **Hero headline treatment**: pull-quote at 48–56pt weight 590 with "feature" and "product" in brand indigo + gradient underlines. 30% of slide vertical space.
-- **Split comparison panel (dominant visual, 50% of slide)**:
-  - **Left panel ("BARE ESCROW dApps")**: muted-red eyebrow. Vertical 4-stage funnel: `Structure → Negotiate → Sign → Release`. Stages 1–3 muted/greyed with red `x-circle` icons (dropped). Funnel narrows harshly before "Release". Arrows dashed, broken.
-  - **Right panel ("SEALED")**: brand-indigo eyebrow. Same 4-stage funnel, all stages glow brand indigo with success-green checkmarks. Each stage labeled with agent (Structurer · Negotiator · Verifier · on-chain release). Arrows solid 2px brand indigo.
+- Bg: warmth magenta orb top-center at 10% (signals "the spicy slide"). Grain 2%.
+- **Hero treatment:** pull-quote at 48–56pt weight 590. Words `feature` and `product` in brand indigo with gradient underlines. Takes ~30% of vertical space.
+- **Split comparison panel (50% of slide height, dominant)**:
+  - Left panel `BARE ESCROW dApps`: eyebrow muted-red. Vertical 4-stage funnel: `Structure → Negotiate → Sign → Release`. Stages 1–3 muted/greyed with red `x-circle` icons (dropped). Funnel narrows harshly before Release. Arrows dashed, broken.
+  - Right panel `SEALED`: eyebrow brand-indigo. Same 4-stage funnel. All stages glow brand indigo with success-green checkmarks. Each stage labeled with agent: `Structurer · Negotiator · Verifier · on-chain release`. Arrows solid 2px brand indigo.
   - 1px hairline divider between panels.
-- Optional ornament: meter gauge showing "10%" (left) and "100%" (right).
-- Closing line: full-width bottom, weight 510, "AI-first" and "settlement rail" bolded.
+- Optional ornament: meter gauge showing `10%` (left panel) and `100%` (right panel).
+- Closing line: full-width bottom strip, weight 510, emphasized words bolded.
 
 **Tone:** Confident, slightly contrarian.
 
@@ -293,104 +242,112 @@ The first 90% is structuring, negotiating, judging delivery.
 ## Slide 7 · Business Model
 
 **Eyebrow:** BUSINESS MODEL
-**Headline:** Revenue at three points.
-**Body (3 cards):**
+**Headline:** `Revenue at three points.`
 
-| Stream | Price | Note |
-|---|---|---|
-| **Platform fee** | `1%` of deal value | Pays compute + infra from deal one |
-| **Premium AI** | `$53.90`/mo | Bring your own LLM, or use ours |
-| **Verified merchant** | `$100` one-time | Filter for serious parties |
-
-**Closing line:** One `$50,000` deal = `$500`. Verified merchants get premium placement and a trust badge other parties actually look for.
+**Text (verbatim, as 3 cards):**
+- Card 1 heading: `Platform fee`
+  - Price: `1%`
+  - Caption: `of deal value`
+  - Body: `Covers compute + infra from deal one.`
+- Card 2 heading: `Premium AI`
+  - Price: `$53.90`
+  - Caption: `per month`
+  - Body: `Bring your own LLM, or use ours.`
+- Card 3 heading: `Verified merchant`
+  - Price: `$100`
+  - Caption: `one-time`
+  - Body: `Filter for serious parties.`
+- Closing strip (below cards): `One $50,000 deal = $500. Verified merchants get premium placement + trust badge.`
 
 **Visual:**
-- Background: brand indigo orb top-left + accent indigo right-center. Grain 2%.
-- **Three pricing cards** in equal columns with distinct top-border accent colors:
-  - **Card 1 (Platform fee)**: brand-indigo top border (4px gradient fade). Lucide `percent` icon. Heading "Platform fee". Oversized mono `1%` in brand indigo with glow. Sub-caption "of deal value". Body "Pays compute + infra from deal one."
-  - **Card 2 (Premium AI)**: accent-indigo top border. Lucide `sparkles` icon. Heading "Premium AI". Oversized mono `$53.90` in accent indigo. Sub-caption "per month". Body "Bring your own LLM key, or use ours." Bottom row: three LLM provider pills (Anthropic · OpenAI · OpenRouter) in hairline chips.
-  - **Card 3 (Verified merchant)**: success-green top border. Lucide `badge-check` icon. Heading "Verified merchant". Oversized mono `$100` in success green. Sub-caption "one-time fee". Body "Filter for serious parties." Bottom: trust-badge mini-visual (circular checkmark seal in success green).
-- **Closing strip** below cards (full-width glass):
-  - Left: math visualization `$50,000` → × → `1%` → = → `$500`. Each element in a mono pill, connected by subtle arrows. `$500` has small success-green glow.
-  - Right: "Verified merchants get premium placement + a trust badge." Italic 16pt muted.
-- Eyebrow texture: "BUSINESS MODEL" at 140pt weight 200 in `rgba(255,255,255,0.03)` behind cards top row.
+- Bg: brand-indigo orb top-left + accent-indigo right-center. Grain 2%.
+- **Three pricing cards** in equal columns with distinct top-border accents:
+  - Card 1: brand-indigo 4px top border (gradient fade). Lucide `percent` icon. Price `1%` in brand indigo with glow. Body as above.
+  - Card 2: accent-indigo top border. Lucide `sparkles` icon. Price `$53.90` in accent indigo. Body + bottom row of three hairline LLM chips: `Anthropic` · `OpenAI` · `OpenRouter`.
+  - Card 3: success-green top border. Lucide `badge-check` icon. Price `$100` in success green. Body + small circular trust-seal glyph in success green.
+- **Closing strip** below cards as full-width glass card:
+  - Left: math row in mono pills connected by subtle arrows: `$50,000` → `×` → `1%` → `=` → `$500`. `$500` has small success-green glow.
+  - Right: italic 16pt muted line about verified-merchant benefits.
+- Ambient: "BUSINESS MODEL" at 140pt weight 200 in `rgba(255,255,255,0.03)` behind the card row.
 
-**Tone:** Clean pricing page feel, not a dense table.
+**Tone:** Clean pricing page. Not a table.
 
 ---
 
 ## Slide 8 · Go To Market
 
 **Eyebrow:** GO TO MARKET
-**Headline:** Hide the crypto. Keep the guarantees.
-**Body:**
+**Headline:** `Hide the crypto. Keep the guarantees.`
 
-Most businesses don't hold crypto. Our cofounder's 18-year network is web2. So we built the wrapper.
-
-- **Email / Google login** via social wallet. No seed phrases.
-- **Pay in local currency.** Auto on/off-ramp: IDR, USD, and more via Xendit, MoonPay, Transak.
-- **Deal table in plain language.** USDC is invisible plumbing.
-
-**Rollout timeline:**
-- **Weeks 1–4:** 10 beta deals from cofounder's pengusaha network.
-- **Months 2–6:** Freelance agencies, cross-border B2B, SEA manufacturing.
-- **Year 1:** Regional expansion + web3-native power-user tier (own wallet, lower fees).
+**Text (verbatim):**
+- Intro (muted, one line): `Most businesses don't hold crypto. We built the wrapper.`
+- Feature pill 1: `Email / Google login` (Lucide `mail`)
+- Feature pill 2: `Pay in local currency` (Lucide `credit-card`)
+- Feature pill 3: `Plain-language deals` (Lucide `message-square`)
+- Timeline node 1 label: `Weeks 1–4`
+  - Sub: `10 beta deals · cofounder's network`
+- Timeline node 2 label: `Months 2–6`
+  - Sub: `Freelance agencies · cross-border B2B · SEA manufacturing`
+- Timeline node 3 label: `Year 1`
+  - Sub: `Regional expansion + web3 power-user tier`
+- Credential line (mono, bottom): `18 YEARS in trading, investing, crypto`
 
 **Visual:**
-- Background: brand indigo orb top-left + warmth magenta bottom-right. Line grid at 48px spacing, 3% opacity, radially masked. Grain 2%.
-- **Top row: three feature pills (full-width glass strip)**: each with Lucide icon + short label.
-  - `mail` "Social login" · `credit-card` "Fiat on/off-ramp" · `message-square-text` "Plain-language deals"
-  - Each pill 1px hairline, brand-indigo icon, weight 510 label. Dividers between = hairline vertical lines.
-- **Middle row: horizontal timeline (hero visual, ~45% of slide)**:
-  - Single horizontal rail: 2px gradient line (transparent → brand indigo → accent indigo → success green → transparent).
-  - Three milestone nodes on the rail: 64px circles, 2px brand-indigo border + glass fill, Lucide icons: `rocket` (weeks 1–4) · `megaphone` (months 2–6) · `globe` (year 1).
+- Bg: brand-indigo orb top-left + warmth magenta bottom-right. Line grid 48px at 3%, radially masked. Grain 2%.
+- **Top row: three feature pills in a full-width glass strip**. Each: 1px hairline, brand-indigo Lucide icon, weight 510 label. Hairline vertical dividers between pills.
+- **Middle: horizontal timeline (hero, ~45% of slide)**:
+  - Rail: 2px gradient line (transparent → brand indigo → accent indigo → success green → transparent).
+  - Three 64px nodes on the rail: 2px brand-indigo border + glass fill, Lucide icons: `rocket` · `megaphone` · `globe`.
   - Above each node: date label in mono with glowing accent dot.
-  - Below each node: glass card (240px wide) with the bullets for that phase.
-- **Bottom row**: partner credential line as ambient text. "18 YEARS" in brand-indigo mono with glow + caption "in trading, investing, crypto" below. This is the distribution proof.
-- Decorative eyebrow: "GO TO MARKET" at 140pt weight 200 in 3% white behind headline.
+  - Below each node: glass card (240px wide) with the sub-text, 1-2 micro-bullets, brand-indigo check icon prefix.
+- **Bottom credential line**: `18 YEARS` in brand-indigo mono with glow + caption below. Small Lucide `users` icon left of the number. This is our distribution proof.
+- Ambient: "GO TO MARKET" at 140pt weight 200 in 3% white behind headline.
 
-**Tone:** Practical. The wrapper framing + cofounder credential should make the distribution claim feel concrete.
+**Tone:** Practical. Wrapper framing + cofounder credential make the distribution claim concrete.
 
 ---
 
 ## Slide 9 · Traction + Team
 
 **Eyebrow:** TRACTION + TEAM
-**Headline:** Already shipping.
-**Traction (checkmark list, tight):**
+**Headline:** `Already shipping.`
 
-- Full lifecycle on Solana devnet: chat → negotiate → fund → proof → verify → release → complete
-- Dual-agent negotiation with BusinessMemory per wallet
-- AI Verifier scoring milestone proofs
-- Mutual refund via 2-sig partial-sign handoff. No trusted relay.
-- Anthropic direct + OpenRouter both supported
+**Text (verbatim, traction):**
+- `Anchor program on devnet: create_deal, fund_escrow, release_milestone, refund`
+- `Full lifecycle: chat → negotiate → fund → verify → release → complete`
+- `Dual-agent negotiation with BusinessMemory per wallet`
+- `AI Verifier scoring milestone proofs`
+- `Mutual refund via 2-sig partial-sign handoff`
+- `Anthropic direct + OpenRouter supported`
+- Next (accent-indigo icon): `Social wallet + fiat on/off-ramp for web2 onboarding`
 
-**Next:** Social wallet + fiat on/off-ramp for web2 onboarding.
+**Text (verbatim, team):**
+- `[Dev name]` — builds AI agents. Previously shipped a DLMM agent that auto-screens, opens, closes positions with self-learning.
+- `[Partner name]` — 18 years in trading, investing, crypto. Direct line to target customer segment.
 
-**Team:**
-- **[Dev name]** builds AI agents. Previously shipped a DLMM agent that auto-screens, opens, and closes positions with self-learning.
-- **[Partner name]** has 18 years in trading, investing, crypto. Direct line to target customer segment.
+**Closing line (large, centered):** `Two people. Four weeks. Working product.`
 
-**Closing line (large):** Two people. Four weeks. Working product.
+**Top-strip stats bar (full-width, 4 mono blocks):**
+- `4` · Anchor instructions
+- `3` · AI agent roles
+- `2` · founders
+- `4` · weeks
 
 **Visual:**
-- Background: success green orb top-left at 8% + brand indigo orb right at 10%. Grain 2%.
-- **Top strip (stats counter bar, full-width, 4 mono blocks)**:
-  - `4` Anchor instructions · `3` AI agent roles · `2` founders · `4` weeks
-  - Hairline vertical dividers. Each number has subtle brand-indigo glow.
-- **Left column (60%), traction checklist**:
-  - Each bullet in a faint glass strip (rgba white 2%, 1px top border, 12px padding).
-  - Success-green `check-circle-2` Lucide icon (20px) far left of each strip.
-  - Body weight text, emphasis words in weight 510, instruction names in mono pills inline.
-  - "Next:" bullet at the bottom uses an `arrow-right` icon in accent indigo instead of check.
-- **Right column (40%), team block**:
-  - Two stacked team cards (glass, 1px border).
-  - Each card: 96px circular avatar placeholder (2px brand-indigo ring + glow, monogram if no photo) on left. Right: name weight 590, role muted small caps, 2-line description.
-  - Past-work badge pill on each card: "DLMM agent · self-learning" (Dev), "18 years · trading & crypto" (Partner).
-  - Small Lucide icon badges: `terminal` (Dev) · `trending-up` (Partner).
-- **Closing line strip (full-width, below columns)**:
+- Bg: success-green orb top-left at 8% + brand-indigo orb right at 10%. Grain 2%.
+- **Top strip**: four mono stat blocks in a row. Hairline vertical dividers. Each number has subtle brand-indigo glow.
+- **Left column (60%) — traction checklist**:
+  - Each bullet as a faint glass strip (rgba white 2%, 1px top border, 12px padding).
+  - Success-green `check-circle-2` Lucide icon (20px) far left. Instruction names in mono pills inline.
+  - "Next:" bullet uses accent-indigo `arrow-right` icon instead of check.
+- **Right column (40%) — team block**:
+  - Two stacked glass cards.
+  - Each: 96px circular avatar placeholder (2px brand-indigo ring + glow, monogram if no photo) on left. Right: name weight 590, role muted small-caps, 2-line description.
+  - Past-work badge pill: `DLMM agent · self-learning` (Dev), `18 years · trading & crypto` (Partner).
+  - Specialty icon badge: `terminal` (Dev), `trending-up` (Partner).
+- **Closing line strip** (full-width, below columns):
   - Glass card, 2px gradient top-border (indigo → accent → transparent).
-  - Text centered 24–32pt weight 590.
+  - Centered 24–32pt weight 590.
 
 **Tone:** Evidentiary + human. Stats hook, checklist proves, team personalizes.
 
@@ -399,57 +356,77 @@ Most businesses don't hold crypto. Our cofounder's 18-year network is web2. So w
 ## Slide 10 · Ask + Roadmap
 
 **Eyebrow:** THE ASK
-**Headline:** What we're building next.
-**Roadmap:**
+**Headline:** `What we're building next.`
 
-- **Q2 2026:** Mainnet launch + web2 wrapper (social wallet, fiat ramps).
-- **Q3 2026:** Dispute resolution. Optional arbitrator network.
-- **Q4 2026:** Multi-currency cross-border escrow.
-- **2027:** Portable on-chain reputation NFTs.
+**Roadmap (verbatim, 4 stations):**
+- `Q2 2026` — Mainnet + web2 wrapper (social wallet, fiat ramps)
+- `Q3 2026` — Dispute resolution + optional arbitrator
+- `Q4 2026` — Cross-border escrow, multi-currency routing
+- `2027` — Portable on-chain reputation NFTs
 
-**The ask (3 blocks):**
-- **`$250K` pre-seed** to reach 100 active businesses and `$1M` TVL.
-- **Ecosystem partners:** stablecoin issuers, wallets, fiat ramps.
-- **Design partners:** SEA B2B verticals (manufacturing, logistics, agri-trade).
+**Ask (verbatim, 3 cards):**
+- Card 1 heading: `Capital`
+  - Hero: `$250K`
+  - Caption: `pre-seed`
+  - Milestones: `100 active businesses · $1M TVL`
+- Card 2 heading: `Ecosystem partners`
+  - Body: `Stablecoin issuers, wallets, fiat ramps.`
+- Card 3 heading: `Design partners`
+  - Body: `SEA B2B verticals: manufacturing, logistics, agri-trade.`
 
-**Footer (mono):** Contact: `[email]` · GitHub: `github.com/Toderr/sealed` · Live demo: `[url]`
+**Footer (mono):** `Contact: [email] · GitHub: github.com/Toderr/sealed · Live demo: [url]`
+
+**Final ornament (bottom-center):** Sealed wordmark weight 590 small, italic tagline: *People break promises. Code doesn't.* Subtle indigo underline.
 
 **Visual:**
-- Background: accent indigo orb top-right + brand indigo bottom-left + subtle magenta warmth center. Very subtle dot grid at 3%. Grain 2%.
-- **Top half (Roadmap timeline)**:
-  - Horizontal rail, 4 milestone stations, evenly spaced.
-  - Rail is 3px gradient bar (transparent → brand indigo → accent → success → transparent), slightly bowed upward (growth trajectory).
-  - Stations zigzag above/below the rail. Each 160×120 glass card:
-    - **Q2 2026** (above): `rocket` icon + "Mainnet + web2 wrapper" + sub-line "social wallet, fiat ramps"
-    - **Q3 2026** (below): `scale` icon + "Dispute resolution" + "optional arbitrator"
-    - **Q4 2026** (above): `globe` icon + "Cross-border escrow" + "multi-currency routing"
-    - **2027** (below): `badge-check` icon + "Reputation NFTs" + "portable across platforms"
-  - Dashed vertical connectors + indigo dot on rail. Stations glow progressively brighter left-to-right.
-- **Divider**: hairline horizontal with "THE ASK" eyebrow centered on it.
-- **Bottom half (three ask cards)** in equal columns:
-  - **Card 1 (Capital)**: brand-indigo top border. `banknote` icon. Oversized mono `$250K` with strong indigo glow. Caption "Pre-seed". Two milestone pills: "100 active businesses" · "$1M TVL".
-  - **Card 2 (Ecosystem partners)**: accent-indigo top border. `network` icon. Heading "Ecosystem partners". Body "Stablecoin issuers, wallets, fiat ramps." Logo strip below (monochrome): Circle · Phantom · Helius · MoonPay.
-  - **Card 3 (Design partners)**: success-green top border. `handshake` icon. Heading "Design partners". Body "SEA B2B verticals: manufacturing, logistics, agri-trade." Three tiny industry glyphs (factory · truck · leaf).
-- **Footer row (below cards)**:
-  - Three contact pills: `[email]` with mail icon · `github.com/Toderr/sealed` with GitHub icon · `[url]` with globe icon. Mono, hairline borders, slight glass fill.
-  - Far right: small QR code (60×60) linking to live demo.
-- **Final ornament**: Sealed wordmark bottom-center weight 590 small, italic tagline under it: *"People break promises. Code doesn't."* Subtle indigo underline.
+- Bg: accent-indigo orb top-right + brand-indigo bottom-left + subtle magenta warmth center. Dot grid at 3% for "scaffolding for what's next". Grain 2%.
+- **Top half — Roadmap timeline:**
+  - Horizontal rail, 4 stations evenly spaced.
+  - Rail: 3px gradient bar (transparent → brand indigo → accent → success → transparent), slightly bowed upward (growth trajectory).
+  - Stations zigzag above/below rail. Each 160×120 glass card:
+    - Q2 (above): `rocket` icon + heading + sub-line
+    - Q3 (below): `scale` icon + heading + sub-line
+    - Q4 (above): `globe` icon + heading + sub-line
+    - 2027 (below): `badge-check` icon + heading + sub-line
+  - Dashed vertical connector + indigo dot on rail. Stations glow progressively brighter left-to-right.
+- **Divider:** hairline horizontal with "THE ASK" eyebrow centered.
+- **Bottom half — Three ask cards** in equal columns:
+  - Card 1: brand-indigo top border. `banknote` icon. `$250K` oversized mono with strong indigo glow. Two hairline milestone pills.
+  - Card 2: accent-indigo top border. `network` icon. Logo strip mini (monochrome): `Circle · Phantom · Helius · MoonPay`.
+  - Card 3: success-green top border. `handshake` icon. Three tiny industry glyphs bottom: factory · truck · leaf.
+- **Footer row** (full-width, below cards):
+  - Three contact pills: `[email]` with mail icon · `github.com/Toderr/sealed` with GitHub icon · `[url]` with globe icon. Mono, hairline, glass fill.
+  - Far right: 60×60 QR linking to live demo.
+- **Final ornament**: Sealed wordmark bottom-center weight 590 small, italic tagline beneath with subtle indigo underline.
 
-**Tone:** Forward-looking, inviting. Roadmap feels earned, ask feels scoped, close echoes the open.
+**Tone:** Forward-looking, inviting. Roadmap feels earned; ask scoped; close echoes the open.
 
 ---
 
-## After claude.ai/design renders
+## Revision shortcuts
 
-Check each slide against these:
+If a specific slide needs another pass, these are the highest-leverage prompts to paste back into claude.ai/design (with this file attached):
 
-- [ ] One primary message per slide. Minimal text. Visuals carry the weight.
-- [ ] All dollar amounts, program IDs, deal IDs, wallet addresses in mono
-- [ ] Agent names (Structurer, Negotiator, Verifier) visually emphasized in brand indigo on Slide 3
-- [ ] Web2 + Web3 stat columns on Slide 2 are visually symmetric and read as dual sides of one problem
-- [ ] "Escrow is a feature. Negotiation is the product." reads as a hero line on Slide 6
-- [ ] No emoji as icons. Minimal stroked SVG only.
-- [ ] Contrast: text-primary on background passes 7:1 (WCAG AAA).
+1. **"Re-render Slide 2. Make the Web2 / Web3 columns feel more symmetric and higher contrast."**
+2. **"Slide 3: make the three agent circles the hero. Shrink the 5-step flow or remove it. Keep the closing line."** (The original draft included a 5-step flow band; if claude.ai/design adds that back, drop it.)
+3. **"Slide 4: screenshot grid is hero. No bottom strip at all."**
+4. **"Slide 6: pull-quote should dominate. Comparison panel is evidence, not the point."**
+5. **"Slide 8: timeline should feel horizontal and light. The wrapper pills on top are the real insight, not the dates."**
+6. **"Slide 10: roadmap should feel optimistic but not loud. Ask cards are the real focus."**
+
+---
+
+## Post-render QA
+
+Before exporting, check:
+
+- [ ] One primary message per slide. Nothing feels crammed.
+- [ ] No em-dashes (`—`) anywhere in rendered output. (Ambient rule: project-wide ban.)
+- [ ] All dollar amounts, program IDs, wallet addresses in mono.
+- [ ] Agent names in brand indigo on Slide 3.
+- [ ] Web2 / Web3 stat columns on Slide 2 are symmetric.
+- [ ] No emoji as icons. Lucide stroked SVG only.
+- [ ] Contrast passes 7:1 (WCAG AAA).
 - [ ] Placeholders intact: `[Dev name]`, `[Partner name]`, `[email]`, `[url]`, screenshot frames on Slide 4.
 
-Export options: PDF (email) + PPTX (speaker notes + edits) + individual PNGs per slide (Colosseum uploads).
+**Export formats:** PDF (email) · PPTX (speaker notes + last-mile edits) · individual PNGs per slide (Colosseum submission).
