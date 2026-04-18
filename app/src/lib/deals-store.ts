@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { PublicKey } from "@solana/web3.js";
-import type { Deal } from "./types";
+import type { Deal, MilestoneProof } from "./types";
 
 const STORAGE_PREFIX = "sealed:deals:";
 const GUEST_KEY = "guest";
@@ -21,6 +21,7 @@ type SerializedDeal = Omit<
     status: Deal["milestones"][number]["status"];
     confirmedBy: string | null;
     confirmedAt: number | null;
+    proof?: MilestoneProof;
   }>;
 };
 

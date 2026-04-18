@@ -19,12 +19,31 @@ export enum MilestoneStatus {
 
 // --- Account types matching on-chain state ---
 
+export type ProofType = "image" | "url" | "text";
+
+export interface VerifierReview {
+  confidence: number; // 0-1
+  recommendation: "approve" | "reject" | "request_clarification";
+  notes: string;
+  reviewedAt: number;
+}
+
+export interface MilestoneProof {
+  proofType: ProofType;
+  // For image: base64 data URL. For url/text: the raw string.
+  proofData: string;
+  note?: string; // seller's optional comment
+  submittedAt: number;
+  review?: VerifierReview;
+}
+
 export interface Milestone {
   description: string;
   amount: number; // USDC lamports (6 decimals)
   status: MilestoneStatus;
   confirmedBy: PublicKey | null;
   confirmedAt: number | null; // unix timestamp
+  proof?: MilestoneProof;
 }
 
 export interface Deal {
