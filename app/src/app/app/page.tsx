@@ -99,7 +99,7 @@ export default function Home() {
         variant: "error",
         title: "On-chain submit failed",
         description:
-          err instanceof Error ? err.message : "Unknown error — saved locally.",
+          err instanceof Error ? err.message : "Unknown error. Saved locally.",
       });
     }
   }

@@ -8,7 +8,12 @@ import {
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
+  getAccount,
   getAssociatedTokenAddress,
+  TokenAccountNotFoundError,
+  TokenInvalidAccountOwnerError,
 } from "@solana/spl-token";
 import { BN } from "@coral-xyz/anchor";
 import {
@@ -174,18 +179,44 @@ export async function buildReleaseMilestoneIx(
   });
 }
 
+// --- ATA helper ---
+
+// Idempotent create-ATA ix — safe to include unconditionally; on-chain program
+// short-circuits if the ATA already exists. Prevents silent fund/release
+// failures when buyer or seller has never held USDC.
+export async function buildEnsureAtaIx(
+  payer: PublicKey,
+  owner: PublicKey,
+  mint: PublicKey
+): Promise<TransactionInstruction> {
+  const ata = await getAssociatedTokenAddress(mint, owner);
+  return createAssociatedTokenAccountIdempotentInstruction(
+    payer,
+    ata,
+    owner,
+    mint,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  );
+}
+
 // --- Transaction helpers ---
 
 export async function sendTx(
   connection: Connection,
-  ix: TransactionInstruction,
+  ixs: TransactionInstruction | TransactionInstruction[],
   signTransaction: (tx: Transaction) => Promise<Transaction>
 ): Promise<string> {
-  const tx = new Transaction().add(ix);
-  tx.feePayer = ix.keys[0].pubkey; // buyer is always first key
+  const instructions = Array.isArray(ixs) ? ixs : [ixs];
+  const tx = new Transaction();
+  instructions.forEach((ix) => tx.add(ix));
+  tx.feePayer = instructions[0].keys[0].pubkey;
   tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
   const signed = await signTransaction(tx);
   const sig = await connection.sendRawTransaction(signed.serialize());
   await connection.confirmTransaction(sig, "confirmed");
   return sig;
 }
+
+// Helper re-exports so consumers don't need @solana/spl-token directly
+export { getAccount, TokenAccountNotFoundError, TokenInvalidAccountOwnerError };
