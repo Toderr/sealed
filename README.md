@@ -14,7 +14,7 @@ Cross-border B2B deals run on trust infrastructure — banks, lawyers, escrow ag
 
 Sealed closes that gap with an AI agent layer on top: the user talks to the agent, the agent handles the chain.
 
-Message: **"Trust infrastructure, not crypto."**
+Message: **"People break promises. Code doesn't."**
 
 ---
 
