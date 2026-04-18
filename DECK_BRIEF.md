@@ -63,6 +63,44 @@ If a slide feels sparse, add ambient depth (gradient orbs, grain, dot grid, typo
 
 ---
 
+## Brand mark (locked)
+
+Use this mark wherever a `Sealed` logo appears. Do not swap it for generic shield / lock icons. Color inherits from the surrounding text (render in `#f7f8f8` on dark bg for this deck).
+
+**Geometry (120×120 viewBox):**
+- Dot: `cx=60 cy=60 r=13`, filled.
+- Ring: `cx=60 cy=60 r=54`, stroke `1.25`, opacity `0.22`, fill none.
+- Whiskers: 3 per side, `stroke=3`, `stroke-linecap=round`.
+  - Inner x at `±20` from center, outer x at `±37`.
+  - Top stroke: `y1=-12, y2=-15` (angles up-out).
+  - Middle stroke: `y1=0, y2=0` (horizontal).
+  - Bottom stroke: `y1=12, y2=15` (angles down-out).
+
+**Copy-paste SVG (white on transparent):**
+```svg
+<svg viewBox="0 0 120 120" width="120" height="120" fill="none">
+  <circle cx="60" cy="60" r="54" stroke="#f7f8f8" stroke-width="1.25" opacity="0.22"/>
+  <g stroke="#f7f8f8" stroke-width="3" stroke-linecap="round">
+    <line x1="80" y1="48" x2="97" y2="45"/>
+    <line x1="80" y1="60" x2="97" y2="60"/>
+    <line x1="80" y1="72" x2="97" y2="75"/>
+    <line x1="40" y1="48" x2="23" y2="45"/>
+    <line x1="40" y1="60" x2="23" y2="60"/>
+    <line x1="40" y1="72" x2="23" y2="75"/>
+  </g>
+  <circle cx="60" cy="60" r="13" fill="#f7f8f8"/>
+</svg>
+```
+
+**Usage in this deck:**
+- Slide 1: stacked lockup, mark above wordmark, mark at 120–160pt.
+- Slide 10 closing ornament: inline lockup, mark ~28pt next to wordmark.
+- Any in-context mockup (browser chrome, favicon strip, chat avatar): use the mark at favicon scale. Ring on at ≥24pt; ring off at ≤20pt so the whiskers stay legible.
+
+**Clear space:** min 1× dot radius (13u) on all sides. Do not place inside filled chips / pills on dark bg.
+
+---
+
 ## Ambient elements library
 
 Apply 2–4 per slide. Varies per slide so the deck doesn't look like one wallpaper.
@@ -90,7 +128,7 @@ Apply 2–4 per slide. Varies per slide so the deck doesn't look like one wallpa
 
 **Visual:**
 - Triple gradient orb: brand indigo top-left, accent bottom-right, magenta warmth center behind wordmark. 200px blur.
-- Wordmark: ~180pt display weight, letter-spacing −0.03em, soft glow `0 0 80px rgba(94,106,210,0.4)`.
+- **Stacked lockup center:** Sealed mark (see "Brand mark (locked)" spec) at 120–160pt rendered in `#f7f8f8`, ring on, soft indigo glow `0 0 64px rgba(94,106,210,0.35)`. Directly beneath, the wordmark `SEALED` at ~180pt display weight, letter-spacing −0.03em. Clear space ≥13u between mark and wordmark.
 - Gradient accent underline beneath wordmark.
 - 6–12 floating brand-indigo particles (2–4px) in negative space at 30–50% opacity.
 - Top-right: hairline pill "devnet" with pulsing green dot.
@@ -376,7 +414,7 @@ Apply 2–4 per slide. Varies per slide so the deck doesn't look like one wallpa
 
 **Footer (mono):** `Contact: [email] · GitHub: github.com/Toderr/sealed · Live demo: [url]`
 
-**Final ornament (bottom-center):** Sealed wordmark weight 590 small, italic tagline: *People break promises. Code doesn't.* Subtle indigo underline.
+**Final ornament (bottom-center):** Inline Sealed lockup — mark at ~28pt (ring on) next to wordmark weight 590 small, rendered in `#f7f8f8`. Italic tagline below: *People break promises. Code doesn't.* Subtle indigo underline under tagline.
 
 **Visual:**
 - Bg: accent-indigo orb top-right + brand-indigo bottom-left + subtle magenta warmth center. Dot grid at 3% for "scaffolding for what's next". Grain 2%.
@@ -397,7 +435,7 @@ Apply 2–4 per slide. Varies per slide so the deck doesn't look like one wallpa
 - **Footer row** (full-width, below cards):
   - Three contact pills: `[email]` with mail icon · `github.com/Toderr/sealed` with GitHub icon · `[url]` with globe icon. Mono, hairline, glass fill.
   - Far right: 60×60 QR linking to live demo.
-- **Final ornament**: Sealed wordmark bottom-center weight 590 small, italic tagline beneath with subtle indigo underline.
+- **Final ornament**: inline Sealed lockup (mark ~28pt ring-on + wordmark weight 590) bottom-center, italic tagline beneath with subtle indigo underline.
 
 **Tone:** Forward-looking, inviting. Roadmap feels earned; ask scoped; close echoes the open.
 
