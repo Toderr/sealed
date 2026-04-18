@@ -4,7 +4,7 @@
 
 **Prompt to paste alongside this file:**
 
-> *Generate a 10-slide 16:9 dark pitch deck matching the design system and per-slide spec below. **Strict rules:** one primary message per slide. Keep copy to the exact strings under "Text (verbatim)". Never invent stats, sentences, or additional bullets. If a slide looks empty, add ambient visual depth (orbs, grain, dot grid), not more copy. The visual should carry the weight.*
+> *Generate an 11-slide 16:9 dark pitch deck matching the design system and per-slide spec below. **Strict rules:** one primary message per slide. Keep copy to the exact strings under "Text (verbatim)". Never invent stats, sentences, or additional bullets. If a slide looks empty, add ambient visual depth (orbs, grain, dot grid), not more copy. The visual should carry the weight. Respect the global rhythm elements (slide counter, progress rail, scanlines, watermark) on every slide.*
 
 **How to iterate slide-by-slide:**
 Pick one slide, paste only that slide's section (plus the Design System block), and prompt: *"Re-render slide N only. Keep the verbatim copy. Re-design the layout."*
@@ -101,6 +101,22 @@ Use this mark wherever a `Sealed` logo appears. Do not swap it for generic shiel
 
 ---
 
+## Global rhythm elements (every slide)
+
+These repeat across all 11 slides in the exact same position. They read as structural rhythm, not clutter.
+
+1. **Slide counter** — `NN / 11` (mono, 10pt, muted) in the bottom-left corner, 32px from both edges. Increments per slide: `01 / 11`, `02 / 11`, … `11 / 11`.
+2. **Progress rail (right edge)** — 1px vertical hairline, 60% of slide height, right-aligned 40px from the edge. 11 small dots evenly spaced along it. Current slide's dot glows brand indigo; past-slide dots at 20% white; future-slide dots at 6% white. Reads like a "you are here" spine.
+3. **Hairline scanlines** — horizontal 1px lines every 40px at 1.5% white, additive with the grain overlay. Adds monitor/tech depth without fighting the copy.
+4. **Watermark Sealed mark** — 280pt Sealed mark at 3% opacity, pinned to the top-right corner on content-heavy slides only: 2, 5, 7, 8, 10. Skip on 1, 3, 6, 9, 11 (those already have focal lockups or sparse compositions).
+5. **Mono side annotations** — thin italic mono 9pt muted marginal callouts, editorial-style. Use on 4 slides where there's margin room:
+   - Slide 2 right margin: `// root cause, not symptom`
+   - Slide 4 right margin: `// deployed 2026-04 · solana devnet`
+   - Slide 6 left margin: `// why we win`
+   - Slide 10 right margin: `// targets, not promises`
+
+---
+
 ## Ambient elements library
 
 Apply 2–4 per slide. Varies per slide so the deck doesn't look like one wallpaper.
@@ -113,6 +129,50 @@ Apply 2–4 per slide. Varies per slide so the deck doesn't look like one wallpa
 6. **Lucide icons** (1.5px stroke): `terminal`, `handshake`, `shield-check`, `message-square`, `lock`, `arrow-up-right`, `rotate-ccw`, `x-circle`, `check-circle-2`, `trending-up`, `alert-triangle`, `sparkles`, `map-pin`, `users`, `banknote`, `network`, `globe`, `rocket`, `scale`, `badge-check`, `percent`, `mail`, `credit-card`.
 7. **Typography as texture.** Oversized section eyebrow (140pt, weight 200, `rgba(255,255,255,0.04)`) behind main content on stat-heavy slides.
 8. **Accent underline.** 2px brand-indigo gradient stroke (fades transparent at both ends) under hero words.
+9. **Diagonal light sweep.** 2px gradient line at 4% opacity sweeping top-left → bottom-right, ~15% of slide diagonal. Suggests a light hitting a dark stage. Use on Slides 1 + 11 only.
+10. **Concentric orbit rings.** 2–3 thin rings (1px, 2–4% opacity), centered on a focal glyph. Use behind the Sealed mark on 1 + 11; behind the agent trio on 3.
+11. **Dashed future treatment.** After a certain x-position, switch solid 2px rails/strokes to 1.5px dashed (`stroke-dasharray 4 4`). Signals "this hasn't happened yet." Use on Slide 10's Q4 / 2027 stations.
+12. **Gauge bar.** Thin 1px hairline track with a filled segment + percentage labels at both ends. Use on Slide 6 to show `10%` (bare-escrow coverage) vs `90%` (Sealed coverage).
+13. **Browser chrome mockup.** Faux browser shell around a screenshot: 3 traffic-light dots, URL bar showing `sealed-nine.vercel.app`, lock glyph. Use on Slide 4 hero frame only.
+14. **Geographic fragment.** Outline-only SEA region (Indonesia + neighbors) at 4% opacity, bottom-right. Use on Slide 8 only — GTM wedge is SEA.
+15. **Monogram background texture.** Large founder-initial letter at 3% opacity behind each founder card. Use on Slide 9.
+16. **Endmark glyph.** 40px horizontal 1px bar with a centered 4px brand-indigo dot. Typographic "end of book" mark. Use on Slide 11 only, below the tagline.
+17. **Revenue flow arrows.** 3 thin gradient arrows (1.5px, fade at mid-arrow) converging from each pricing card into a shared pool glyph below. Use on Slide 7 only.
+18. **Timeline axis rule.** Horizontal 1px rule beneath stat columns with 4–5 tick marks labeled in mono 9pt (`'23 '24 '25 '26 '27`). Use on Slide 5 only.
+
+---
+
+## Per-slide bespoke hero elements
+
+One richness hero per slide. Pick only the one that earns its keep. Do NOT layer all of them.
+
+| Slide | Hero element | Rationale |
+|---|---|---|
+| 1 | Diagonal light sweep + concentric orbit rings behind lockup | Opening should feel staged |
+| 2 | Stat-column icons upgraded to stylized **badge tiles** (32px rounded tile w/ icon inside, thin gradient border) | Columns feel balanced and designed, not templated |
+| 3 | Concentric orbit rings centered between the 3 agent circles | Visualizes "three faces, one engine" |
+| 4 | Browser chrome mockup around hero screenshot | Screenshot reads as a real product, not a crop |
+| 5 | Timeline axis rule below the 3 columns | Ties the 3 stats to the "curves converging" story |
+| 6 | Gauge bar at bottom showing `10%` vs `90%` coverage | Quantifies the pull-quote visually |
+| 7 | 3 revenue flow arrows converging into a pool glyph labeled "platform revenue" | Shows the architecture of the pricing |
+| 8 | SEA geographic fragment bottom-right + timeline nodes 2-tone (solid past, faded future) | Regional specificity without making it a map slide |
+| 9 | Monogram background texture behind each founder card (`T` + `D` at 3%) | Depth without photo dependency |
+| 10 | Dashed future treatment on Q4 / 2027 stations; Q2 + Q3 glow brighter | Confidence decay visualization |
+| 11 | Diagonal light sweep + concentric orbit rings + endmark glyph below tagline | Book-ends Slide 1 at quieter intensity |
+
+---
+
+## Color polarity pass
+
+Indigo dominates by default; add polarity so the deck doesn't read mono-chrome. Assignments:
+
+- **Slide 2 Column B `NONE`** → danger-red glow (shifts from warning-yellow — aligns "absence = risk").
+- **Slide 6 Panel A** bare-escrow funnel → muted danger-red tint on dropped stages.
+- **Slide 6 Panel B** Sealed funnel → brand indigo stages with **success-green check accents** (mix palette, not mono-indigo).
+- **Slide 7 Card 3** `$100 verified merchant` → success-green kept; seal glyph upgraded to a filled circle with check.
+- **Slide 10 Q2 2026 station** → small success-green `check-circle-2` badge (signals "nearest to ship"). Q3 stays neutral indigo. Q4 + 2027 dashed.
+
+Final palette rhythm: indigo dominant, green = achieved/live/settled, red = absence/risk, warning-yellow = non-payment/unpaid only.
 
 ---
 
@@ -149,17 +209,17 @@ Apply 2–4 per slide. Varies per slide so the deck doesn't look like one wallpa
   - Caption: `lost to freelancer non-payment, 2025`
   - Tag: `58% face unpaid invoices`
 - Column B (label): `WEB3`
-  - Hero stat: `$17B`
-  - Caption: `lost to crypto scams, 2025`
-  - Tag: `impersonation fraud +1,400%`
+  - Hero: `NONE`
+  - Caption: `structured deal layer for on-chain agreements`
+  - Tag: `bare escrow locks funds, not promises`
 - Kicker (italic, centered): *One root cause. No enforceable deal layer.*
-- Footer (mono, muted): `Sources: Flexable 2025 · Chainalysis 2026`
+- Footer (mono, muted): `Source: Flexable 2025`
 
 **Visual:**
 - Bg: warning-yellow orb top-left at 8% + danger-red orb top-right at 8% (both sides have a problem). Brand-indigo orb bottom-center at 10% (solution signal). Grain 3%.
 - **Top 60% split into two stat columns**, hairline vertical divider between:
   - Left `WEB2`: eyebrow warning-yellow. `$15B` mono 140pt with warning glow. Caption below in muted 14pt. One tag pill beneath ("58% face unpaid invoices"). Small Lucide `alert-triangle` icon top-right of column.
-  - Right `WEB3`: eyebrow danger-red. `$17B` mono 140pt with danger glow. Caption + tag pill. Small `x-circle` icon top-right.
+  - Right `WEB3`: eyebrow danger-red. `NONE` mono 140pt with danger-red glow. Caption below in muted 14pt. One tag pill beneath ("bare escrow locks funds, not promises"). Small `shield-off` icon top-right. Where the dollar-figure would normally sit, render a faded dashed-outline rectangle at 8% opacity to make the *absence* visible.
 - Hairline horizontal divider (gradient, transparent → brand indigo → transparent).
 - **Bottom 40%**: kicker as full-width glass card, italic 32–40pt, centered. `·` pipe separator.
 - Ambient: "THE PROBLEM" at 140pt weight 200 in 3% white behind column headers.
@@ -230,21 +290,21 @@ Apply 2–4 per slide. Varies per slide so the deck doesn't look like one wallpa
 - Stat 1 label: `STABLECOIN B2B`
   - Hero: `$226B`
   - Caption: `2025, +733% YoY`
-- Stat 2 label: `TRUST CRISIS`
-  - Hero: `$17B`
-  - Caption: `lost to crypto scams, 2025`
+- Stat 2 label: `DEAL LAYER`
+  - Hero: `MISSING`
+  - Caption: `no on-chain standard for structured B2B agreements`
 - Stat 3 label: `AI AGENTS`
   - Hero: `NOW`
   - Caption: `good enough to parse messy deals`
 - Emphasis line (italic, brand-indigo accent): *The plumbing is ready. The trust layer isn't. Yet.*
-- Footer (mono, muted): `Sources: McKinsey Feb 2026 · Chainalysis 2026`
+- Footer (mono, muted): `Source: McKinsey Feb 2026`
 
 **Visual:**
 - Bg: three subtle orbs behind each stat column: brand indigo · accent indigo · warmth magenta. 10% opacity each, heavy blur. Grain 2%.
 - Ambient eyebrow: "WHY NOW" at 140pt weight 200 in `rgba(255,255,255,0.03)` behind headline.
 - **Three stat columns** as glass cards, hairline dividers between:
   - Column 1: Lucide `trending-up` icon (brand indigo, 32px). `$226B` mono 120pt with indigo glow. Rising mini line-chart (6–8 points, 1.5px brand-indigo stroke, 25% opacity) behind the number. Warning-yellow `+733% YoY` tag pill.
-  - Column 2: Lucide `alert-triangle` icon (danger red). `$17B` mono 120pt with danger glow. Caption + tag pill.
+  - Column 2: Lucide `shield-off` icon (warning yellow). `MISSING` mono 120pt with warning-yellow glow. Caption below; no tag pill. Instead of a mini chart, render a faded dashed-outline rectangle where a filled data slot would sit — a literal visual gap.
   - Column 3: Lucide `sparkles` icon. Display phrase `NOW` mono 120pt with indigo glow. Caption only (no tag).
 - **Emphasis line** at bottom as distinct glass card with 2px accent-indigo top-border, small spark glyph left. Italic 28–32pt.
 - Sources: mono 10pt muted, bottom-right.
@@ -288,24 +348,23 @@ Apply 2–4 per slide. Varies per slide so the deck doesn't look like one wallpa
   - Caption: `of deal value`
   - Body: `Covers compute + infra from deal one.`
 - Card 2 heading: `Premium AI`
-  - Price: `$53.90`
-  - Caption: `per month`
-  - Body: `Bring your own LLM, or use ours.`
+  - Price: `+5%`
+  - Caption: `markup on LLM provider pricing`
+  - Body: `Any provider · Anthropic, OpenAI, OpenRouter. Pass-through + 5%.`
 - Card 3 heading: `Verified merchant`
   - Price: `$100`
   - Caption: `one-time`
   - Body: `Filter for serious parties.`
-- Closing strip (below cards): `One $50,000 deal = $500. Verified merchants get premium placement + trust badge.`
+- Closing strip (below cards): `Verified merchants get premium placement and a trust badge.`
 
 **Visual:**
 - Bg: brand-indigo orb top-left + accent-indigo right-center. Grain 2%.
 - **Three pricing cards** in equal columns with distinct top-border accents:
   - Card 1: brand-indigo 4px top border (gradient fade). Lucide `percent` icon. Price `1%` in brand indigo with glow. Body as above.
-  - Card 2: accent-indigo top border. Lucide `sparkles` icon. Price `$53.90` in accent indigo. Body + bottom row of three hairline LLM chips: `Anthropic` · `OpenAI` · `OpenRouter`.
+  - Card 2: accent-indigo top border. Lucide `sparkles` icon. Price `+5%` in accent indigo with the same glow treatment as other prices. Body + bottom row of three hairline LLM chips: `Anthropic` · `OpenAI` · `OpenRouter`.
   - Card 3: success-green top border. Lucide `badge-check` icon. Price `$100` in success green. Body + small circular trust-seal glyph in success green.
-- **Closing strip** below cards as full-width glass card:
-  - Left: math row in mono pills connected by subtle arrows: `$50,000` → `×` → `1%` → `=` → `$500`. `$500` has small success-green glow.
-  - Right: italic 16pt muted line about verified-merchant benefits.
+- **Closing strip** below cards as full-width hairline-top glass strip:
+  - Centered italic 16pt muted line about verified-merchant benefits. No math row, no dollar pills.
 - Ambient: "BUSINESS MODEL" at 140pt weight 200 in `rgba(255,255,255,0.03)` behind the card row.
 
 **Tone:** Clean pricing page. Not a table.
@@ -328,7 +387,6 @@ Apply 2–4 per slide. Varies per slide so the deck doesn't look like one wallpa
   - Sub: `Freelance agencies · cross-border B2B · SEA manufacturing`
 - Timeline node 3 label: `Year 1`
   - Sub: `Regional expansion + web3 power-user tier`
-- Credential line (mono, bottom): `18 YEARS in trading, investing, crypto`
 
 **Visual:**
 - Bg: brand-indigo orb top-left + warmth magenta bottom-right. Line grid 48px at 3%, radially masked. Grain 2%.
@@ -338,63 +396,39 @@ Apply 2–4 per slide. Varies per slide so the deck doesn't look like one wallpa
   - Three 64px nodes on the rail: 2px brand-indigo border + glass fill, Lucide icons: `rocket` · `megaphone` · `globe`.
   - Above each node: date label in mono with glowing accent dot.
   - Below each node: glass card (240px wide) with the sub-text, 1-2 micro-bullets, brand-indigo check icon prefix.
-- **Bottom credential line**: `18 YEARS` in brand-indigo mono with glow + caption below. Small Lucide `users` icon left of the number. This is our distribution proof.
 - Ambient: "GO TO MARKET" at 140pt weight 200 in 3% white behind headline.
 
-**Tone:** Practical. Wrapper framing + cofounder credential make the distribution claim concrete.
+**Tone:** Practical. Wrapper framing + timeline does the distribution work.
 
 ---
 
-## Slide 9 · Traction + Team
+## Slide 9 · Team
 
-**Eyebrow:** TRACTION + TEAM
-**Headline:** `Already shipping.`
-
-**Text (verbatim, traction):**
-- `Anchor program on devnet: create_deal, fund_escrow, release_milestone, refund`
-- `Full lifecycle: chat → negotiate → fund → verify → release → complete`
-- `Dual-agent negotiation with BusinessMemory per wallet`
-- `AI Verifier scoring milestone proofs`
-- `Mutual refund via 2-sig partial-sign handoff`
-- `Anthropic direct + OpenRouter supported`
-- Next (accent-indigo icon): `Social wallet + fiat on/off-ramp for web2 onboarding`
+**Eyebrow:** TEAM
+**Headline:** `Two founders. One bet.`
 
 **Text (verbatim, team):**
 - `[Dev name]` — builds AI agents. Previously shipped a DLMM agent that auto-screens, opens, closes positions with self-learning.
-- `[Partner name]` — 18 years in trading, investing, crypto. Direct line to target customer segment.
-
-**Closing line (large, centered):** `Two people. Four weeks. Working product.`
-
-**Top-strip stats bar (full-width, 4 mono blocks):**
-- `4` · Anchor instructions
-- `3` · AI agent roles
-- `2` · founders
-- `4` · weeks
+- `[Partner name]` — direct line to the target customer segment. Long track record in trading and crypto.
 
 **Visual:**
-- Bg: success-green orb top-left at 8% + brand-indigo orb right at 10%. Grain 2%.
-- **Top strip**: four mono stat blocks in a row. Hairline vertical dividers. Each number has subtle brand-indigo glow.
-- **Left column (60%) — traction checklist**:
-  - Each bullet as a faint glass strip (rgba white 2%, 1px top border, 12px padding).
-  - Success-green `check-circle-2` Lucide icon (20px) far left. Instruction names in mono pills inline.
-  - "Next:" bullet uses accent-indigo `arrow-right` icon instead of check.
-- **Right column (40%) — team block**:
-  - Two stacked glass cards.
-  - Each: 96px circular avatar placeholder (2px brand-indigo ring + glow, monogram if no photo) on left. Right: name weight 590, role muted small-caps, 2-line description.
-  - Past-work badge pill: `DLMM agent · self-learning` (Dev), `18 years · trading & crypto` (Partner).
-  - Specialty icon badge: `terminal` (Dev), `trending-up` (Partner).
-- **Closing line strip** (full-width, below columns):
-  - Glass card, 2px gradient top-border (indigo → accent → transparent).
-  - Centered 24–32pt weight 590.
+- Bg: brand-indigo orb top-right at 10% + warmth magenta bottom-left at 8%. Grain 2%. Scanlines at 1.5%.
+- Ambient: "TEAM" at 140pt weight 200 in 3% white behind the card row (replaces the old "TRACTION + TEAM" texture).
+- **Two founder cards as hero row** (centered, equal width, generous margin between and on both sides):
+  - Each card ~44% of content width, vertically stacked elements: 96px circular avatar placeholder (2px brand-indigo ring + glow, monogram if no photo) top-left inside the card, name weight 590 right of avatar, role muted small-caps below name, 3-line description below.
+  - Past-work badge pill at the bottom of each card: `DLMM agent · self-learning` (Dev), `trading · crypto · DLMM` (Partner).
+  - Specialty icon badge top-right of card: `terminal` (Dev), `trending-up` (Partner).
+  - Monogram background texture: large letter (`T` for dev, `D` for partner, or initials of placeholder names) at 3% opacity behind each card. Anchors the card, adds depth without photo dependency.
+- No stats bar, no checklist, no closing line. Contact info lives on Slide 11.
 
-**Tone:** Evidentiary + human. Stats hook, checklist proves, team personalizes.
+**Tone:** Human. Two faces carry the whole slide.
 
 ---
 
-## Slide 10 · Ask + Roadmap
+## Slide 10 · Roadmap
 
-**Eyebrow:** THE ASK
-**Headline:** `What we're building next.`
+**Eyebrow:** WHAT'S NEXT
+**Headline:** `Where we go from here.`
 
 **Roadmap (verbatim, 4 stations):**
 - `Q2 2026` — Mainnet + web2 wrapper (social wallet, fiat ramps)
@@ -402,42 +436,49 @@ Apply 2–4 per slide. Varies per slide so the deck doesn't look like one wallpa
 - `Q4 2026` — Cross-border escrow, multi-currency routing
 - `2027` — Portable on-chain reputation NFTs
 
-**Ask (verbatim, 3 cards):**
-- Card 1 heading: `Capital`
-  - Hero: `$250K`
-  - Caption: `pre-seed`
-  - Milestones: `100 active businesses · $1M TVL`
-- Card 2 heading: `Ecosystem partners`
-  - Body: `Stablecoin issuers, wallets, fiat ramps.`
-- Card 3 heading: `Design partners`
-  - Body: `SEA B2B verticals: manufacturing, logistics, agri-trade.`
+**Visual:**
+- Bg: accent-indigo orb top-right + brand-indigo bottom-left + subtle magenta warmth center. Dot grid at 3%. Grain 2%.
+- Top ~15% of slide: eyebrow + headline.
+- Middle ~70% — **Roadmap timeline, hero of the slide:**
+  - Horizontal rail, 4 stations evenly spaced.
+  - Rail: 3px gradient bar (transparent → success green → brand indigo → accent indigo → dashed fade at far right), slightly bowed upward (growth trajectory). Dashed treatment kicks in after Q3 to signal "future, not yet earned."
+  - Stations zigzag above/below rail. Each 200×150 glass card (larger than before since roadmap now owns more vertical):
+    - Q2 2026 (above): `rocket` icon + heading + sub-line. Small success-green `check-circle-2` badge in corner suggesting "nearest to shipped."
+    - Q3 2026 (below): `scale` icon + heading + sub-line. Neutral brand indigo.
+    - Q4 2026 (above): `globe` icon + heading + sub-line. Station card uses 1.5px dashed border (future treatment).
+    - 2027 (below): `badge-check` icon + heading + sub-line. Station card uses 1.5px dashed border + 80% opacity.
+  - Dashed vertical connector + indigo dot on rail for each station. Stations glow progressively brighter left-to-right, then fade into dashed treatment on the right.
+- Bottom ~15%: breathing whitespace. No ornament, no pills, no QR. The bookend lives on Slide 11.
 
-**Footer (mono):** `Contact: [email] · GitHub: github.com/Toderr/sealed · Live demo: [url]`
+**Tone:** Forward-looking, quiet. Roadmap carries the slide; closing beat lands on Slide 11.
 
-**Final ornament (bottom-center):** Inline Sealed lockup — mark at ~28pt (ring on) next to wordmark weight 590 small, rendered in `#f7f8f8`. Italic tagline below: *People break promises. Code doesn't.* Subtle indigo underline under tagline.
+---
+
+## Slide 11 · Closing
+
+**Eyebrow:** (none)
+
+**Text (verbatim):**
+- Stacked lockup: Sealed mark (120–160pt, ring on) above wordmark `SEALED` (~180pt, weight 590, letter-spacing −0.03em), both in `#f7f8f8`. Same treatment as Slide 1.
+- Italic tagline: *People break promises. Code doesn't.*
+- Hairline contact rail (mono, 3 pills, centered, equal spacing):
+  - `[email]` with `mail` icon
+  - `github.com/Toderr/sealed` with GitHub icon
+  - `sealed-nine.vercel.app` with `globe` icon
+- Optional bottom-right: 60×60 QR linking to live demo.
 
 **Visual:**
-- Bg: accent-indigo orb top-right + brand-indigo bottom-left + subtle magenta warmth center. Dot grid at 3% for "scaffolding for what's next". Grain 2%.
-- **Top half — Roadmap timeline:**
-  - Horizontal rail, 4 stations evenly spaced.
-  - Rail: 3px gradient bar (transparent → brand indigo → accent → success → transparent), slightly bowed upward (growth trajectory).
-  - Stations zigzag above/below rail. Each 160×120 glass card:
-    - Q2 (above): `rocket` icon + heading + sub-line
-    - Q3 (below): `scale` icon + heading + sub-line
-    - Q4 (above): `globe` icon + heading + sub-line
-    - 2027 (below): `badge-check` icon + heading + sub-line
-  - Dashed vertical connector + indigo dot on rail. Stations glow progressively brighter left-to-right.
-- **Divider:** hairline horizontal with "THE ASK" eyebrow centered.
-- **Bottom half — Three ask cards** in equal columns:
-  - Card 1: brand-indigo top border. `banknote` icon. `$250K` oversized mono with strong indigo glow. Two hairline milestone pills.
-  - Card 2: accent-indigo top border. `network` icon. Logo strip mini (monochrome): `Circle · Phantom · Helius · MoonPay`.
-  - Card 3: success-green top border. `handshake` icon. Three tiny industry glyphs bottom: factory · truck · leaf.
-- **Footer row** (full-width, below cards):
-  - Three contact pills: `[email]` with mail icon · `github.com/Toderr/sealed` with GitHub icon · `[url]` with globe icon. Mono, hairline, glass fill.
-  - Far right: 60×60 QR linking to live demo.
-- **Final ornament**: inline Sealed lockup (mark ~28pt ring-on + wordmark weight 590) bottom-center, italic tagline beneath with subtle indigo underline.
+- Bg mirrors Slide 1: triple gradient orb (brand indigo top-left, accent indigo bottom-right, magenta warmth center behind lockup). 200px blur. Grain 2%. 4–8 floating brand-indigo particles (2–4px) in negative space — quieter than Slide 1.
+- Diagonal light sweep (from Ambient library) at 4% opacity, top-left to bottom-right.
+- Concentric orbit rings (2–3 at 1px, 2–4% opacity) behind the Sealed mark — subtle halo.
+- Stacked lockup optically centered (nudge up ~5% from geometric center so tagline + contact rail get room).
+- Italic tagline: 28–32pt muted, subtle brand-indigo gradient underline beneath (fades transparent at both ends).
+- **Endmark glyph** below tagline: 40px horizontal 1px bar with centered 4px brand-indigo dot. Book-ending typographic mark, signals "this is the end."
+- Contact rail in the bottom third: hairline glass strip, three mono pills with stroked icons, equal spacing, centered.
+- QR: optional, bottom-right corner, 60×60 hairline border. Skip if it fights the breathing room (design judgment call).
+- Top-right: same `devnet` pill with pulsing green dot as Slide 1 (consistency marker).
 
-**Tone:** Forward-looking, inviting. Roadmap feels earned; ask scoped; close echoes the open.
+**Tone:** Quiet, confident bookend. Breathes harder than Slide 1 — the exhale after the roadmap.
 
 ---
 
@@ -450,7 +491,8 @@ If a specific slide needs another pass, these are the highest-leverage prompts t
 3. **"Slide 4: screenshot grid is hero. No bottom strip at all."**
 4. **"Slide 6: pull-quote should dominate. Comparison panel is evidence, not the point."**
 5. **"Slide 8: timeline should feel horizontal and light. The wrapper pills on top are the real insight, not the dates."**
-6. **"Slide 10: roadmap should feel optimistic but not loud. Ask cards are the real focus."**
+6. **"Slide 10: roadmap is the whole slide; let it breathe. Slide 11 is the bookend."**
+7. **"Slide 11: bookend to Slide 1. Stacked lockup dominates; contact rail understated. Do not add any other text."**
 
 ---
 
@@ -465,6 +507,12 @@ Before exporting, check:
 - [ ] Web2 / Web3 stat columns on Slide 2 are symmetric.
 - [ ] No emoji as icons. Lucide stroked SVG only.
 - [ ] Contrast passes 7:1 (WCAG AAA).
-- [ ] Placeholders intact: `[Dev name]`, `[Partner name]`, `[email]`, `[url]`, screenshot frames on Slide 4.
+- [ ] Placeholders intact: `[Dev name]`, `[Partner name]`, `[email]`, screenshot frames on Slide 4. (`[url]` removed — live demo URL is baked into Slide 11's contact rail as `sealed-nine.vercel.app`.)
+- [ ] No `$17B` crypto-scam stat anywhere in the brief.
+- [ ] No `18 YEARS` credential anywhere in the brief.
+- [ ] No `$250K` ask figure anywhere in the brief.
+- [ ] Slide counter `NN / 11` present bottom-left on all 11 slides.
+- [ ] Progress rail visible on right edge of every slide with current-slide dot glowing.
+- [ ] Ambient element count ≤ 4 per slide (density budget still honored).
 
 **Export formats:** PDF (email) · PPTX (speaker notes + last-mile edits) · individual PNGs per slide (Colosseum submission).

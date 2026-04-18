@@ -23,11 +23,11 @@ AI escrow for business deals. Any currency. Any chain.
 
 **Web2.** Freelancers lost **$15B** to non-payment in 2025. **58%** face unpaid invoices. **79%** of companies were targeted by payment fraud in 2024.
 
-**Web3.** Crypto scams took **$17B** in 2025. Impersonation fraud up **1,400%**. AI-driven scams are 4.5× more profitable than traditional ones.
+**Web3.** Bare escrow primitives exist, but none of them cover the full B2B deal lifecycle. There is no structured deal layer for on-chain agreements: no negotiation, no milestone verification, no enforceable "did it ship?" step. Escrow locks funds. It does not enforce promises.
 
 One root cause: no enforceable deal layer.
 
-*Sources: Flexable 2025 Freelance Payment Report · Chainalysis 2026 Crypto Crime Report.*
+*Source: Flexable 2025 Freelance Payment Report.*
 
 ---
 
@@ -69,11 +69,13 @@ Full walkthrough in [DEMO.md](./DEMO.md) and the technical video.
 
 **$226B** in stablecoin B2B payments in 2025, up **733% YoY** (McKinsey/Artemis, Feb 2026).
 
-**$17B** lost to crypto scams in 2025 = demand for verifiable trust (Chainalysis 2026).
+**Deal layer missing.** No on-chain standard for structured B2B agreements. Escrow primitives exist, but nothing wraps chat → structure → negotiate → verify → release into a single lifecycle.
 
 **AI agents** finally good enough to turn messy business intent into structured contracts.
 
 The plumbing is ready. The trust layer isn't. Yet.
+
+*Source: McKinsey / Artemis, Feb 2026.*
 
 ---
 
@@ -99,10 +101,10 @@ Our wedge is AI-first. Escrow is the settlement rail underneath.
 | Stream | Price | Why |
 |---|---|---|
 | **Platform fee** | **1%** of deal value | Pays compute + infra from deal one |
-| **Premium AI** | **$53.90/mo** | Bring your own LLM, or use ours |
+| **Premium AI** | **+5%** markup on LLM provider pricing | Any provider (Anthropic, OpenAI, OpenRouter) with pass-through billing |
 | **Verified merchant** | **$100** one-time | Filter for serious parties |
 
-One **$50,000** deal = **$500** platform fee. Verified merchants get premium placement and a trust badge other parties actually look for.
+Verified merchants get premium placement and a trust badge other parties actually look for.
 
 ---
 
@@ -110,7 +112,7 @@ One **$50,000** deal = **$500** platform fee. Verified merchants get premium pla
 
 ### Hide the crypto. Keep the guarantees.
 
-Most businesses don't hold crypto. Our cofounder's 18-year network is web2. So we built the wrapper.
+Most businesses don't hold crypto. So we built the wrapper.
 
 - **Email / Google login** via social wallet. No seed phrases.
 - **Pay in local currency.** Auto on/off-ramp: IDR, USD, and more via Xendit, MoonPay, Transak.
@@ -124,44 +126,29 @@ Most businesses don't hold crypto. Our cofounder's 18-year network is web2. So w
 
 ---
 
-## Slide 9 · Traction + Team
+## Slide 9 · Team
 
-### Already shipping.
-
-- Anchor program on devnet: `create_deal`, `fund_escrow`, `release_milestone`, `refund`
-- Full deal lifecycle working end-to-end: chat → negotiate → fund → proof → verify → release → complete
-- Dual-agent negotiation engine with BusinessMemory per wallet
-- AI Verifier scoring milestone proofs
-- Mutual refund via 2-sig partial-sign handoff. No trusted relay.
-- Anthropic direct + OpenRouter both supported
-
-**Next:** Social wallet + fiat on/off-ramp for web2 onboarding.
-
----
-
-### Team
+### Two founders. One bet.
 
 - **[Dev name]** builds AI agents. Previously shipped a DLMM agent that auto-screens, opens, and closes positions with self-learning.
-- **[Partner name]** has 18 years in trading, investing, crypto, and DLMM valuation. Direct line to target customer segment.
-
-Two people. Four weeks. Working product on mainnet-adjacent infrastructure.
+- **[Partner name]** has direct lines into the target customer segment and a long track record in trading and crypto.
 
 ---
 
-## Slide 10 · Ask + Roadmap
+## Slide 10 · Roadmap
 
-### What we're building next.
+### Where we go from here.
 
 **Q2 2026:** Mainnet launch + web2 wrapper (social wallet, fiat on/off-ramp).
 **Q3 2026:** Dispute resolution layer. Optional arbitrator network.
 **Q4 2026:** Multi-currency cross-border escrow.
 **2027:** Portable on-chain reputation NFTs.
 
-### The ask
+---
 
-- **$250K pre-seed** to reach 100 active businesses and $1M TVL.
-- **Ecosystem partners:** stablecoin issuers, wallet providers, fiat ramps.
-- **Design partners:** SEA B2B verticals (manufacturing, logistics, agri-trade).
+## Slide 11 · Closing
+
+*People break promises. Code doesn't.*
 
 **Contact:** [email]
 **GitHub:** github.com/Toderr/sealed
@@ -175,7 +162,7 @@ Two people. Four weeks. Working product on mainnet-adjacent infrastructure.
 "Every day, billions of dollars in business deals close on nothing but a handshake. When it works, it's beautiful. When it breaks, there's no recourse."
 
 **0:15–0:45 · Problem**
-"Freelancers lost fifteen billion to broken promises last year. Crypto users lost seventeen billion to scams. Two different worlds, one broken trust layer."
+"Freelancers lost fifteen billion to broken promises last year. On-chain, there's no structured deal layer at all — escrow primitives lock funds, but they don't negotiate terms, verify delivery, or enforce promises. Two different worlds, one missing trust layer."
 
 **0:45–1:15 · Solution**
 "Sealed is an AI agent that runs the deal table. Describe the deal in plain language. Three agents handle structuring, negotiation, and delivery verification. Funds lock on Solana, release on milestone."
@@ -184,7 +171,7 @@ Two people. Four weeks. Working product on mainnet-adjacent infrastructure.
 [Screen recording: chat, deal preview, wallet sign, on-chain confirmation, milestone release]
 
 **2:15–2:45 · Why us**
-"We hide the crypto behind email login and auto on/off-ramp, so any business can use Sealed, not just web3 natives. My cofounder has eighteen years in business networks that never touched a DEX. That's our wedge: the crypto is invisible plumbing; the product is trust."
+"We hide the crypto behind email login and auto on/off-ramp, so any business can use Sealed, not just web3 natives. Our cofounder brings deep networks of business owners who've never touched a DEX. That's our wedge: the crypto is invisible plumbing; the product is trust."
 
 **2:45–3:00 · Close**
 "People break promises. Code doesn't. Sealed makes the deal table that enforces itself, for every business that still runs on handshakes."
@@ -197,7 +184,7 @@ Two people. Four weeks. Working product on mainnet-adjacent infrastructure.
 - [ ] 3-min pitch video uploaded
 - [ ] Under-3-min technical walkthrough uploaded
 - [x] Live demo URL (Vercel): sealed-nine.vercel.app
-- [ ] Contact email filled in Slide 10
+- [ ] Contact email filled in Slide 11
 - [ ] Team bios: replace `[Dev name]` + `[Partner name]` in Slide 9
 - [ ] Track selection on Colosseum portal
 - [ ] Screenshot grid for Slide 4
