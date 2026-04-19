@@ -181,8 +181,8 @@ body {
 /* Side annotation */
 .anno {
   position: absolute; font-family: var(--font-mono);
-  font-style: italic; font-size: 11px; color: var(--muted);
-  opacity: 0.55;
+  font-style: italic; font-size: 13px; color: var(--muted);
+  opacity: 0.7;
 }
 
 /* Devnet pill */
@@ -190,7 +190,7 @@ body {
   position: absolute; top: 40px; right: 88px; display: inline-flex; gap: 10px;
   align-items: center; padding: 8px 16px; border-radius: 999px;
   border: 1px solid var(--border); background: rgba(255,255,255,0.02);
-  font-family: var(--font-mono); font-size: 12px; color: var(--muted);
+  font-family: var(--font-mono); font-size: 13px; color: var(--muted);
   letter-spacing: 0.1em; text-transform: uppercase;
 }
 .devnet::before {
@@ -263,7 +263,7 @@ h3.subhead {
   border: 1px solid var(--border); background: var(--glass);
   font-size: 13px; color: var(--text);
 }
-.pill.mono { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.02em; }
+.pill.mono { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.02em; }
 
 .divider {
   height: 1px; background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
@@ -330,7 +330,7 @@ h3.subhead {
 .browser-url {
   flex: 1; padding: 6px 12px; border-radius: 6px;
   background: rgba(255,255,255,0.04); border: 1px solid var(--border);
-  font-family: var(--font-mono); font-size: 12px; color: var(--muted);
+  font-family: var(--font-mono); font-size: 13px; color: var(--muted);
   display: inline-flex; gap: 8px; align-items: center;
 }
 
@@ -439,7 +439,7 @@ h3.subhead {
     </div>
 
     <!-- footer mono strip -->
-    <div class="mono" style="position:absolute; bottom:60px; left:48px; font-size:11px; color:var(--muted); letter-spacing:0.02em;">
+    <div class="mono" style="position:absolute; bottom:60px; left:48px; font-size:13px; color:var(--muted); letter-spacing:0.02em;">
       Program ID&nbsp; 3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ &nbsp;·&nbsp; Solana devnet
     </div>
 
@@ -520,7 +520,7 @@ h3.subhead {
     </div>
 
     <!-- sources -->
-    <div class="mono" style="position:absolute; bottom:40px; right:48px; font-size:10px; color:var(--muted);">Source: Flexable 2025</div>
+    <div class="mono" style="position:absolute; bottom:40px; right:48px; font-size:13px; color:var(--muted);">Source: Flexable 2025</div>
 
     <!-- anno -->
     <div class="anno" style="top:50%; right:24px; transform:translateY(-50%) rotate(-90deg); transform-origin:center;">// root cause, not symptom</div>
@@ -658,46 +658,20 @@ h3.subhead {
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           sealed-nine.vercel.app
         </div>
-        <span class="mono" style="font-size:11px; color:var(--dim);">devnet</span>
+        <span class="mono" style="font-size:13px; color:var(--dim);">devnet</span>
       </div>
-      <!-- inner grid -->
-      <div style="display:grid; grid-template-columns:2fr 1fr 1fr; grid-template-rows:1fr 1fr; gap:12px; padding:16px; height:calc(100% - 46px);">
-        <!-- hero (2x2) -->
-        <div style="grid-column:1; grid-row:1 / span 2; border-radius:10px; border:1px solid var(--border); background:linear-gradient(135deg, rgba(94,106,210,0.08), rgba(113,112,255,0.03)); padding:24px; display:flex; flex-direction:column; justify-content:space-between; box-shadow:inset 0 0 60px rgba(94,106,210,0.08);">
-          <div style="display:flex; align-items:center; justify-content:space-between;">
-            <div class="eyebrow brand">CHAT</div>
-            <svg class="icon icon-sm" style="color:var(--muted)" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <!-- real product screenshot from localhost:3000/app -->
+      <div style="position:relative; height:calc(100% - 46px); overflow:hidden; background:#08090a;">
+        <img src="screenshot-tmp/app-wide.png" alt="Sealed agent interface — Start a new deal"
+             style="display:block; width:100%; height:100%; object-fit:cover; object-position:center top;"/>
+        <!-- caption strip -->
+        <div style="position:absolute; left:0; right:0; bottom:0; padding:14px 24px; display:flex; justify-content:space-between; align-items:center; background:linear-gradient(180deg, rgba(8,9,10,0) 0%, rgba(8,9,10,0.92) 60%); backdrop-filter:blur(8px);">
+          <div class="mono" style="font-size:14px; color:var(--text);">
+            <span class="brand">·</span>&nbsp;structurer&nbsp;&nbsp;
+            <span class="brand">·</span>&nbsp;negotiator&nbsp;&nbsp;
+            <span class="brand">·</span>&nbsp;verifier
           </div>
-          <div>
-            <div style="font-size:28px; font-weight:590; letter-spacing:-0.015em;">Sealed Agent</div>
-            <div class="muted" style="margin-top:12px; font-size:15px; max-width:420px;">"Draft an escrow for 500 USDC to settle the logo package. Release on delivery."</div>
-          </div>
-          <div style="display:flex; gap:8px;">
-            <div class="pill mono" style="font-size:11px;"><span class="brand">·</span> structurer</div>
-            <div class="pill mono" style="font-size:11px;"><span class="brand">·</span> negotiator</div>
-            <div class="pill mono" style="font-size:11px;"><span class="brand">·</span> verifier</div>
-          </div>
-        </div>
-        <!-- four small -->
-        <div style="border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.02); padding:18px; display:flex; flex-direction:column; justify-content:space-between;">
-          <div class="eyebrow">NEGOTIATE</div>
-          <svg class="icon icon-lg" style="color:var(--brand)" viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></svg>
-          <div class="muted" style="font-size:12px;">terms agreed in 2 messages</div>
-        </div>
-        <div style="border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.02); padding:18px; display:flex; flex-direction:column; justify-content:space-between;">
-          <div class="eyebrow">FUND</div>
-          <svg class="icon icon-lg" style="color:var(--brand)" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          <div class="muted mono" style="font-size:12px;">500 USDC locked</div>
-        </div>
-        <div style="border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.02); padding:18px; display:flex; flex-direction:column; justify-content:space-between;">
-          <div class="eyebrow">VERIFY</div>
-          <svg class="icon icon-lg" style="color:var(--brand)" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
-          <div class="muted" style="font-size:12px;">proof review via AI</div>
-        </div>
-        <div style="border-radius:10px; border:1px solid var(--border); background:rgba(74,222,128,0.04); padding:18px; display:flex; flex-direction:column; justify-content:space-between;">
-          <div class="eyebrow success">RELEASE</div>
-          <svg class="icon icon-lg" style="color:var(--success)" viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
-          <div class="mono success" style="font-size:12px;">settled · on-chain</div>
+          <div class="muted mono" style="font-size:13px;">live screenshot · sealed-nine.vercel.app/app</div>
         </div>
       </div>
     </div>
@@ -813,7 +787,7 @@ h3.subhead {
     <!-- timeline axis -->
     <div style="position:absolute; bottom:220px; left:96px; right:96px; height:40px;">
       <div style="height:1px; background:rgba(255,255,255,0.08); margin-top:8px;"></div>
-      <div class="mono" style="display:flex; justify-content:space-between; font-size:10px; color:var(--dim); margin-top:6px;">
+      <div class="mono" style="display:flex; justify-content:space-between; font-size:13px; color:var(--dim); margin-top:6px;">
         <span>'23</span><span>'24</span><span class="muted">'25</span><span class="muted">'26</span><span>'27</span>
       </div>
     </div>
@@ -827,7 +801,7 @@ h3.subhead {
       </div>
     </div>
 
-    <div class="mono" style="position:absolute; bottom:40px; right:48px; font-size:10px; color:var(--muted);">Source: McKinsey Feb 2026</div>
+    <div class="mono" style="position:absolute; bottom:40px; right:48px; font-size:13px; color:var(--muted);">Source: McKinsey Feb 2026</div>
 
     <div class="counter">05 / 11</div>
     <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
@@ -883,7 +857,7 @@ h3.subhead {
             <span>Release</span>
           </div>
         </div>
-        <div class="mono" style="position:absolute; bottom:20px; right:24px; font-size:11px; color:var(--muted);">1 of 4 covered</div>
+        <div class="mono" style="position:absolute; bottom:20px; right:24px; font-size:13px; color:var(--muted);">1 of 4 covered</div>
       </div>
 
       <div class="divider-v"></div>
@@ -895,31 +869,31 @@ h3.subhead {
           <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:10px; background:rgba(94,106,210,0.1); border:1px solid rgba(94,106,210,0.2);">
             <svg class="icon icon-sm" style="color:var(--success)" viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
             <span>Structurer</span>
-            <span class="muted mono" style="margin-left:auto; font-size:11px;">parses</span>
+            <span class="muted mono" style="margin-left:auto; font-size:13px;">parses</span>
           </div>
           <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:10px; background:rgba(94,106,210,0.1); border:1px solid rgba(94,106,210,0.2);">
             <svg class="icon icon-sm" style="color:var(--success)" viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
             <span>Negotiator</span>
-            <span class="muted mono" style="margin-left:auto; font-size:11px;">terms</span>
+            <span class="muted mono" style="margin-left:auto; font-size:13px;">terms</span>
           </div>
           <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:10px; background:rgba(94,106,210,0.1); border:1px solid rgba(94,106,210,0.2);">
             <svg class="icon icon-sm" style="color:var(--success)" viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
             <span>Verifier</span>
-            <span class="muted mono" style="margin-left:auto; font-size:11px;">proof</span>
+            <span class="muted mono" style="margin-left:auto; font-size:13px;">proof</span>
           </div>
           <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:10px; background:rgba(94,106,210,0.1); border:1px solid rgba(94,106,210,0.2);">
             <svg class="icon icon-sm" style="color:var(--success)" viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
             <span>On-chain release</span>
-            <span class="muted mono" style="margin-left:auto; font-size:11px;">settled</span>
+            <span class="muted mono" style="margin-left:auto; font-size:13px;">settled</span>
           </div>
         </div>
-        <div class="mono brand" style="position:absolute; bottom:20px; right:24px; font-size:11px;">4 of 4 covered</div>
+        <div class="mono brand" style="position:absolute; bottom:20px; right:24px; font-size:13px;">4 of 4 covered</div>
       </div>
     </div>
 
     <!-- gauge hero bar -->
     <div style="position:absolute; bottom:156px; left:160px; right:160px;">
-      <div class="mono" style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:8px;">
+      <div class="mono" style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px;">
         <span class="danger">Bare escrow · 10%</span>
         <span class="brand">Sealed · 90%</span>
       </div>
@@ -991,9 +965,9 @@ h3.subhead {
           Any provider <span class="muted">·</span> Anthropic, OpenAI, OpenRouter. Pass-through + 5%.
         </div>
         <div style="display:flex; gap:6px; margin-top:16px; flex-wrap:wrap;">
-          <span class="pill mono" style="font-size:10px; padding:4px 10px;">Anthropic</span>
-          <span class="pill mono" style="font-size:10px; padding:4px 10px;">OpenAI</span>
-          <span class="pill mono" style="font-size:10px; padding:4px 10px;">OpenRouter</span>
+          <span class="pill mono" style="font-size:13px; padding:4px 10px;">Anthropic</span>
+          <span class="pill mono" style="font-size:13px; padding:4px 10px;">OpenAI</span>
+          <span class="pill mono" style="font-size:13px; padding:4px 10px;">OpenRouter</span>
         </div>
       </div>
 
@@ -1211,8 +1185,8 @@ h3.subhead {
         </div>
 
         <div style="position:absolute; bottom:32px; left:44px; right:44px; display:flex; gap:8px; flex-wrap:wrap;">
-          <span class="pill mono" style="font-size:11px; padding:5px 12px;">DLMM agent</span>
-          <span class="pill mono" style="font-size:11px; padding:5px 12px;">self-learning</span>
+          <span class="pill mono" style="font-size:13px; padding:5px 12px;">DLMM agent</span>
+          <span class="pill mono" style="font-size:13px; padding:5px 12px;">self-learning</span>
         </div>
       </div>
 
@@ -1238,9 +1212,9 @@ h3.subhead {
         </div>
 
         <div style="position:absolute; bottom:32px; left:44px; right:44px; display:flex; gap:8px; flex-wrap:wrap;">
-          <span class="pill mono" style="font-size:11px; padding:5px 12px;">trading</span>
-          <span class="pill mono" style="font-size:11px; padding:5px 12px;">crypto</span>
-          <span class="pill mono" style="font-size:11px; padding:5px 12px;">DLMM</span>
+          <span class="pill mono" style="font-size:13px; padding:5px 12px;">trading</span>
+          <span class="pill mono" style="font-size:13px; padding:5px 12px;">crypto</span>
+          <span class="pill mono" style="font-size:13px; padding:5px 12px;">DLMM</span>
         </div>
       </div>
     </div>
@@ -1308,7 +1282,7 @@ h3.subhead {
             <div class="mono" style="font-size:13px; color:var(--success);">Q2 2026</div>
           </div>
           <div style="margin-top:12px; font-size:14px; font-weight:510; line-height:1.4;">Mainnet + web2 wrapper</div>
-          <div class="muted" style="margin-top:6px; font-size:12px;">social wallet, fiat ramps</div>
+          <div class="muted" style="margin-top:6px; font-size:14px;">social wallet, fiat ramps</div>
         </div>
         <!-- connector down -->
         <div style="margin:10px auto 0; width:1px; height:40px; border-left:1px dashed rgba(94,106,210,0.5);"></div>
@@ -1325,7 +1299,7 @@ h3.subhead {
             <div class="mono brand" style="font-size:13px;">Q3 2026</div>
           </div>
           <div style="margin-top:12px; font-size:14px; font-weight:510; line-height:1.4;">Dispute resolution</div>
-          <div class="muted" style="margin-top:6px; font-size:12px;">+ optional arbitrator</div>
+          <div class="muted" style="margin-top:6px; font-size:14px;">+ optional arbitrator</div>
         </div>
       </div>
 
@@ -1337,7 +1311,7 @@ h3.subhead {
             <div class="mono accent" style="font-size:13px;">Q4 2026</div>
           </div>
           <div style="margin-top:12px; font-size:14px; font-weight:510; line-height:1.4;">Cross-border escrow</div>
-          <div class="muted" style="margin-top:6px; font-size:12px;">multi-currency routing</div>
+          <div class="muted" style="margin-top:6px; font-size:14px;">multi-currency routing</div>
         </div>
         <div style="margin:10px auto 0; width:1px; height:40px; border-left:1px dashed rgba(113,112,255,0.35);"></div>
         <div style="margin:0 auto; width:8px; height:8px; border-radius:50%; background:rgba(113,112,255,0.5); border:1px solid var(--accent);"></div>
@@ -1353,7 +1327,7 @@ h3.subhead {
             <div class="mono accent" style="font-size:13px;">2027</div>
           </div>
           <div style="margin-top:12px; font-size:14px; font-weight:510; line-height:1.4;">Reputation NFTs</div>
-          <div class="muted" style="margin-top:6px; font-size:12px;">portable on-chain trust</div>
+          <div class="muted" style="margin-top:6px; font-size:14px;">portable on-chain trust</div>
         </div>
       </div>
     </div>

@@ -26,6 +26,10 @@ test-ledger/
 .DS_Store
 Thumbs.db
 
+# Deck screenshot workspace (keep only the image referenced by Sealed Deck.html)
+screenshot-tmp/*
+!screenshot-tmp/app-wide.png
+
 # Keys (never commit)
 *.json
 !package.json
