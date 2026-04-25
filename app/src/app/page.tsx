@@ -46,7 +46,7 @@ export default function Landing() {
 function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-card-border-subtle bg-panel/85 backdrop-blur-md">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+      <div className="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 h-14 flex items-center justify-between">
         <Link
           href="/"
           className="flex items-center gap-2 group text-primary"
@@ -90,7 +90,7 @@ function SiteHeader() {
 function Hero() {
   return (
     <section className="relative">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-20 sm:pt-28 pb-16 sm:pb-24">
+      <div className="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 pt-10 sm:pt-14 pb-10 sm:pb-14">
         <div className="max-w-3xl">
           <span className="inline-flex items-center gap-2 rounded-full border border-card-border bg-[rgba(255,255,255,0.02)] px-3 py-1 text-[12px] text-foreground"
             style={{ fontWeight: 510 }}
@@ -110,10 +110,8 @@ function Hero() {
             <span className="text-accent"> Seal the deal.</span>
           </h1>
           <p className="mt-6 text-[17px] sm:text-[18px] text-foreground max-w-2xl leading-relaxed">
-            Sealed Agent is an AI agent that represents your business on an on-chain
-            deal table. It negotiates terms, holds escrow, verifies milestones,
-            and releases payment automatically, so deals close without a bank,
-            a lawyer, or a leap of faith.
+            An AI agent negotiates, escrows, and releases payment for your
+            business deals on Solana. No bank. No lawyer. No leap of faith.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row gap-3">
             <Link
@@ -157,12 +155,12 @@ function Stat({
   return (
     <div>
       <dd
-        className="text-[22px] sm:text-2xl text-primary"
+        className="text-[22px] sm:text-2xl text-primary whitespace-nowrap"
         style={{ fontWeight: 590, letterSpacing: "-0.012em" }}
       >
         {value}
       </dd>
-      <dt className="mt-1 text-[11px] uppercase tracking-[0.12em] text-subtle">
+      <dt className="mt-1 text-[11px] uppercase tracking-[0.12em] text-foreground">
         {label}
       </dt>
       <p className="mt-0.5 text-[12px] text-muted">{hint}</p>
@@ -176,7 +174,7 @@ function TrustStrip() {
       className="border-t border-card-border bg-[rgba(255,255,255,0.025)]"
       aria-label="Trust indicators"
     >
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[12px] text-muted">
+      <div className="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-5 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[12px] text-muted">
         <TrustItem
           icon={<LockIcon />}
           text="Funds held in program-derived escrow"
@@ -216,24 +214,24 @@ function TrustItem({
 function Problem() {
   const items = [
     {
-      title: "The buyer transfers first.",
-      body:
-        "Seller delays. Buyer chases on WhatsApp. Bank transfer is already gone. There is no neutral hold.",
+      title: "Buyer pays first.",
+      body: "Seller stalls. The wire is gone, the chase is on WhatsApp.",
+      Art: ArtBuyerPaysFirst,
     },
     {
-      title: "The seller delivers first.",
-      body:
-        "Buyer disputes scope. Invoice sits unpaid for 60 days. Relationship breaks over the final milestone.",
+      title: "Seller delivers first.",
+      body: "Scope dispute. Invoice unpaid 60 days. Relationship broken.",
+      Art: ArtSellerDeliversFirst,
     },
     {
-      title: "Both sides hire lawyers.",
-      body:
-        "For a $20,000 deal, you write a $12,000 contract. Trust is expensive. Enforcement is slower.",
+      title: "Both hire lawyers.",
+      body: "A $12k contract for a $20k deal. Trust priced as overhead.",
+      Art: ArtBothHireLawyers,
     },
   ];
   return (
     <section className="border-t border-card-border">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
+      <div className="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-12 sm:py-16">
         <SectionEyebrow>The problem</SectionEyebrow>
         <h2
           className="mt-3 text-[32px] sm:text-[40px] max-w-3xl text-primary"
@@ -241,17 +239,15 @@ function Problem() {
         >
           Every handshake deal breaks the same way.
         </h2>
-        <p className="mt-4 text-[17px] text-foreground max-w-2xl leading-relaxed">
-          Business owners already use crypto rails for cross-border settlement.
-          They still settle the trust layer on WhatsApp screenshots and transfer
-          slips.
-        </p>
-        <div className="mt-12 grid md:grid-cols-3 gap-3">
+        <div className="mt-10 grid md:grid-cols-3 gap-3">
           {items.map((i) => (
             <div
               key={i.title}
-              className="rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 transition-colors hover:bg-[rgba(255,255,255,0.035)]"
+              className="group rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 transition-colors hover:bg-[rgba(255,255,255,0.035)] overflow-hidden"
             >
+              <div className="h-[104px] -mx-6 -mt-6 mb-5 px-6 flex items-center justify-center border-b border-card-border-subtle bg-[rgba(255,255,255,0.015)] overflow-hidden">
+                <i.Art />
+              </div>
               <h3 className="text-[15px] text-primary" style={h3Style}>
                 {i.title}
               </h3>
@@ -270,37 +266,34 @@ function Solution() {
   const agents = [
     {
       role: "Structurer",
-      icon: <ChatIcon />,
-      title: "Turns a chat into a deal.",
-      body:
-        "Describe what you are buying in plain language. Bahasa Indonesia or English both work. The Structurer extracts counterparty, amount, and milestones, then drafts the escrow.",
+      Art: ArtStructurer,
+      title: "Chat in, deal out.",
+      body: "Describe the deal in plain language. EN or ID. It drafts the escrow.",
     },
     {
       role: "Negotiator",
-      icon: <HandshakeIcon className="w-5 h-5" />,
+      Art: ArtNegotiator,
       title: "Speaks for each side.",
-      body:
-        "Both wallets get their own Negotiator, carrying BusinessMemory (red-lines, style, past deals). The agents counter-offer until they agree, then summarize pros, cons, and risks.",
+      body: "Both wallets get an agent with red-lines and history. They counter until they agree.",
     },
     {
       role: "Verifier",
-      icon: <ShieldCheckIcon />,
+      Art: ArtVerifier,
       title: "Reviews delivery proof.",
-      body:
-        "Seller submits proof per milestone. The Verifier scores confidence and recommends approve, reject, or request clarification. The buyer retains final authority.",
+      body: "Seller uploads proof. Verifier scores it. You approve.",
     },
   ];
   const primitives = [
-    { label: "Program-held escrow", detail: "USDC locked in a PDA vault; neither side withdraws alone." },
-    { label: "Mutual refund", detail: "2-sig partial-sign handoff. No trusted relay, no griefing vector." },
-    { label: "Portable reputation", detail: "Completed-deals counter tracked per wallet, portable to the reputation PDA." },
+    { label: "Program-held escrow", detail: "USDC locked in a PDA. Neither side withdraws alone." },
+    { label: "Mutual refund", detail: "Both sign to unwind. No relay, no griefing." },
+    { label: "Portable reputation", detail: "Completed-deals counter, on-chain per wallet." },
   ];
   return (
     <section
       id="solution"
       className="border-t border-card-border bg-[rgba(255,255,255,0.025)]"
     >
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
+      <div className="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-12 sm:py-16">
         <SectionEyebrow>The three agents</SectionEyebrow>
         <h2
           className="mt-3 text-[32px] sm:text-[40px] max-w-3xl text-primary"
@@ -309,24 +302,21 @@ function Solution() {
           Three AI agents. One on-chain deal table.
         </h2>
         <p className="mt-4 text-[17px] text-foreground max-w-2xl leading-relaxed">
-          Structurer, Negotiator, Verifier: one engine, different roles. Each
-          one does the piece a bank or lawyer would otherwise charge you for.
+          One engine, three roles. Each does the work a bank or lawyer would charge for.
         </p>
         <div className="mt-12 grid md:grid-cols-3 gap-3">
           {agents.map((a) => (
             <article
               key={a.role}
-              className="rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 flex flex-col transition-colors hover:bg-[rgba(255,255,255,0.035)]"
+              className="group rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 flex flex-col transition-colors hover:bg-[rgba(255,255,255,0.035)] overflow-hidden"
             >
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-accent/15 text-accent flex items-center justify-center">
-                  {a.icon}
-                </div>
-                <span className="text-[11px] uppercase tracking-[0.14em] text-subtle">
-                  {a.role}
-                </span>
+              <div className="h-[112px] -mx-6 -mt-6 mb-4 px-6 flex items-center justify-center border-b border-card-border-subtle bg-[rgba(255,255,255,0.02)] overflow-hidden">
+                <a.Art />
               </div>
-              <h3 className="mt-5 text-[15px] text-primary" style={h3Style}>
+              <span className="text-[11px] uppercase tracking-[0.14em] text-foreground">
+                {a.role}
+              </span>
+              <h3 className="mt-2 text-[15px] text-primary" style={h3Style}>
                 {a.title}
               </h3>
               <p className="mt-2 text-[14px] text-foreground leading-relaxed">
@@ -362,40 +352,15 @@ function Solution() {
 
 function HowItWorks() {
   const steps = [
-    {
-      n: "01",
-      title: "Describe.",
-      body:
-        "Open the chat. Say what you are buying, from whom, how to pay it out. The Structurer drafts a deal preview.",
-    },
-    {
-      n: "02",
-      title: "Negotiate.",
-      body:
-        "Each side's Negotiator counter-offers with its BusinessMemory in mind. You accept the final summary when the risks make sense.",
-    },
-    {
-      n: "03",
-      title: "Fund.",
-      body:
-        "Sign once. USDC moves into a program-derived vault on Solana. Neither side can withdraw unilaterally.",
-    },
-    {
-      n: "04",
-      title: "Verify.",
-      body:
-        "Seller uploads proof per milestone. The Verifier reviews it and recommends approve, reject, or request clarification.",
-    },
-    {
-      n: "05",
-      title: "Release.",
-      body:
-        "You confirm delivery in one tap. The contract releases that milestone only, not the whole pot.",
-    },
+    { n: "01", title: "Describe.", body: "Chat the deal in plain language.", Art: ArtStepDescribe },
+    { n: "02", title: "Negotiate.", body: "Agents counter on both sides. You accept the summary.", Art: ArtStepNegotiate },
+    { n: "03", title: "Fund.", body: "One signature. USDC enters the on-chain vault.", Art: ArtStepFund },
+    { n: "04", title: "Verify.", body: "Seller uploads proof. Verifier scores it.", Art: ArtStepVerify },
+    { n: "05", title: "Release.", body: "One tap. That milestone pays. Not the pot.", Art: ArtStepRelease },
   ];
   return (
     <section id="how" className="border-t border-card-border">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
+      <div className="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-12 sm:py-16">
         <SectionEyebrow>How it works</SectionEyebrow>
         <h2
           className="mt-3 text-[32px] sm:text-[40px] max-w-3xl text-primary"
@@ -407,8 +372,11 @@ function HowItWorks() {
           {steps.map((s) => (
             <li
               key={s.n}
-              className="relative rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-5"
+              className="group relative rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-5 overflow-hidden"
             >
+              <div className="h-[68px] -mx-5 -mt-5 mb-3 flex items-center justify-center border-b border-card-border-subtle bg-[rgba(255,255,255,0.02)] overflow-hidden">
+                <s.Art />
+              </div>
               <span
                 className="text-[12px] font-mono text-accent"
                 style={{ fontWeight: 510 }}
@@ -436,9 +404,7 @@ function HowItWorks() {
               Recovery path, also shipped.
             </p>
             <p className="mt-1 text-[13.5px] text-muted leading-relaxed">
-              If the deal unwinds, mutual refund returns the remaining USDC.
-              Both parties partial-sign, no trusted relay, no griefing vector.
-              Pre-funding deals cancel locally without touching the chain.
+              Mutual refund returns the remaining USDC when both sides sign. Pre-funding deals cancel off-chain.
             </p>
           </div>
         </div>
@@ -453,7 +419,7 @@ function TeamTrust() {
       id="team"
       className="border-t border-card-border bg-[rgba(255,255,255,0.025)]"
     >
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28 grid md:grid-cols-2 gap-10 md:gap-16">
+      <div className="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-12 sm:py-16 grid md:grid-cols-2 gap-10 md:gap-16">
         <div>
           <SectionEyebrow>Why trust us</SectionEyebrow>
           <h2
@@ -462,30 +428,13 @@ function TeamTrust() {
           >
             Built by operators who have already lived the problem.
           </h2>
-          <p className="mt-4 text-[17px] text-foreground leading-relaxed">
-            Sealed Agent is built in the open by two founders with direct access to
-            the Indonesian pengusaha community: the people who send real
-            business wires every week and know exactly where handshake deals
-            fail.
-          </p>
-          <dl className="mt-8 space-y-5">
-            <Credential
-              role="Distribution & financial markets"
-              detail="18 years across financial markets and marketplaces. Direct line to the target customer segment."
-            />
-            <Credential
-              role="Marketing & agentic AI"
-              detail="4+ years in digital marketing, ex Marketing Agency CCO. High proficiency in agentic AI. Previously shipped a self-learning DLMM trading agent."
-            />
-          </dl>
         </div>
         <aside className="rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 sm:p-8 flex flex-col">
           <p className="text-[11px] uppercase tracking-[0.14em] text-subtle">
             Verify for yourself
           </p>
           <p className="mt-2 text-[14px] text-foreground">
-            The escrow program is deployed and upgradeable to a multisig
-            authority. Inspect it on Solana devnet:
+            Escrow program live on Solana devnet. Inspect it:
           </p>
           <div className="mt-4 rounded-md border border-card-border-subtle bg-background px-3 py-2.5 font-mono text-[12px] break-all text-foreground">
             {PROGRAM_ID}
@@ -514,34 +463,6 @@ function TeamTrust() {
   );
 }
 
-function Credential({
-  role,
-  detail,
-}: {
-  role: string;
-  detail: string;
-}) {
-  return (
-    <div className="flex gap-4">
-      <span
-        className="mt-1.5 h-1.5 w-1.5 rounded-full bg-accent shrink-0"
-        aria-hidden="true"
-      />
-      <div>
-        <dt
-          className="text-[15px] text-primary"
-          style={{ fontWeight: 510 }}
-        >
-          {role}
-        </dt>
-        <dd className="text-[14px] text-foreground mt-0.5 leading-relaxed">
-          {detail}
-        </dd>
-      </div>
-    </div>
-  );
-}
-
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -559,7 +480,7 @@ function Fact({ label, value }: { label: string; value: string }) {
 function FinalCTA() {
   return (
     <section className="border-t border-card-border">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
+      <div className="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-12 sm:py-16">
         <div className="relative overflow-hidden rounded-2xl border border-card-border bg-[rgba(255,255,255,0.02)] p-8 sm:p-12">
         <div
           className="absolute inset-0 opacity-[0.08] pointer-events-none"
@@ -577,8 +498,7 @@ function FinalCTA() {
             Your next deal closes itself.
           </h2>
           <p className="mt-4 text-[17px] text-foreground leading-relaxed">
-            Sealed Agent is in early access on devnet. Bring a real deal and we will
-            walk you through it.
+            Early access on devnet. Bring a real deal. We&apos;ll walk you through it.
           </p>
           <div className="mt-7 flex flex-col sm:flex-row gap-3">
             <Link
@@ -607,11 +527,11 @@ function FinalCTA() {
 function SiteFooter() {
   return (
     <footer className="border-t border-card-border bg-[rgba(255,255,255,0.025)]">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-[13px] text-muted">
+      <div className="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-[13px] text-muted">
         <div className="flex items-center gap-2 text-primary">
           <SealedMark size={22} ring={false} />
           <span style={{ fontWeight: 510 }}>Sealed Agent</span>
-          <span className="ml-1 text-muted">AI-powered escrow on Solana.</span>
+          <span className="ml-1 text-muted">Escrow on Solana.</span>
         </div>
         <div className="flex items-center gap-5" style={{ fontWeight: 510 }}>
           <Link href="/app" className="hover:text-primary transition-colors">
@@ -716,24 +636,6 @@ function EyeIcon() {
     </svg>
   );
 }
-function ChatIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="w-5 h-5"
-      aria-hidden="true"
-    >
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z" />
-      <path d="M8 9h8" />
-      <path d="M8 13h5" />
-    </svg>
-  );
-}
 function HandshakeIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
     <svg
@@ -750,23 +652,6 @@ function HandshakeIcon({ className = "w-4 h-4" }: { className?: string }) {
       <path d="m14 14 2.5 2.5a1 1 0 0 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 0 1-1.41 0l-2.62-2.62a1 1 0 0 0-1.41 0L3 10.5" />
       <path d="m21 3-3 3" />
       <path d="M3 21v-4.5" />
-    </svg>
-  );
-}
-function ShieldCheckIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="w-5 h-5"
-      aria-hidden="true"
-    >
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
-      <path d="m9 12 2 2 4-4" />
     </svg>
   );
 }
@@ -802,6 +687,257 @@ function ExternalLinkIcon() {
       <path d="M15 3h6v6" />
       <path d="M10 14 21 3" />
       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    </svg>
+  );
+}
+
+/* --- Card illustrations ---
+ * Mono-violet, thin-stroke, GPU-cheap. Trigger: parent card has class `group`.
+ * Tailwind transitions on transform/opacity; looping motions use `.sealed-loop-*`
+ * keyframes from globals.css (paused → running on group-hover, off when reduced).
+ */
+
+const ART_TRACK = "rgba(255,255,255,0.18)";
+const ART_DIM = "rgba(255,255,255,0.28)";
+const ART_LINE = "rgba(255,255,255,0.4)";
+
+function ArtBuyerPaysFirst() {
+  return (
+    <svg viewBox="0 0 220 100" className="w-full h-full" aria-hidden="true">
+      <rect x="14" y="36" width="44" height="28" rx="4" stroke={ART_DIM} fill="none" strokeWidth="1.4" />
+      <line x1="22" y1="46" x2="50" y2="46" stroke={ART_TRACK} strokeWidth="1.4" />
+      <line x1="22" y1="54" x2="42" y2="54" stroke={ART_TRACK} strokeWidth="1.4" />
+      <line x1="64" y1="50" x2="206" y2="50" stroke="rgba(255,255,255,0.1)" strokeWidth="1" strokeDasharray="3 4" />
+      <rect x="170" y="36" width="40" height="28" rx="4" stroke={ART_TRACK} fill="none" strokeWidth="1.2" strokeDasharray="3 3" />
+      <circle
+        cx="74"
+        cy="50"
+        r="6.5"
+        fill="var(--accent)"
+        className="transition-all duration-700 ease-out group-hover:translate-x-[140px] group-hover:opacity-0"
+      />
+    </svg>
+  );
+}
+
+function ArtSellerDeliversFirst() {
+  return (
+    <svg viewBox="0 0 220 100" className="w-full h-full" aria-hidden="true">
+      {/* invoice */}
+      <rect x="22" y="22" width="58" height="60" rx="3" stroke={ART_DIM} fill="none" strokeWidth="1.4" />
+      <line x1="30" y1="34" x2="72" y2="34" stroke={ART_LINE} strokeWidth="1.4" />
+      <line x1="30" y1="42" x2="68" y2="42" stroke={ART_TRACK} strokeWidth="1.4" />
+      <line x1="30" y1="50" x2="60" y2="50" stroke={ART_TRACK} strokeWidth="1.4" />
+      <line x1="30" y1="64" x2="56" y2="64" stroke="rgba(255,255,255,0.12)" strokeWidth="1.4" strokeDasharray="2 3" />
+      <line x1="30" y1="72" x2="64" y2="72" stroke="rgba(255,255,255,0.12)" strokeWidth="1.4" strokeDasharray="2 3" />
+
+      {/* clock */}
+      <circle cx="160" cy="52" r="26" stroke={ART_DIM} fill="none" strokeWidth="1.4" />
+      <circle cx="160" cy="52" r="2" fill="var(--accent)" />
+      <line x1="160" y1="52" x2="170" y2="52" stroke={ART_LINE} strokeWidth="1.4" strokeLinecap="round" />
+      <line
+        x1="160"
+        y1="52"
+        x2="160"
+        y2="32"
+        stroke="var(--accent)"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        className="sealed-loop sealed-loop-spin"
+        style={{ transformBox: "fill-box", transformOrigin: "50% 100%" }}
+      />
+    </svg>
+  );
+}
+
+function ArtBothHireLawyers() {
+  return (
+    <svg viewBox="0 0 220 100" className="w-full h-full" aria-hidden="true">
+      {/* coin (bottom, gets squashed) */}
+      <ellipse
+        cx="110"
+        cy="86"
+        rx="22"
+        ry="9"
+        fill="var(--accent)"
+        className="transition-transform duration-500 ease-out group-hover:scale-y-[0.3]"
+        style={{ transformBox: "fill-box", transformOrigin: "50% 100%" }}
+      />
+      {/* paper stack */}
+      <rect x="68" y="70" width="84" height="9" rx="2" fill="rgba(15,16,17,0.95)" stroke={ART_DIM} strokeWidth="1.2"
+        className="transition-transform duration-500 ease-out group-hover:-translate-y-[6px]" />
+      <rect x="64" y="60" width="92" height="9" rx="2" fill="rgba(15,16,17,0.95)" stroke={ART_DIM} strokeWidth="1.2"
+        className="transition-transform duration-500 ease-out delay-75 group-hover:-translate-y-[16px]" />
+      <rect x="60" y="50" width="100" height="9" rx="2" fill="rgba(15,16,17,0.95)" stroke={ART_DIM} strokeWidth="1.2"
+        className="transition-transform duration-500 ease-out delay-150 group-hover:-translate-y-[28px]" />
+      <rect x="56" y="40" width="108" height="9" rx="2" fill="rgba(15,16,17,0.95)" stroke="var(--accent)" strokeWidth="1.2"
+        className="opacity-0 transition-all duration-500 ease-out delay-200 group-hover:opacity-100 group-hover:-translate-y-[38px]" />
+    </svg>
+  );
+}
+
+function ArtStructurer() {
+  return (
+    <svg viewBox="0 0 220 120" className="w-full h-full" aria-hidden="true">
+      {/* chat bubbles — fade out left */}
+      <g className="transition-all duration-500 ease-out group-hover:opacity-0 group-hover:-translate-x-[16px]">
+        <rect x="18" y="22" width="60" height="18" rx="9" stroke={ART_DIM} fill="rgba(113,112,255,0.08)" strokeWidth="1.2" />
+        <rect x="32" y="50" width="54" height="18" rx="9" stroke={ART_TRACK} fill="rgba(113,112,255,0.06)" strokeWidth="1.2" />
+        <rect x="22" y="78" width="58" height="18" rx="9" stroke={ART_TRACK} fill="rgba(113,112,255,0.04)" strokeWidth="1.2" />
+      </g>
+      {/* arrow */}
+      <path d="M 96 60 L 124 60 M 118 56 L 124 60 L 118 64"
+        stroke="var(--accent)" fill="none" strokeWidth="1.2" strokeLinecap="round"
+        className="opacity-30 transition-opacity duration-500 group-hover:opacity-100" />
+      {/* doc — fade in right */}
+      <g className="opacity-30 transition-all duration-500 ease-out group-hover:opacity-100 group-hover:translate-x-[6px]">
+        <rect x="138" y="18" width="68" height="84" rx="3" stroke={ART_LINE} fill="rgba(113,112,255,0.05)" strokeWidth="1.3" />
+        <line x1="146" y1="32" x2="198" y2="32" stroke="var(--accent)" strokeWidth="1.6" />
+        <line x1="146" y1="44" x2="190" y2="44" stroke={ART_LINE} strokeWidth="1.2" />
+        <line x1="146" y1="54" x2="194" y2="54" stroke={ART_LINE} strokeWidth="1.2" />
+        <line x1="146" y1="64" x2="180" y2="64" stroke={ART_LINE} strokeWidth="1.2" />
+        <line x1="146" y1="82" x2="170" y2="82" stroke={ART_TRACK} strokeWidth="1.2" strokeDasharray="2 3" />
+        <line x1="146" y1="90" x2="186" y2="90" stroke={ART_TRACK} strokeWidth="1.2" strokeDasharray="2 3" />
+      </g>
+    </svg>
+  );
+}
+
+function ArtNegotiator() {
+  return (
+    <svg viewBox="0 0 220 100" className="w-full h-full" aria-hidden="true">
+      <line x1="20" y1="50" x2="200" y2="50" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="2 3" />
+      {/* left arrow */}
+      <path d="M 24 50 L 76 50 M 70 44 L 76 50 L 70 56"
+        stroke="var(--accent)" fill="none" strokeWidth="1.6" strokeLinecap="round"
+        className="transition-transform duration-700 ease-in-out group-hover:translate-x-[26px]" />
+      {/* right arrow */}
+      <path d="M 196 50 L 144 50 M 150 44 L 144 50 L 150 56"
+        stroke="var(--accent)" fill="none" strokeWidth="1.6" strokeLinecap="round"
+        className="transition-transform duration-700 ease-in-out group-hover:-translate-x-[26px]" />
+      {/* meeting dot */}
+      <circle
+        cx="110"
+        cy="50"
+        r="6"
+        fill="var(--accent)"
+        className="scale-0 transition-transform duration-300 ease-out delay-500 group-hover:scale-100"
+        style={{ transformBox: "fill-box", transformOrigin: "center" }}
+      />
+    </svg>
+  );
+}
+
+function ArtVerifier() {
+  return (
+    <svg viewBox="0 0 220 120" className="w-full h-full" aria-hidden="true">
+      <rect x="64" y="14" width="92" height="92" rx="3" stroke={ART_LINE} fill="rgba(113,112,255,0.04)" strokeWidth="1.3" />
+      <line x1="74" y1="28" x2="146" y2="28" stroke={ART_LINE} strokeWidth="1.2" />
+      <line x1="74" y1="38" x2="138" y2="38" stroke={ART_DIM} strokeWidth="1.2" />
+      <line x1="74" y1="48" x2="142" y2="48" stroke={ART_DIM} strokeWidth="1.2" />
+      <circle
+        cx="110"
+        cy="78"
+        r="18"
+        stroke="var(--accent)"
+        fill="rgba(113,112,255,0.04)"
+        strokeWidth="1.4"
+        className="opacity-50 transition-opacity duration-500 group-hover:opacity-100"
+      />
+      <path
+        d="M 100 78 L 108 86 L 122 72"
+        stroke="var(--accent)"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+        pathLength={1}
+        strokeDasharray={1}
+        strokeDashoffset={1}
+        className="transition-[stroke-dashoffset] duration-700 ease-out delay-200 group-hover:[stroke-dashoffset:0]"
+      />
+    </svg>
+  );
+}
+
+function ArtStepDescribe() {
+  return (
+    <svg viewBox="0 0 160 60" className="w-full h-full" aria-hidden="true">
+      <line x1="20" y1="20" x2="100" y2="20" stroke={ART_LINE} strokeWidth="1.6"
+        className="scale-x-0 transition-transform duration-500 ease-out group-hover:scale-x-100"
+        style={{ transformBox: "fill-box", transformOrigin: "left center" }} />
+      <line x1="20" y1="32" x2="120" y2="32" stroke={ART_DIM} strokeWidth="1.6"
+        className="scale-x-0 transition-transform duration-500 ease-out delay-150 group-hover:scale-x-100"
+        style={{ transformBox: "fill-box", transformOrigin: "left center" }} />
+      <line x1="20" y1="44" x2="80" y2="44" stroke={ART_DIM} strokeWidth="1.6"
+        className="scale-x-0 transition-transform duration-500 ease-out delay-300 group-hover:scale-x-100"
+        style={{ transformBox: "fill-box", transformOrigin: "left center" }} />
+      <line x1="124" y1="40" x2="124" y2="48" stroke="var(--accent)" strokeWidth="1.6" className="sealed-loop-blink" />
+    </svg>
+  );
+}
+
+function ArtStepNegotiate() {
+  return (
+    <svg viewBox="0 0 160 60" className="w-full h-full" aria-hidden="true">
+      <line x1="40" y1="30" x2="120" y2="30" stroke="rgba(255,255,255,0.1)" strokeWidth="1" strokeDasharray="2 3" />
+      <circle cx="40" cy="30" r="5" fill="var(--accent)" className="sealed-loop sealed-loop-png-r" />
+      <circle cx="120" cy="30" r="5" fill="var(--accent)" className="sealed-loop sealed-loop-png-l" />
+    </svg>
+  );
+}
+
+function ArtStepFund() {
+  return (
+    <svg viewBox="0 0 160 80" className="w-full h-full" aria-hidden="true">
+      <rect x="58" y="38" width="44" height="34" rx="3" stroke={ART_LINE} fill="rgba(113,112,255,0.05)" strokeWidth="1.4" />
+      <circle cx="80" cy="56" r="5" stroke={ART_DIM} fill="none" strokeWidth="1.2" />
+      <line x1="72" y1="38" x2="88" y2="38" stroke="var(--accent)" strokeWidth="2" />
+      <circle
+        cx="80"
+        cy="14"
+        r="5"
+        fill="var(--accent)"
+        className="transition-all duration-700 ease-in group-hover:translate-y-[28px] group-hover:opacity-0"
+      />
+    </svg>
+  );
+}
+
+function ArtStepVerify() {
+  return (
+    <svg viewBox="0 0 160 80" className="w-full h-full overflow-hidden" aria-hidden="true">
+      <rect x="50" y="14" width="60" height="56" rx="3" stroke={ART_LINE} fill="none" strokeWidth="1.3" />
+      <line x1="58" y1="26" x2="100" y2="26" stroke={ART_LINE} strokeWidth="1.2" />
+      <line x1="58" y1="36" x2="92" y2="36" stroke={ART_DIM} strokeWidth="1.2" />
+      <line x1="58" y1="46" x2="98" y2="46" stroke={ART_DIM} strokeWidth="1.2" />
+      <line x1="58" y1="56" x2="86" y2="56" stroke={ART_DIM} strokeWidth="1.2" />
+      <rect x="50" y="14" width="60" height="2" fill="var(--accent)" className="sealed-loop sealed-loop-scan" />
+    </svg>
+  );
+}
+
+function ArtStepRelease() {
+  return (
+    <svg viewBox="0 0 160 80" className="w-full h-full" aria-hidden="true">
+      <rect x="60" y="38" width="40" height="34" rx="4" stroke={ART_LINE} fill="rgba(113,112,255,0.05)" strokeWidth="1.4" />
+      <circle cx="80" cy="56" r="3" stroke={ART_DIM} fill="none" strokeWidth="1.2" />
+      <path
+        d="M 68 38 V 30 A 12 12 0 0 1 92 30 V 38"
+        stroke="var(--accent)"
+        strokeWidth="1.7"
+        fill="none"
+        strokeLinecap="round"
+        className="transition-transform duration-500 ease-out group-hover:rotate-[-30deg]"
+        style={{ transformBox: "fill-box", transformOrigin: "100% 100%" }}
+      />
+      <circle
+        cx="80"
+        cy="56"
+        r="5"
+        fill="var(--accent)"
+        className="opacity-0 transition-all duration-700 ease-out delay-200 group-hover:opacity-100 group-hover:-translate-y-[34px]"
+      />
     </svg>
   );
 }

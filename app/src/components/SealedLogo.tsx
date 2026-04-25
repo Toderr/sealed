@@ -1,6 +1,6 @@
 // Sealed mark, per the locked brand design (Claude Design handoff 2026-04-18).
 // Geometry spec (120x120 viewBox):
-//   dot r=13, ring r=54 stroke 1.25 opacity 0.22, whiskers 3 per side
+//   dot r=13, ring r=54 stroke 2.5 opacity 0.85, whiskers 3 per side
 //   xIn=20, xOut=37, yIn=[-12,0,12], yOut=[-15,0,15], stroke 3 round cap
 // Color: inherits currentColor so callers control light/dark via text color.
 
@@ -46,8 +46,8 @@ export function SealedMark({
           r={54}
           fill="none"
           stroke="currentColor"
-          strokeWidth={1.25}
-          opacity={0.22}
+          strokeWidth={2.5}
+          opacity={0.85}
         />
       )}
       {([-1, 1] as const).flatMap((side) =>
@@ -90,7 +90,7 @@ export function SealedWordmark({
         lineHeight: 1,
       }}
     >
-      Sealed
+      Sealed Agent
     </span>
   );
 }

@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sealed Agent — Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          background: 'var(--background)',
+          panel: 'var(--panel)',
+          surface: 'var(--surface)',
+          primary: 'var(--primary)',
+          foreground: 'var(--foreground)',
+          muted: 'var(--muted)',
+          subtle: 'var(--subtle)',
+          brand: 'var(--brand)',
+          accent: 'var(--accent)',
+          'accent-hover': 'var(--accent-hover)',
+          success: 'var(--success)',
+          'card-border': 'var(--card-border)',
+          'card-border-subtle': 'var(--card-border-subtle)',
+        },
+        fontFamily: {
+          sans: ['Inter', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  :root {
+    --background: #08090a;
+    --panel: #0f1011;
+    --surface: #191a1b;
+    --primary: #f7f8f8;
+    --foreground: #d0d6e0;
+    --muted: #8a8f98;
+    --subtle: #62666d;
+    --brand: #5e6ad2;
+    --accent: #7170ff;
+    --accent-hover: #828fff;
+    --success: #10b981;
+    --card-border: rgba(255, 255, 255, 0.08);
+    --card-border-subtle: rgba(255, 255, 255, 0.05);
+  }
+  html { font-feature-settings: 'cv01', 'ss03'; }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: 'Inter', sans-serif;
+    font-feature-settings: 'cv01', 'ss03';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  /* Card illustration animations */
+  @keyframes sealed-spin { to { transform: rotate(360deg); } }
+  @keyframes sealed-scan {
+    0% { transform: translateY(0); opacity: 0; }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { transform: translateY(46px); opacity: 0; }
+  }
+  @keyframes sealed-pingpong-r {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(28px); }
+  }
+  @keyframes sealed-pingpong-l {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(-28px); }
+  }
+  @keyframes sealed-blink { 50% { opacity: 0.15; } }
+  @keyframes sealed-ping {
+    75%, 100% { transform: scale(2); opacity: 0; }
+  }
+
+  .sealed-loop {
+    animation-play-state: paused;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .group:hover .sealed-loop,
+  .group:focus-within .sealed-loop { animation-play-state: running; }
+  .sealed-loop-spin   { animation: sealed-spin 1.6s linear infinite; }
+  .sealed-loop-scan   { animation: sealed-scan 1.6s ease-in-out infinite; }
+  .sealed-loop-png-r  { animation: sealed-pingpong-r 1.4s ease-in-out infinite; }
+  .sealed-loop-png-l  { animation: sealed-pingpong-l 1.4s ease-in-out infinite; }
+  .sealed-loop-blink  { animation: sealed-blink 1s step-end infinite; }
+  .sealed-status-ping { animation: sealed-ping 1s cubic-bezier(0,0,0.2,1) infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sealed-loop,
+    .sealed-status-ping { animation: none !important; }
+    *, *::before, *::after {
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+</style>
+</head>
+<body class="min-h-screen relative isolate">
+
+<!-- Background gradient layer (canvas particles omitted in preview) -->
+<div aria-hidden="true" class="fixed inset-0 -z-0 pointer-events-none"
+  style="background:
+    radial-gradient(ellipse at 50% 0%, rgba(99,102,241,0.10), transparent 60%),
+    radial-gradient(ellipse at 50% 100%, rgba(10,10,10,0.8), transparent 70%);">
+</div>
+
+<div class="relative z-10">
+
+<!-- Header -->
+<header class="sticky top-0 z-40 border-b border-card-border-subtle bg-panel/85 backdrop-blur-md">
+  <div class="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 h-14 flex items-center justify-between">
+    <a href="#" class="flex items-center gap-2 text-primary">
+      <svg width="28" height="28" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <circle cx="60" cy="60" r="54" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.85"/>
+        <line x1="40" y1="48" x2="23" y2="45" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <line x1="40" y1="60" x2="23" y2="60" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <line x1="40" y1="72" x2="23" y2="75" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <line x1="80" y1="48" x2="97" y2="45" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <line x1="80" y1="60" x2="97" y2="60" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <line x1="80" y1="72" x2="97" y2="75" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="60" cy="60" r="13" fill="currentColor"/>
+      </svg>
+      <span class="text-[15px] tracking-tight" style="font-weight: 510;">Sealed Agent</span>
+    </a>
+    <nav class="hidden md:flex items-center gap-6 text-[13px] text-muted" style="font-weight: 510;">
+      <a href="#how" class="hover:text-primary transition-colors">How it works</a>
+      <a href="#solution" class="hover:text-primary transition-colors">Product</a>
+      <a href="#team" class="hover:text-primary transition-colors">Team</a>
+    </nav>
+    <a href="#" class="inline-flex items-center gap-1.5 rounded-md bg-brand px-3.5 h-8 text-[13px] text-white hover:bg-accent-hover transition-colors" style="font-weight: 510;">
+      Open app
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </a>
+  </div>
+</header>
+
+<main>
+
+<!-- Hero -->
+<section class="relative">
+  <div class="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 pt-10 sm:pt-14 pb-10 sm:pb-14">
+    <div class="max-w-3xl">
+      <span class="inline-flex items-center gap-2 rounded-full border border-card-border bg-[rgba(255,255,255,0.02)] px-3 py-1 text-[12px] text-foreground" style="font-weight: 510;">
+        <span class="relative flex h-1.5 w-1.5">
+          <span class="absolute inline-flex h-full w-full rounded-full bg-success opacity-75 sealed-status-ping"></span>
+          <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-success"></span>
+        </span>
+        Live on Solana devnet
+      </span>
+      <h1 class="mt-6 text-4xl sm:text-5xl md:text-[64px] text-primary"
+          style="font-weight: 510; letter-spacing: -0.044em; line-height: 1.02;">
+        Don't trust promises.<br class="hidden sm:block" />
+        <span class="text-accent"> Seal the deal.</span>
+      </h1>
+      <p class="mt-6 text-[17px] sm:text-[18px] text-foreground max-w-2xl leading-relaxed">
+        An AI agent negotiates, escrows, and releases payment for your business deals on Solana. No bank. No lawyer. No leap of faith.
+      </p>
+      <div class="mt-8 flex flex-col sm:flex-row gap-3">
+        <a href="#" class="inline-flex items-center justify-center gap-2 rounded-md bg-brand px-5 h-11 text-[14px] text-white hover:bg-accent-hover transition-colors" style="font-weight: 510;">
+          Start a deal
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </a>
+        <a href="#how" class="inline-flex items-center justify-center gap-2 rounded-md border border-card-border bg-[rgba(255,255,255,0.02)] px-5 h-11 text-[14px] text-primary hover:bg-[rgba(255,255,255,0.05)] transition-colors" style="font-weight: 510;">
+          See how it works
+        </a>
+      </div>
+
+      <dl class="mt-14 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-5 max-w-2xl">
+        <div>
+          <dd class="text-[22px] sm:text-2xl text-primary whitespace-nowrap" style="font-weight: 590; letter-spacing: -0.012em;">Anchor</dd>
+          <dt class="mt-1 text-[11px] uppercase tracking-[0.12em] text-foreground">Smart contract</dt>
+          <p class="mt-0.5 text-[12px] text-muted">Audited pattern</p>
+        </div>
+        <div>
+          <dd class="text-[22px] sm:text-2xl text-primary whitespace-nowrap" style="font-weight: 590; letter-spacing: -0.012em;">USDC</dd>
+          <dt class="mt-1 text-[11px] uppercase tracking-[0.12em] text-foreground">Settlement</dt>
+          <p class="mt-0.5 text-[12px] text-muted">Stablecoin rails</p>
+        </div>
+        <div>
+          <dd class="text-[22px] sm:text-2xl text-primary whitespace-nowrap" style="font-weight: 590; letter-spacing: -0.012em;">Solana</dd>
+          <dt class="mt-1 text-[11px] uppercase tracking-[0.12em] text-foreground">Chain</dt>
+          <p class="mt-0.5 text-[12px] text-muted">~400ms finality</p>
+        </div>
+        <div>
+          <dd class="text-[22px] sm:text-2xl text-primary whitespace-nowrap" style="font-weight: 590; letter-spacing: -0.012em;">Non-custodial</dd>
+          <dt class="mt-1 text-[11px] uppercase tracking-[0.12em] text-foreground">Custody</dt>
+          <p class="mt-0.5 text-[12px] text-muted">Wallet-owned</p>
+        </div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- Trust strip -->
+<section class="border-t border-card-border bg-[rgba(255,255,255,0.025)]">
+  <div class="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-5 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[12px] text-muted">
+    <div class="inline-flex items-center gap-2"><span class="text-accent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><span>Funds held in program-derived escrow</span></div>
+    <div class="inline-flex items-center gap-2"><span class="text-accent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg></span><span>Buyer confirms each milestone release</span></div>
+    <div class="inline-flex items-center gap-2"><span class="text-accent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="m11 17 2 2a1 1 0 0 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 0 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 0 1-1.41 0l-2.62-2.62a1 1 0 0 0-1.41 0L3 10.5"/><path d="m21 3-3 3"/><path d="M3 21v-4.5"/></svg></span><span>Refund requires both signatures</span></div>
+    <div class="inline-flex items-center gap-2"><span class="text-accent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></span><span>Every transaction on Solana devnet</span></div>
+  </div>
+</section>
+
+<!-- Problem -->
+<section class="border-t border-card-border">
+  <div class="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-12 sm:py-16">
+    <p class="text-[11px] uppercase tracking-[0.16em] text-accent" style="font-weight: 510;">The problem</p>
+    <h2 class="mt-3 text-[32px] sm:text-[40px] max-w-3xl text-primary" style="font-weight: 510; letter-spacing: -0.022em; line-height: 1.08;">
+      Every handshake deal breaks the same way.
+    </h2>
+    <div class="mt-10 grid md:grid-cols-3 gap-3">
+
+      <!-- Card 1: Buyer pays first -->
+      <div class="group rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 transition-colors hover:bg-[rgba(255,255,255,0.035)] overflow-hidden">
+        <div class="h-[104px] -mx-6 -mt-6 mb-5 px-6 flex items-center justify-center border-b border-card-border-subtle bg-[rgba(255,255,255,0.015)] overflow-hidden">
+          <svg viewBox="0 0 220 100" class="w-full h-full" aria-hidden="true">
+            <rect x="14" y="36" width="44" height="28" rx="4" stroke="rgba(255,255,255,0.28)" fill="none" stroke-width="1.4"/>
+            <line x1="22" y1="46" x2="50" y2="46" stroke="rgba(255,255,255,0.18)" stroke-width="1.4"/>
+            <line x1="22" y1="54" x2="42" y2="54" stroke="rgba(255,255,255,0.18)" stroke-width="1.4"/>
+            <line x1="64" y1="50" x2="206" y2="50" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="3 4"/>
+            <rect x="170" y="36" width="40" height="28" rx="4" stroke="rgba(255,255,255,0.18)" fill="none" stroke-width="1.2" stroke-dasharray="3 3"/>
+            <circle cx="74" cy="50" r="6.5" fill="var(--accent)" class="transition-all duration-700 ease-out group-hover:translate-x-[140px] group-hover:opacity-0"/>
+          </svg>
+        </div>
+        <h3 class="text-[15px] text-primary" style="font-weight: 590; letter-spacing: -0.012em; line-height: 1.25;">Buyer pays first.</h3>
+        <p class="mt-2 text-[14px] text-foreground leading-relaxed">Seller stalls. The wire is gone, the chase is on WhatsApp.</p>
+      </div>
+
+      <!-- Card 2: Seller delivers first -->
+      <div class="group rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 transition-colors hover:bg-[rgba(255,255,255,0.035)] overflow-hidden">
+        <div class="h-[104px] -mx-6 -mt-6 mb-5 px-6 flex items-center justify-center border-b border-card-border-subtle bg-[rgba(255,255,255,0.015)] overflow-hidden">
+          <svg viewBox="0 0 220 100" class="w-full h-full" aria-hidden="true">
+            <rect x="22" y="22" width="58" height="60" rx="3" stroke="rgba(255,255,255,0.28)" fill="none" stroke-width="1.4"/>
+            <line x1="30" y1="34" x2="72" y2="34" stroke="rgba(255,255,255,0.4)" stroke-width="1.4"/>
+            <line x1="30" y1="42" x2="68" y2="42" stroke="rgba(255,255,255,0.18)" stroke-width="1.4"/>
+            <line x1="30" y1="50" x2="60" y2="50" stroke="rgba(255,255,255,0.18)" stroke-width="1.4"/>
+            <line x1="30" y1="64" x2="56" y2="64" stroke="rgba(255,255,255,0.12)" stroke-width="1.4" stroke-dasharray="2 3"/>
+            <line x1="30" y1="72" x2="64" y2="72" stroke="rgba(255,255,255,0.12)" stroke-width="1.4" stroke-dasharray="2 3"/>
+            <circle cx="160" cy="52" r="26" stroke="rgba(255,255,255,0.28)" fill="none" stroke-width="1.4"/>
+            <circle cx="160" cy="52" r="2" fill="var(--accent)"/>
+            <line x1="160" y1="52" x2="170" y2="52" stroke="rgba(255,255,255,0.4)" stroke-width="1.4" stroke-linecap="round"/>
+            <line x1="160" y1="52" x2="160" y2="32" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round"
+                  class="sealed-loop sealed-loop-spin" style="transform-box: fill-box; transform-origin: 50% 100%;"/>
+          </svg>
+        </div>
+        <h3 class="text-[15px] text-primary" style="font-weight: 590; letter-spacing: -0.012em; line-height: 1.25;">Seller delivers first.</h3>
+        <p class="mt-2 text-[14px] text-foreground leading-relaxed">Scope dispute. Invoice unpaid 60 days. Relationship broken.</p>
+      </div>
+
+      <!-- Card 3: Both hire lawyers -->
+      <div class="group rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 transition-colors hover:bg-[rgba(255,255,255,0.035)] overflow-hidden">
+        <div class="h-[104px] -mx-6 -mt-6 mb-5 px-6 flex items-center justify-center border-b border-card-border-subtle bg-[rgba(255,255,255,0.015)] overflow-hidden">
+          <svg viewBox="0 0 220 100" class="w-full h-full" aria-hidden="true">
+            <ellipse cx="110" cy="86" rx="22" ry="9" fill="var(--accent)"
+              class="transition-transform duration-500 ease-out group-hover:scale-y-[0.3]"
+              style="transform-box: fill-box; transform-origin: 50% 100%;"/>
+            <rect x="68" y="70" width="84" height="9" rx="2" fill="rgba(15,16,17,0.95)" stroke="rgba(255,255,255,0.28)" stroke-width="1.2"
+              class="transition-transform duration-500 ease-out group-hover:-translate-y-[6px]"/>
+            <rect x="64" y="60" width="92" height="9" rx="2" fill="rgba(15,16,17,0.95)" stroke="rgba(255,255,255,0.28)" stroke-width="1.2"
+              class="transition-transform duration-500 ease-out delay-75 group-hover:-translate-y-[16px]"/>
+            <rect x="60" y="50" width="100" height="9" rx="2" fill="rgba(15,16,17,0.95)" stroke="rgba(255,255,255,0.28)" stroke-width="1.2"
+              class="transition-transform duration-500 ease-out delay-150 group-hover:-translate-y-[28px]"/>
+            <rect x="56" y="40" width="108" height="9" rx="2" fill="rgba(15,16,17,0.95)" stroke="var(--accent)" stroke-width="1.2"
+              class="opacity-0 transition-all duration-500 ease-out delay-200 group-hover:opacity-100 group-hover:-translate-y-[38px]"/>
+          </svg>
+        </div>
+        <h3 class="text-[15px] text-primary" style="font-weight: 590; letter-spacing: -0.012em; line-height: 1.25;">Both hire lawyers.</h3>
+        <p class="mt-2 text-[14px] text-foreground leading-relaxed">A $12k contract for a $20k deal. Trust priced as overhead.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- Solution -->
+<section id="solution" class="border-t border-card-border bg-[rgba(255,255,255,0.025)]">
+  <div class="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-12 sm:py-16">
+    <p class="text-[11px] uppercase tracking-[0.16em] text-accent" style="font-weight: 510;">The three agents</p>
+    <h2 class="mt-3 text-[32px] sm:text-[40px] max-w-3xl text-primary" style="font-weight: 510; letter-spacing: -0.022em; line-height: 1.08;">
+      Three AI agents. One on-chain deal table.
+    </h2>
+    <p class="mt-4 text-[17px] text-foreground max-w-2xl leading-relaxed">
+      One engine, three roles. Each does the work a bank or lawyer would charge for.
+    </p>
+    <div class="mt-12 grid md:grid-cols-3 gap-3">
+
+      <!-- Structurer -->
+      <article class="group rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 flex flex-col transition-colors hover:bg-[rgba(255,255,255,0.035)] overflow-hidden">
+        <div class="h-[112px] -mx-6 -mt-6 mb-4 px-6 flex items-center justify-center border-b border-card-border-subtle bg-[rgba(255,255,255,0.02)] overflow-hidden">
+          <svg viewBox="0 0 220 120" class="w-full h-full" aria-hidden="true">
+            <g class="transition-all duration-500 ease-out group-hover:opacity-0 group-hover:-translate-x-[16px]">
+              <rect x="18" y="22" width="60" height="18" rx="9" stroke="rgba(255,255,255,0.28)" fill="rgba(113,112,255,0.08)" stroke-width="1.2"/>
+              <rect x="32" y="50" width="54" height="18" rx="9" stroke="rgba(255,255,255,0.18)" fill="rgba(113,112,255,0.06)" stroke-width="1.2"/>
+              <rect x="22" y="78" width="58" height="18" rx="9" stroke="rgba(255,255,255,0.18)" fill="rgba(113,112,255,0.04)" stroke-width="1.2"/>
+            </g>
+            <path d="M 96 60 L 124 60 M 118 56 L 124 60 L 118 64" stroke="var(--accent)" fill="none" stroke-width="1.2" stroke-linecap="round"
+                  class="opacity-30 transition-opacity duration-500 group-hover:opacity-100"/>
+            <g class="opacity-30 transition-all duration-500 ease-out group-hover:opacity-100 group-hover:translate-x-[6px]">
+              <rect x="138" y="18" width="68" height="84" rx="3" stroke="rgba(255,255,255,0.4)" fill="rgba(113,112,255,0.05)" stroke-width="1.3"/>
+              <line x1="146" y1="32" x2="198" y2="32" stroke="var(--accent)" stroke-width="1.6"/>
+              <line x1="146" y1="44" x2="190" y2="44" stroke="rgba(255,255,255,0.4)" stroke-width="1.2"/>
+              <line x1="146" y1="54" x2="194" y2="54" stroke="rgba(255,255,255,0.4)" stroke-width="1.2"/>
+              <line x1="146" y1="64" x2="180" y2="64" stroke="rgba(255,255,255,0.4)" stroke-width="1.2"/>
+              <line x1="146" y1="82" x2="170" y2="82" stroke="rgba(255,255,255,0.18)" stroke-width="1.2" stroke-dasharray="2 3"/>
+              <line x1="146" y1="90" x2="186" y2="90" stroke="rgba(255,255,255,0.18)" stroke-width="1.2" stroke-dasharray="2 3"/>
+            </g>
+          </svg>
+        </div>
+        <span class="text-[11px] uppercase tracking-[0.14em] text-foreground">Structurer</span>
+        <h3 class="mt-2 text-[15px] text-primary" style="font-weight: 590; letter-spacing: -0.012em; line-height: 1.25;">Chat in, deal out.</h3>
+        <p class="mt-2 text-[14px] text-foreground leading-relaxed">Describe the deal in plain language. EN or ID. It drafts the escrow.</p>
+      </article>
+
+      <!-- Negotiator -->
+      <article class="group rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 flex flex-col transition-colors hover:bg-[rgba(255,255,255,0.035)] overflow-hidden">
+        <div class="h-[112px] -mx-6 -mt-6 mb-4 px-6 flex items-center justify-center border-b border-card-border-subtle bg-[rgba(255,255,255,0.02)] overflow-hidden">
+          <svg viewBox="0 0 220 100" class="w-full h-full" aria-hidden="true">
+            <line x1="20" y1="50" x2="200" y2="50" stroke="rgba(255,255,255,0.08)" stroke-width="1" stroke-dasharray="2 3"/>
+            <path d="M 24 50 L 76 50 M 70 44 L 76 50 L 70 56" stroke="var(--accent)" fill="none" stroke-width="1.6" stroke-linecap="round"
+                  class="transition-transform duration-700 ease-in-out group-hover:translate-x-[26px]"/>
+            <path d="M 196 50 L 144 50 M 150 44 L 144 50 L 150 56" stroke="var(--accent)" fill="none" stroke-width="1.6" stroke-linecap="round"
+                  class="transition-transform duration-700 ease-in-out group-hover:-translate-x-[26px]"/>
+            <circle cx="110" cy="50" r="6" fill="var(--accent)"
+                    class="scale-0 transition-transform duration-300 ease-out delay-500 group-hover:scale-100"
+                    style="transform-box: fill-box; transform-origin: center;"/>
+          </svg>
+        </div>
+        <span class="text-[11px] uppercase tracking-[0.14em] text-foreground">Negotiator</span>
+        <h3 class="mt-2 text-[15px] text-primary" style="font-weight: 590; letter-spacing: -0.012em; line-height: 1.25;">Speaks for each side.</h3>
+        <p class="mt-2 text-[14px] text-foreground leading-relaxed">Both wallets get an agent with red-lines and history. They counter until they agree.</p>
+      </article>
+
+      <!-- Verifier -->
+      <article class="group rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 flex flex-col transition-colors hover:bg-[rgba(255,255,255,0.035)] overflow-hidden">
+        <div class="h-[112px] -mx-6 -mt-6 mb-4 px-6 flex items-center justify-center border-b border-card-border-subtle bg-[rgba(255,255,255,0.02)] overflow-hidden">
+          <svg viewBox="0 0 220 120" class="w-full h-full" aria-hidden="true">
+            <rect x="64" y="14" width="92" height="92" rx="3" stroke="rgba(255,255,255,0.4)" fill="rgba(113,112,255,0.04)" stroke-width="1.3"/>
+            <line x1="74" y1="28" x2="146" y2="28" stroke="rgba(255,255,255,0.4)" stroke-width="1.2"/>
+            <line x1="74" y1="38" x2="138" y2="38" stroke="rgba(255,255,255,0.28)" stroke-width="1.2"/>
+            <line x1="74" y1="48" x2="142" y2="48" stroke="rgba(255,255,255,0.28)" stroke-width="1.2"/>
+            <circle cx="110" cy="78" r="18" stroke="var(--accent)" fill="rgba(113,112,255,0.04)" stroke-width="1.4"
+                    class="opacity-50 transition-opacity duration-500 group-hover:opacity-100"/>
+            <path d="M 100 78 L 108 86 L 122 72" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"
+                  pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"
+                  class="transition-[stroke-dashoffset] duration-700 ease-out delay-200 group-hover:[stroke-dashoffset:0]"/>
+          </svg>
+        </div>
+        <span class="text-[11px] uppercase tracking-[0.14em] text-foreground">Verifier</span>
+        <h3 class="mt-2 text-[15px] text-primary" style="font-weight: 590; letter-spacing: -0.012em; line-height: 1.25;">Reviews delivery proof.</h3>
+        <p class="mt-2 text-[14px] text-foreground leading-relaxed">Seller uploads proof. Verifier scores it. You approve.</p>
+      </article>
+
+    </div>
+
+    <div class="mt-12 rounded-xl border border-card-border-subtle bg-[rgba(255,255,255,0.015)] p-6 sm:p-7">
+      <p class="text-[11px] uppercase tracking-[0.14em] text-foreground">Under the hood</p>
+      <dl class="mt-4 grid md:grid-cols-3 gap-x-8 gap-y-4">
+        <div>
+          <dt class="text-[13px] text-primary" style="font-weight: 510;">Program-held escrow</dt>
+          <dd class="mt-1 text-[13px] text-muted leading-relaxed">USDC locked in a PDA. Neither side withdraws alone.</dd>
+        </div>
+        <div>
+          <dt class="text-[13px] text-primary" style="font-weight: 510;">Mutual refund</dt>
+          <dd class="mt-1 text-[13px] text-muted leading-relaxed">Both sign to unwind. No relay, no griefing.</dd>
+        </div>
+        <div>
+          <dt class="text-[13px] text-primary" style="font-weight: 510;">Portable reputation</dt>
+          <dd class="mt-1 text-[13px] text-muted leading-relaxed">Completed-deals counter, on-chain per wallet.</dd>
+        </div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section id="how" class="border-t border-card-border">
+  <div class="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-12 sm:py-16">
+    <p class="text-[11px] uppercase tracking-[0.16em] text-accent" style="font-weight: 510;">How it works</p>
+    <h2 class="mt-3 text-[32px] sm:text-[40px] max-w-3xl text-primary" style="font-weight: 510; letter-spacing: -0.022em; line-height: 1.08;">
+      Five steps. One signature per milestone.
+    </h2>
+    <ol class="mt-12 grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
+
+      <!-- 01 Describe -->
+      <li class="group relative rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-5 overflow-hidden">
+        <div class="h-[68px] -mx-5 -mt-5 mb-3 flex items-center justify-center border-b border-card-border-subtle bg-[rgba(255,255,255,0.02)] overflow-hidden">
+          <svg viewBox="0 0 160 60" class="w-full h-full" aria-hidden="true">
+            <line x1="20" y1="20" x2="100" y2="20" stroke="rgba(255,255,255,0.4)" stroke-width="1.6"
+                  class="scale-x-0 transition-transform duration-500 ease-out group-hover:scale-x-100"
+                  style="transform-box: fill-box; transform-origin: left center;"/>
+            <line x1="20" y1="32" x2="120" y2="32" stroke="rgba(255,255,255,0.28)" stroke-width="1.6"
+                  class="scale-x-0 transition-transform duration-500 ease-out delay-150 group-hover:scale-x-100"
+                  style="transform-box: fill-box; transform-origin: left center;"/>
+            <line x1="20" y1="44" x2="80" y2="44" stroke="rgba(255,255,255,0.28)" stroke-width="1.6"
+                  class="scale-x-0 transition-transform duration-500 ease-out delay-300 group-hover:scale-x-100"
+                  style="transform-box: fill-box; transform-origin: left center;"/>
+            <line x1="124" y1="40" x2="124" y2="48" stroke="var(--accent)" stroke-width="1.6" class="sealed-loop-blink"/>
+          </svg>
+        </div>
+        <span class="text-[12px] font-mono text-accent" style="font-weight: 510;">01</span>
+        <h3 class="mt-2 text-[15px] text-primary" style="font-weight: 590; letter-spacing: -0.012em; line-height: 1.25;">Describe.</h3>
+        <p class="mt-2 text-[13.5px] text-foreground leading-relaxed">Chat the deal in plain language.</p>
+      </li>
+
+      <!-- 02 Negotiate -->
+      <li class="group relative rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-5 overflow-hidden">
+        <div class="h-[68px] -mx-5 -mt-5 mb-3 flex items-center justify-center border-b border-card-border-subtle bg-[rgba(255,255,255,0.02)] overflow-hidden">
+          <svg viewBox="0 0 160 60" class="w-full h-full" aria-hidden="true">
+            <line x1="40" y1="30" x2="120" y2="30" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="2 3"/>
+            <circle cx="40" cy="30" r="5" fill="var(--accent)" class="sealed-loop sealed-loop-png-r"/>
+            <circle cx="120" cy="30" r="5" fill="var(--accent)" class="sealed-loop sealed-loop-png-l"/>
+          </svg>
+        </div>
+        <span class="text-[12px] font-mono text-accent" style="font-weight: 510;">02</span>
+        <h3 class="mt-2 text-[15px] text-primary" style="font-weight: 590; letter-spacing: -0.012em; line-height: 1.25;">Negotiate.</h3>
+        <p class="mt-2 text-[13.5px] text-foreground leading-relaxed">Agents counter on both sides. You accept the summary.</p>
+      </li>
+
+      <!-- 03 Fund -->
+      <li class="group relative rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-5 overflow-hidden">
+        <div class="h-[68px] -mx-5 -mt-5 mb-3 flex items-center justify-center border-b border-card-border-subtle bg-[rgba(255,255,255,0.02)] overflow-hidden">
+          <svg viewBox="0 0 160 80" class="w-full h-full" aria-hidden="true">
+            <rect x="58" y="38" width="44" height="34" rx="3" stroke="rgba(255,255,255,0.4)" fill="rgba(113,112,255,0.05)" stroke-width="1.4"/>
+            <circle cx="80" cy="56" r="5" stroke="rgba(255,255,255,0.28)" fill="none" stroke-width="1.2"/>
+            <line x1="72" y1="38" x2="88" y2="38" stroke="var(--accent)" stroke-width="2"/>
+            <circle cx="80" cy="14" r="5" fill="var(--accent)"
+                    class="transition-all duration-700 ease-in group-hover:translate-y-[28px] group-hover:opacity-0"/>
+          </svg>
+        </div>
+        <span class="text-[12px] font-mono text-accent" style="font-weight: 510;">03</span>
+        <h3 class="mt-2 text-[15px] text-primary" style="font-weight: 590; letter-spacing: -0.012em; line-height: 1.25;">Fund.</h3>
+        <p class="mt-2 text-[13.5px] text-foreground leading-relaxed">One signature. USDC enters the on-chain vault.</p>
+      </li>
+
+      <!-- 04 Verify -->
+      <li class="group relative rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-5 overflow-hidden">
+        <div class="h-[68px] -mx-5 -mt-5 mb-3 flex items-center justify-center border-b border-card-border-subtle bg-[rgba(255,255,255,0.02)] overflow-hidden">
+          <svg viewBox="0 0 160 80" class="w-full h-full overflow-hidden" aria-hidden="true">
+            <rect x="50" y="14" width="60" height="56" rx="3" stroke="rgba(255,255,255,0.4)" fill="none" stroke-width="1.3"/>
+            <line x1="58" y1="26" x2="100" y2="26" stroke="rgba(255,255,255,0.4)" stroke-width="1.2"/>
+            <line x1="58" y1="36" x2="92" y2="36" stroke="rgba(255,255,255,0.28)" stroke-width="1.2"/>
+            <line x1="58" y1="46" x2="98" y2="46" stroke="rgba(255,255,255,0.28)" stroke-width="1.2"/>
+            <line x1="58" y1="56" x2="86" y2="56" stroke="rgba(255,255,255,0.28)" stroke-width="1.2"/>
+            <rect x="50" y="14" width="60" height="2" fill="var(--accent)" class="sealed-loop sealed-loop-scan"/>
+          </svg>
+        </div>
+        <span class="text-[12px] font-mono text-accent" style="font-weight: 510;">04</span>
+        <h3 class="mt-2 text-[15px] text-primary" style="font-weight: 590; letter-spacing: -0.012em; line-height: 1.25;">Verify.</h3>
+        <p class="mt-2 text-[13.5px] text-foreground leading-relaxed">Seller uploads proof. Verifier scores it.</p>
+      </li>
+
+      <!-- 05 Release -->
+      <li class="group relative rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-5 overflow-hidden">
+        <div class="h-[68px] -mx-5 -mt-5 mb-3 flex items-center justify-center border-b border-card-border-subtle bg-[rgba(255,255,255,0.02)] overflow-hidden">
+          <svg viewBox="0 0 160 80" class="w-full h-full" aria-hidden="true">
+            <rect x="60" y="38" width="40" height="34" rx="4" stroke="rgba(255,255,255,0.4)" fill="rgba(113,112,255,0.05)" stroke-width="1.4"/>
+            <circle cx="80" cy="56" r="3" stroke="rgba(255,255,255,0.28)" fill="none" stroke-width="1.2"/>
+            <path d="M 68 38 V 30 A 12 12 0 0 1 92 30 V 38" stroke="var(--accent)" stroke-width="1.7" fill="none" stroke-linecap="round"
+                  class="transition-transform duration-500 ease-out group-hover:rotate-[-30deg]"
+                  style="transform-box: fill-box; transform-origin: 100% 100%;"/>
+            <circle cx="80" cy="56" r="5" fill="var(--accent)"
+                    class="opacity-0 transition-all duration-700 ease-out delay-200 group-hover:opacity-100 group-hover:-translate-y-[34px]"/>
+          </svg>
+        </div>
+        <span class="text-[12px] font-mono text-accent" style="font-weight: 510;">05</span>
+        <h3 class="mt-2 text-[15px] text-primary" style="font-weight: 590; letter-spacing: -0.012em; line-height: 1.25;">Release.</h3>
+        <p class="mt-2 text-[13.5px] text-foreground leading-relaxed">One tap. That milestone pays. Not the pot.</p>
+      </li>
+
+    </ol>
+
+    <div class="mt-6 rounded-xl border border-card-border-subtle bg-[rgba(255,255,255,0.015)] p-5 sm:p-6 flex items-start gap-4">
+      <span class="mt-0.5 text-accent shrink-0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5">
+          <path d="M3 7v6h6"/>
+          <path d="M21 17a9 9 0 0 0-15-6.7L3 13"/>
+        </svg>
+      </span>
+      <div>
+        <p class="text-[13px] text-primary" style="font-weight: 510;">Recovery path, also shipped.</p>
+        <p class="mt-1 text-[13.5px] text-muted leading-relaxed">Mutual refund returns the remaining USDC when both sides sign. Pre-funding deals cancel off-chain.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Team / Verify -->
+<section id="team" class="border-t border-card-border bg-[rgba(255,255,255,0.025)]">
+  <div class="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-12 sm:py-16 grid md:grid-cols-2 gap-10 md:gap-16">
+    <div>
+      <p class="text-[11px] uppercase tracking-[0.16em] text-accent" style="font-weight: 510;">Why trust us</p>
+      <h2 class="mt-3 text-[32px] sm:text-[40px] text-primary" style="font-weight: 510; letter-spacing: -0.022em; line-height: 1.08;">
+        Built by operators who have already lived the problem.
+      </h2>
+    </div>
+    <aside class="rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 sm:p-8 flex flex-col">
+      <p class="text-[11px] uppercase tracking-[0.14em] text-foreground">Verify for yourself</p>
+      <p class="mt-2 text-[14px] text-foreground">Escrow program live on Solana devnet. Inspect it:</p>
+      <div class="mt-4 rounded-md border border-card-border-subtle bg-background px-3 py-2.5 font-mono text-[12px] break-all text-foreground">
+        3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ
+      </div>
+      <a href="https://solscan.io/account/3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ?cluster=devnet" target="_blank" rel="noopener noreferrer"
+         class="mt-3 inline-flex items-center gap-1.5 text-[13px] text-accent hover:text-accent-hover transition-colors" style="font-weight: 510;">
+        View on Solscan
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
+          <path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+        </svg>
+      </a>
+      <div class="mt-6 pt-6 border-t border-card-border-subtle grid grid-cols-2 gap-4 text-[13px]">
+        <div><p class="text-[11px] text-muted uppercase tracking-[0.1em]">Program type</p><p class="mt-1 text-[13px] text-primary" style="font-weight: 510;">Anchor · upgradeable</p></div>
+        <div><p class="text-[11px] text-muted uppercase tracking-[0.1em]">Settlement token</p><p class="mt-1 text-[13px] text-primary" style="font-weight: 510;">USDC (SPL)</p></div>
+        <div><p class="text-[11px] text-muted uppercase tracking-[0.1em]">Escrow model</p><p class="mt-1 text-[13px] text-primary" style="font-weight: 510;">Milestone-based</p></div>
+        <div><p class="text-[11px] text-muted uppercase tracking-[0.1em]">Release rule</p><p class="mt-1 text-[13px] text-primary" style="font-weight: 510;">Buyer confirms</p></div>
+        <div><p class="text-[11px] text-muted uppercase tracking-[0.1em]">Negotiation</p><p class="mt-1 text-[13px] text-primary" style="font-weight: 510;">Dual-agent</p></div>
+        <div><p class="text-[11px] text-muted uppercase tracking-[0.1em]">Refund</p><p class="mt-1 text-[13px] text-primary" style="font-weight: 510;">Buyer + seller sign</p></div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- Final CTA -->
+<section class="border-t border-card-border">
+  <div class="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-12 sm:py-16">
+    <div class="relative overflow-hidden rounded-2xl border border-card-border bg-[rgba(255,255,255,0.02)] p-8 sm:p-12">
+      <div class="absolute inset-0 opacity-[0.08] pointer-events-none" style="background: radial-gradient(circle at 30% 20%, var(--accent), transparent 60%);" aria-hidden="true"></div>
+      <div class="relative max-w-2xl">
+        <h2 class="text-[32px] sm:text-[40px] text-primary" style="font-weight: 510; letter-spacing: -0.022em; line-height: 1.08;">
+          Your next deal closes itself.
+        </h2>
+        <p class="mt-4 text-[17px] text-foreground leading-relaxed">
+          Early access on devnet. Bring a real deal. We'll walk you through it.
+        </p>
+        <div class="mt-7 flex flex-col sm:flex-row gap-3">
+          <a href="#" class="inline-flex items-center justify-center gap-2 rounded-md bg-brand px-5 h-11 text-[14px] text-white hover:bg-accent-hover transition-colors" style="font-weight: 510;">
+            Open the app
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </a>
+          <a href="mailto:rednave2806@gmail.com?subject=Sealed%20Agent%20early%20access" class="inline-flex items-center justify-center gap-2 rounded-md border border-card-border bg-[rgba(255,255,255,0.02)] px-5 h-11 text-[14px] text-primary hover:bg-[rgba(255,255,255,0.05)] transition-colors" style="font-weight: 510;">
+            Talk to the team
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- Footer -->
+<footer class="border-t border-card-border bg-[rgba(255,255,255,0.025)]">
+  <div class="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-[13px] text-muted">
+    <div class="flex items-center gap-2 text-primary">
+      <svg width="22" height="22" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <line x1="40" y1="48" x2="23" y2="45" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <line x1="40" y1="60" x2="23" y2="60" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <line x1="40" y1="72" x2="23" y2="75" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <line x1="80" y1="48" x2="97" y2="45" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <line x1="80" y1="60" x2="97" y2="60" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <line x1="80" y1="72" x2="97" y2="75" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="60" cy="60" r="13" fill="currentColor"/>
+      </svg>
+      <span style="font-weight: 510;">Sealed Agent</span>
+      <span class="ml-1 text-muted">Escrow on Solana.</span>
+    </div>
+    <div class="flex items-center gap-5" style="font-weight: 510;">
+      <a href="#" class="hover:text-primary transition-colors">App</a>
+      <a href="https://solscan.io/account/3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ?cluster=devnet" target="_blank" rel="noopener noreferrer" class="hover:text-primary transition-colors">Program</a>
+      <a href="mailto:rednave2806@gmail.com" class="hover:text-primary transition-colors">Contact</a>
+    </div>
+  </div>
+</footer>
+
+</div>
+</body>
+</html>

@@ -212,3 +212,46 @@ body {
   color: var(--foreground);
   line-height: 1.4;
 }
+
+/* --- Landing-page card illustrations ---
+ * Looping animations triggered by `.group:hover` on the card.
+ * GPU-cheap (transform/opacity only). Honors prefers-reduced-motion.
+ */
+@keyframes sealed-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes sealed-scan {
+  0% { transform: translateY(0); opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateY(46px); opacity: 0; }
+}
+@keyframes sealed-pingpong-r {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(28px); }
+}
+@keyframes sealed-pingpong-l {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-28px); }
+}
+@keyframes sealed-blink {
+  50% { opacity: 0.15; }
+}
+
+.sealed-loop {
+  animation-play-state: paused;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.group:hover .sealed-loop,
+.group:focus-within .sealed-loop {
+  animation-play-state: running;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sealed-loop { animation: none !important; }
+}
+.sealed-loop-spin   { animation: sealed-spin 1.6s linear infinite; }
+.sealed-loop-scan   { animation: sealed-scan 1.6s ease-in-out infinite; }
+.sealed-loop-png-r  { animation: sealed-pingpong-r 1.4s ease-in-out infinite; }
+.sealed-loop-png-l  { animation: sealed-pingpong-l 1.4s ease-in-out infinite; }
+.sealed-loop-blink  { animation: sealed-blink 1s step-end infinite; }
