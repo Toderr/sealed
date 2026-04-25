@@ -50,14 +50,14 @@ function SiteHeader() {
         <Link
           href="/"
           className="flex items-center gap-2 group text-primary"
-          aria-label="Sealed home"
+          aria-label="Sealed Agent home"
         >
           <SealedMark size={28} />
           <span
             className="text-[15px] tracking-tight"
             style={{ fontWeight: 510 }}
           >
-            Sealed
+            Sealed Agent
           </span>
         </Link>
         <nav
@@ -105,12 +105,12 @@ function Hero() {
             className="mt-6 text-4xl sm:text-5xl md:text-[64px] text-primary"
             style={headlineStyle}
           >
-            People break promises.
+            Don&apos;t trust promises.
             <br className="hidden sm:block" />
-            <span className="text-accent"> Code doesn&apos;t.</span>
+            <span className="text-accent"> Seal the deal.</span>
           </h1>
           <p className="mt-6 text-[17px] sm:text-[18px] text-foreground max-w-2xl leading-relaxed">
-            Sealed is an AI agent that represents your business on an on-chain
+            Sealed Agent is an AI agent that represents your business on an on-chain
             deal table. It negotiates terms, holds escrow, verifies milestones,
             and releases payment automatically, so deals close without a bank,
             a lawyer, or a leap of faith.
@@ -173,7 +173,7 @@ function Stat({
 function TrustStrip() {
   return (
     <section
-      className="border-y border-card-border-subtle bg-[rgba(255,255,255,0.02)]"
+      className="border-t border-card-border bg-[rgba(255,255,255,0.025)]"
       aria-label="Trust indicators"
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[12px] text-muted">
@@ -232,33 +232,35 @@ function Problem() {
     },
   ];
   return (
-    <section className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
-      <SectionEyebrow>The problem</SectionEyebrow>
-      <h2
-        className="mt-3 text-[32px] sm:text-[40px] max-w-3xl text-primary"
-        style={h2Style}
-      >
-        Every handshake deal breaks the same way.
-      </h2>
-      <p className="mt-4 text-[17px] text-foreground max-w-2xl leading-relaxed">
-        Business owners already use crypto rails for cross-border settlement.
-        They still settle the trust layer on WhatsApp screenshots and transfer
-        slips.
-      </p>
-      <div className="mt-12 grid md:grid-cols-3 gap-3">
-        {items.map((i) => (
-          <div
-            key={i.title}
-            className="rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 transition-colors hover:bg-[rgba(255,255,255,0.035)]"
-          >
-            <h3 className="text-[15px] text-primary" style={h3Style}>
-              {i.title}
-            </h3>
-            <p className="mt-2 text-[14px] text-foreground leading-relaxed">
-              {i.body}
-            </p>
-          </div>
-        ))}
+    <section className="border-t border-card-border">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
+        <SectionEyebrow>The problem</SectionEyebrow>
+        <h2
+          className="mt-3 text-[32px] sm:text-[40px] max-w-3xl text-primary"
+          style={h2Style}
+        >
+          Every handshake deal breaks the same way.
+        </h2>
+        <p className="mt-4 text-[17px] text-foreground max-w-2xl leading-relaxed">
+          Business owners already use crypto rails for cross-border settlement.
+          They still settle the trust layer on WhatsApp screenshots and transfer
+          slips.
+        </p>
+        <div className="mt-12 grid md:grid-cols-3 gap-3">
+          {items.map((i) => (
+            <div
+              key={i.title}
+              className="rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-6 transition-colors hover:bg-[rgba(255,255,255,0.035)]"
+            >
+              <h3 className="text-[15px] text-primary" style={h3Style}>
+                {i.title}
+              </h3>
+              <p className="mt-2 text-[14px] text-foreground leading-relaxed">
+                {i.body}
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -296,7 +298,7 @@ function Solution() {
   return (
     <section
       id="solution"
-      className="border-t border-card-border-subtle bg-[rgba(255,255,255,0.015)]"
+      className="border-t border-card-border bg-[rgba(255,255,255,0.025)]"
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
         <SectionEyebrow>The three agents</SectionEyebrow>
@@ -392,51 +394,53 @@ function HowItWorks() {
     },
   ];
   return (
-    <section id="how" className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
-      <SectionEyebrow>How it works</SectionEyebrow>
-      <h2
-        className="mt-3 text-[32px] sm:text-[40px] max-w-3xl text-primary"
-        style={h2Style}
-      >
-        Five steps. One signature per milestone.
-      </h2>
-      <ol className="mt-12 grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        {steps.map((s) => (
-          <li
-            key={s.n}
-            className="relative rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-5"
-          >
-            <span
-              className="text-[12px] font-mono text-accent"
+    <section id="how" className="border-t border-card-border">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
+        <SectionEyebrow>How it works</SectionEyebrow>
+        <h2
+          className="mt-3 text-[32px] sm:text-[40px] max-w-3xl text-primary"
+          style={h2Style}
+        >
+          Five steps. One signature per milestone.
+        </h2>
+        <ol className="mt-12 grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {steps.map((s) => (
+            <li
+              key={s.n}
+              className="relative rounded-xl border border-card-border bg-[rgba(255,255,255,0.02)] p-5"
+            >
+              <span
+                className="text-[12px] font-mono text-accent"
+                style={{ fontWeight: 510 }}
+              >
+                {s.n}
+              </span>
+              <h3 className="mt-2 text-[15px] text-primary" style={h3Style}>
+                {s.title}
+              </h3>
+              <p className="mt-2 text-[13.5px] text-foreground leading-relaxed">
+                {s.body}
+              </p>
+            </li>
+          ))}
+        </ol>
+        <div className="mt-6 rounded-xl border border-card-border-subtle bg-[rgba(255,255,255,0.015)] p-5 sm:p-6 flex items-start gap-4">
+          <span className="mt-0.5 text-accent shrink-0">
+            <RefundIcon />
+          </span>
+          <div>
+            <p
+              className="text-[13px] text-primary"
               style={{ fontWeight: 510 }}
             >
-              {s.n}
-            </span>
-            <h3 className="mt-2 text-[15px] text-primary" style={h3Style}>
-              {s.title}
-            </h3>
-            <p className="mt-2 text-[13.5px] text-foreground leading-relaxed">
-              {s.body}
+              Recovery path, also shipped.
             </p>
-          </li>
-        ))}
-      </ol>
-      <div className="mt-6 rounded-xl border border-card-border-subtle bg-[rgba(255,255,255,0.015)] p-5 sm:p-6 flex items-start gap-4">
-        <span className="mt-0.5 text-accent shrink-0">
-          <RefundIcon />
-        </span>
-        <div>
-          <p
-            className="text-[13px] text-primary"
-            style={{ fontWeight: 510 }}
-          >
-            Recovery path, also shipped.
-          </p>
-          <p className="mt-1 text-[13.5px] text-muted leading-relaxed">
-            If the deal unwinds, mutual refund returns the remaining USDC.
-            Both parties partial-sign, no trusted relay, no griefing vector.
-            Pre-funding deals cancel locally without touching the chain.
-          </p>
+            <p className="mt-1 text-[13.5px] text-muted leading-relaxed">
+              If the deal unwinds, mutual refund returns the remaining USDC.
+              Both parties partial-sign, no trusted relay, no griefing vector.
+              Pre-funding deals cancel locally without touching the chain.
+            </p>
+          </div>
         </div>
       </div>
     </section>
@@ -447,7 +451,7 @@ function TeamTrust() {
   return (
     <section
       id="team"
-      className="border-t border-card-border-subtle bg-[rgba(255,255,255,0.015)]"
+      className="border-t border-card-border bg-[rgba(255,255,255,0.025)]"
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28 grid md:grid-cols-2 gap-10 md:gap-16">
         <div>
@@ -459,19 +463,19 @@ function TeamTrust() {
             Built by operators who have already lived the problem.
           </h2>
           <p className="mt-4 text-[17px] text-foreground leading-relaxed">
-            Sealed is built in the open by two founders with direct access to
+            Sealed Agent is built in the open by two founders with direct access to
             the Indonesian pengusaha community: the people who send real
             business wires every week and know exactly where handshake deals
             fail.
           </p>
           <dl className="mt-8 space-y-5">
             <Credential
-              role="Trading & valuation"
-              detail="18 years across markets, crypto, and DLMM. Has priced the deals Sealed automates."
+              role="Distribution & financial markets"
+              detail="18 years across financial markets and marketplaces. Direct line to the target customer segment."
             />
             <Credential
-              role="AI & protocol engineering"
-              detail="Shipped an autonomous trading agent for DLMM with auto-screening and self-learning loops."
+              role="Marketing & agentic AI"
+              detail="4+ years in digital marketing, ex Marketing Agency CCO. High proficiency in agentic AI. Previously shipped a self-learning DLMM trading agent."
             />
           </dl>
         </div>
@@ -554,8 +558,9 @@ function Fact({ label, value }: { label: string; value: string }) {
 
 function FinalCTA() {
   return (
-    <section className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
-      <div className="relative overflow-hidden rounded-2xl border border-card-border bg-[rgba(255,255,255,0.02)] p-8 sm:p-12">
+    <section className="border-t border-card-border">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
+        <div className="relative overflow-hidden rounded-2xl border border-card-border bg-[rgba(255,255,255,0.02)] p-8 sm:p-12">
         <div
           className="absolute inset-0 opacity-[0.08] pointer-events-none"
           style={{
@@ -572,7 +577,7 @@ function FinalCTA() {
             Your next deal closes itself.
           </h2>
           <p className="mt-4 text-[17px] text-foreground leading-relaxed">
-            Sealed is in early access on devnet. Bring a real deal and we will
+            Sealed Agent is in early access on devnet. Bring a real deal and we will
             walk you through it.
           </p>
           <div className="mt-7 flex flex-col sm:flex-row gap-3">
@@ -585,13 +590,14 @@ function FinalCTA() {
               <ArrowRight className="w-4 h-4" />
             </Link>
             <a
-              href="mailto:rednave2806@gmail.com?subject=Sealed%20early%20access"
+              href="mailto:rednave2806@gmail.com?subject=Sealed%20Agent%20early%20access"
               className="inline-flex items-center justify-center gap-2 rounded-md border border-card-border bg-[rgba(255,255,255,0.02)] px-5 h-11 text-[14px] text-primary hover:bg-[rgba(255,255,255,0.05)] transition-colors"
               style={{ fontWeight: 510 }}
             >
               Talk to the team
             </a>
           </div>
+        </div>
         </div>
       </div>
     </section>
@@ -600,11 +606,11 @@ function FinalCTA() {
 
 function SiteFooter() {
   return (
-    <footer className="border-t border-card-border-subtle">
+    <footer className="border-t border-card-border bg-[rgba(255,255,255,0.025)]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-[13px] text-muted">
         <div className="flex items-center gap-2 text-primary">
           <SealedMark size={22} ring={false} />
-          <span style={{ fontWeight: 510 }}>Sealed</span>
+          <span style={{ fontWeight: 510 }}>Sealed Agent</span>
           <span className="ml-1 text-muted">AI-powered escrow on Solana.</span>
         </div>
         <div className="flex items-center gap-5" style={{ fontWeight: 510 }}>
