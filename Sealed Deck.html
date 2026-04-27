@@ -387,7 +387,7 @@ h3.subhead {
 <body>
 
 <!-- ========================== SLIDE 1 · TITLE ========================== -->
-<section class="slide" id="s1" aria-label="Slide 1 of 8: Sealed Agent title">
+<section class="slide" id="s1" aria-label="Slide 1 of 9: Sealed Agent title">
   <div class="stage">
     <div class="orb orb-brand"    style="top:-200px; left:-200px; width:900px; height:900px; opacity:.55"></div>
     <div class="orb orb-accent"   style="bottom:-250px; right:-200px; width:900px; height:900px; opacity:.5"></div>
@@ -444,241 +444,44 @@ h3.subhead {
     </div>
 
     <!-- global rhythm -->
-    <div class="counter">01 / 08</div>
-    <div class="rail"><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="counter">01 / 09</div>
+    <div class="rail"><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
   </div>
 </section>
 
 <!-- ========================== SLIDE 2 · PROBLEM ========================== -->
-<section class="slide" id="s2" aria-label="Slide 2 of 8: The problem">
-  <div class="stage">
-    <div class="orb orb-warning" style="top:-150px; left:-100px; width:600px; height:600px; opacity:.18"></div>
-    <div class="orb orb-danger"  style="top:-150px; right:-100px; width:600px; height:600px; opacity:.18"></div>
-    <div class="orb orb-brand"   style="bottom:-250px; left:50%; transform:translateX(-50%); width:900px; height:900px; opacity:.25"></div>
-    <div class="scanlines"></div>
+<section class="slide" id="s2" aria-label="Slide 2 of 9: The problem">
+  <div class="stage" style="overflow:hidden;">
+    <img src="screenshot-tmp/landing-problem.png" alt="Slide 2 of 9: The problem" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;" />
     <div class="grain"></div>
-
-    <!-- watermark mark top-right -->
-    <svg class="watermark" viewBox="0 0 120 120">
-      <circle cx="60" cy="60" r="54" stroke="#f7f8f8" stroke-width="1.25" opacity="0.22" fill="none"/>
-      <g stroke="#f7f8f8" stroke-width="3" stroke-linecap="round">
-        <line x1="80" y1="48" x2="97" y2="45"/><line x1="80" y1="60" x2="97" y2="60"/><line x1="80" y1="72" x2="97" y2="75"/>
-        <line x1="40" y1="48" x2="23" y2="45"/><line x1="40" y1="60" x2="23" y2="60"/><line x1="40" y1="72" x2="23" y2="75"/>
-      </g>
-      <circle cx="60" cy="60" r="13" fill="#f7f8f8"/>
-    </svg>
-
-    <!-- typo texture -->
-    <div class="typo-texture" style="top:90px; left:48%; transform:translateX(-50%);">THE PROBLEM</div>
-
-    <!-- header -->
-    <div style="position:absolute; top:96px; left:96px; right:96px;">
-      <div class="eyebrow">THE PROBLEM</div>
-      <h2 class="headline" style="margin-top:18px;">Business deals break. Both sides lose.</h2>
-    </div>
-
-    <!-- two columns -->
-    <div style="position:absolute; top:260px; left:96px; right:96px; display:grid; grid-template-columns:1fr 1px 1fr; gap:0; height:440px;">
-      <!-- THE SCALE -->
-      <div style="padding:40px 56px; position:relative;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-          <div class="eyebrow warning">THE SCALE</div>
-          <div class="badge-tile"><svg class="icon" style="color:var(--warning)" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
-        </div>
-        <div class="big-stat warning g-warning" style="margin-top:60px;">50%</div>
-        <div class="muted" style="margin-top:24px; font-size:22px; max-width:440px;">of global B2B invoices overdue in 2025</div>
-        <div style="display:flex; flex-direction:column; gap:12px; margin-top:32px; align-items:flex-start;">
-          <div class="pill" style="border-color:rgba(251,191,36,0.3);">
-            <svg class="icon icon-sm" style="color:var(--warning)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            $15B/year lost to freelancers alone
-          </div>
-          <div class="pill" style="border-color:rgba(251,191,36,0.3);">
-            <svg class="icon icon-sm" style="color:var(--warning)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            25% of EU bankruptcies from late pay
-          </div>
-        </div>
-      </div>
-
-      <div class="divider-v"></div>
-
-      <!-- THE TRIGGER -->
-      <div style="padding:40px 56px; position:relative;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-          <div class="eyebrow danger">THE TRIGGER</div>
-          <div class="badge-tile"><svg class="icon" style="color:var(--danger)" viewBox="0 0 24 24"><path d="M19.69 14a6.9 6.9 0 0 0 .31-2V5l-8-3-3.16 1.18"/><path d="M4.73 4.73 4 5v7c0 6 8 10 8 10a20.29 20.29 0 0 0 5.62-4.38"/><line x1="1" y1="1" x2="23" y2="23"/></svg></div>
-        </div>
-        <div class="big-stat danger g-danger" style="margin-top:60px;">70%</div>
-        <div class="muted" style="margin-top:24px; font-size:22px; max-width:440px;">of non-payment = dispute over what was delivered</div>
-        <div style="margin-top:20px; font-size:20px; line-height:1.5; color:var(--text); max-width:440px;">
-          It's not a payment problem. It's a <span class="danger" style="font-weight:600;">verification problem</span>.
-        </div>
-        <div class="pill" style="margin-top:28px; border-color:rgba(248,113,113,0.3);">
-          <svg class="icon icon-sm" style="color:var(--danger)" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
-          bare escrow locks funds, not delivery
-        </div>
-      </div>
-    </div>
-
-    <!-- kicker strip -->
-    <div class="glass" style="position:absolute; bottom:112px; left:96px; right:96px; padding:36px 48px; text-align:center; border-radius:16px;">
-      <div class="italic" style="font-size:34px; font-weight:400; letter-spacing:-0.015em;">
-        The money moves. <span class="muted">·</span> The trust doesn't.
-      </div>
-    </div>
-
-    <!-- sources -->
-    <div class="mono" style="position:absolute; bottom:40px; right:48px; font-size:22px; color:var(--muted);">Sources: Atradius &middot; Flexable 2025</div>
-
-    <!-- rhythm -->
-    <div class="counter">02 / 08</div>
-    <div class="rail"><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="counter">02 / 09</div>
+    <div class="rail"><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
   </div>
 </section>
 
 <!-- ========================== SLIDE 3 · SOLUTION ========================== -->
-<section class="slide" id="s3" aria-label="Slide 3 of 8: The solution">
-  <div class="stage">
-    <div class="orb orb-brand" style="top:-250px; left:50%; transform:translateX(-50%); width:900px; height:900px; opacity:.35"></div>
-    <div class="dotgrid"></div>
-    <div class="scanlines"></div>
+<section class="slide" id="s3" aria-label="Slide 3 of 9: Three AI agents">
+  <div class="stage" style="overflow:hidden;">
+    <img src="screenshot-tmp/landing-solution.png" alt="Slide 3 of 9: Three AI agents" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;" />
     <div class="grain"></div>
-
-    <!-- concentric rings behind agent trio -->
-    <div class="rings" style="width:1000px; height:1000px; top:48%; left:50%; transform:translate(-50%,-50%); opacity:.3"></div>
-    <div class="rings" style="width:720px; height:720px; top:48%; left:50%; transform:translate(-50%,-50%); opacity:.4"></div>
-    <div class="rings" style="width:440px; height:440px; top:48%; left:50%; transform:translate(-50%,-50%); opacity:.5"></div>
-
-    <!-- header -->
-    <div style="position:absolute; top:96px; left:96px; right:96px; text-align:center;">
-      <div class="eyebrow">THE SOLUTION</div>
-      <h2 class="headline" style="margin-top:18px;">Three AI agents. One deal table.</h2>
-    </div>
-
-    <!-- left ornament: hairline + 3 dots -->
-    <div style="position:absolute; top:395px; left:56px; width:1px; height:240px; background:var(--border);"></div>
-    <div style="position:absolute; top:435px; left:49px;   width:14px; height:14px; border-radius:50%; background:var(--brand); box-shadow:0 0 12px rgba(94,106,210,0.8);"></div>
-    <div style="position:absolute; top:515px; left:49px;   width:14px; height:14px; border-radius:50%; background:var(--brand); box-shadow:0 0 12px rgba(94,106,210,0.8);"></div>
-    <div style="position:absolute; top:595px; left:49px;   width:14px; height:14px; border-radius:50%; background:var(--brand); box-shadow:0 0 12px rgba(94,106,210,0.8);"></div>
-
-    <!-- agent trio -->
-    <div style="position:absolute; top:300px; left:50%; transform:translateX(-50%); display:flex; gap:180px; align-items:center;">
-      <!-- Structurer -->
-      <div style="text-align:center;">
-        <div class="agent-circle" style="margin:0 auto;">
-          <svg class="icon" style="color:var(--text); width:60px; height:60px;" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-        </div>
-        <div class="brand" style="margin-top:28px; font-size:32px; font-weight:590;">Structurer</div>
-        <div class="muted" style="margin-top:12px; font-size:24px;">parses the deal</div>
-      </div>
-
-      <!-- connector -->
-      <div style="width:80px; height:1px; border-top:1px dashed rgba(255,255,255,0.2); position:absolute; left:180px; top:90px;"></div>
-
-      <!-- Negotiator -->
-      <div style="text-align:center;">
-        <div class="agent-circle" style="margin:0 auto;">
-          <svg class="icon" style="color:var(--text); width:60px; height:60px;" viewBox="0 0 24 24"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg>
-        </div>
-        <div class="brand" style="margin-top:28px; font-size:32px; font-weight:590;">Negotiator</div>
-        <div class="muted" style="margin-top:12px; font-size:24px;">reaches terms</div>
-      </div>
-
-      <div style="width:80px; height:1px; border-top:1px dashed rgba(255,255,255,0.2); position:absolute; right:180px; top:90px;"></div>
-
-      <!-- Verifier -->
-      <div style="text-align:center;">
-        <div class="agent-circle" style="margin:0 auto;">
-          <svg class="icon" style="color:var(--text); width:60px; height:60px;" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
-        </div>
-        <div class="brand" style="margin-top:28px; font-size:32px; font-weight:590;">Verifier</div>
-        <div class="muted" style="margin-top:12px; font-size:24px;">reviews delivery</div>
-      </div>
-    </div>
-
-    <!-- user flow strip -->
-    <div style="position:absolute; top:668px; left:96px; right:96px;">
-      <div class="eyebrow" style="text-align:center; margin-bottom:24px; font-size:16px; letter-spacing:0.22em;">USER JOURNEY</div>
-      <div style="display:flex; align-items:flex-start; justify-content:center;">
-
-        <!-- 01 Sign up -->
-        <div style="text-align:center; width:190px; flex-shrink:0;">
-          <div style="width:72px;height:72px;border-radius:50%;background:rgba(94,106,210,0.12);border:1.5px solid var(--brand);display:flex;align-items:center;justify-content:center;margin:0 auto;font-family:var(--font-mono);font-size:22px;color:var(--brand);font-weight:500;letter-spacing:0.05em;">01</div>
-          <div style="margin-top:14px;font-size:25px;font-weight:590;color:var(--text);letter-spacing:-0.01em;">Sign up</div>
-          <div style="margin-top:5px;font-size:19px;color:var(--muted);">Wallet + profile</div>
-        </div>
-
-        <!-- arrow -->
-        <div style="flex:1;display:flex;align-items:center;position:relative;top:35px;padding:0 6px;">
-          <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(94,106,210,0.55),rgba(113,112,255,0.85));"></div>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="flex-shrink:0;margin-left:-1px;"><path d="M1 5h8M5 1l4 4-4 4" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-
-        <!-- 02 Describe -->
-        <div style="text-align:center; width:190px; flex-shrink:0;">
-          <div style="width:72px;height:72px;border-radius:50%;background:rgba(94,106,210,0.12);border:1.5px solid var(--brand);display:flex;align-items:center;justify-content:center;margin:0 auto;font-family:var(--font-mono);font-size:22px;color:var(--brand);font-weight:500;letter-spacing:0.05em;">02</div>
-          <div style="margin-top:14px;font-size:25px;font-weight:590;color:var(--text);letter-spacing:-0.01em;">Describe</div>
-          <div style="margin-top:5px;font-size:19px;color:var(--muted);">Chat with agent</div>
-        </div>
-
-        <!-- arrow -->
-        <div style="flex:1;display:flex;align-items:center;position:relative;top:35px;padding:0 6px;">
-          <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(94,106,210,0.55),rgba(113,112,255,0.85));"></div>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="flex-shrink:0;margin-left:-1px;"><path d="M1 5h8M5 1l4 4-4 4" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-
-        <!-- 03 Invite -->
-        <div style="text-align:center; width:190px; flex-shrink:0;">
-          <div style="width:72px;height:72px;border-radius:50%;background:rgba(94,106,210,0.12);border:1.5px solid var(--brand);display:flex;align-items:center;justify-content:center;margin:0 auto;font-family:var(--font-mono);font-size:22px;color:var(--brand);font-weight:500;letter-spacing:0.05em;">03</div>
-          <div style="margin-top:14px;font-size:25px;font-weight:590;color:var(--text);letter-spacing:-0.01em;">Invite</div>
-          <div style="margin-top:5px;font-size:19px;color:var(--muted);">Share deal link</div>
-        </div>
-
-        <!-- arrow -->
-        <div style="flex:1;display:flex;align-items:center;position:relative;top:35px;padding:0 6px;">
-          <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(94,106,210,0.55),rgba(113,112,255,0.85));"></div>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="flex-shrink:0;margin-left:-1px;"><path d="M1 5h8M5 1l4 4-4 4" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-
-        <!-- 04 Approve -->
-        <div style="text-align:center; width:190px; flex-shrink:0;">
-          <div style="width:72px;height:72px;border-radius:50%;background:rgba(94,106,210,0.12);border:1.5px solid var(--brand);display:flex;align-items:center;justify-content:center;margin:0 auto;font-family:var(--font-mono);font-size:22px;color:var(--brand);font-weight:500;letter-spacing:0.05em;">04</div>
-          <div style="margin-top:14px;font-size:25px;font-weight:590;color:var(--text);letter-spacing:-0.01em;">Approve</div>
-          <div style="margin-top:5px;font-size:19px;color:var(--muted);">Confirm deal terms</div>
-        </div>
-
-        <!-- arrow -->
-        <div style="flex:1;display:flex;align-items:center;position:relative;top:35px;padding:0 6px;">
-          <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(94,106,210,0.55),rgba(74,222,128,0.85));"></div>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="flex-shrink:0;margin-left:-1px;"><path d="M1 5h8M5 1l4 4-4 4" stroke="var(--success)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-
-        <!-- 05 Release -->
-        <div style="text-align:center; width:190px; flex-shrink:0;">
-          <div style="width:72px;height:72px;border-radius:50%;background:rgba(74,222,128,0.12);border:1.5px solid var(--success);display:flex;align-items:center;justify-content:center;margin:0 auto;font-family:var(--font-mono);font-size:22px;color:var(--success);font-weight:500;letter-spacing:0.05em;">05</div>
-          <div style="margin-top:14px;font-size:25px;font-weight:590;color:var(--text);letter-spacing:-0.01em;">Release</div>
-          <div style="margin-top:5px;font-size:19px;color:var(--muted);">Milestone → paid</div>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- closing card -->
-    <div class="glass" style="position:absolute; bottom:80px; left:160px; right:160px; padding:28px 48px; text-align:center; border-radius:16px;">
-      <div style="position:absolute; top:0; left:20%; right:20%; height:2px; background: linear-gradient(90deg, transparent, var(--brand), transparent);"></div>
-      <div class="italic" style="font-size:24px; font-weight:400; letter-spacing:-0.015em;">
-        No lawyer. <span class="dim">·</span> No bank. <span class="dim">·</span> No dispute hotline. <span class="dim">·</span> Just code that can't lie.
-      </div>
-    </div>
-
-    <!-- rhythm -->
-    <div class="counter">03 / 08</div>
-    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="counter">03 / 09</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
   </div>
 </section>
 
 
-<!-- ========================== SLIDE 7 · BUSINESS MODEL ========================== -->
-<section class="slide" id="s4" aria-label="Slide 4 of 8: Business model">
+<!-- ========================== SLIDE 4 · HOW IT WORKS ========================== -->
+<section class="slide" id="s4" aria-label="Slide 4 of 9: How it works">
+  <div class="stage" style="overflow:hidden;">
+    <img src="screenshot-tmp/landing-howitworks.png" alt="Slide 4 of 9: How it works" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;" />
+    <div class="grain"></div>
+    <div class="counter">04 / 09</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  </div>
+</section>
+
+<!-- ========================== SLIDE 5 · BUSINESS MODEL ========================== -->
+<section class="slide" id="s5" aria-label="Slide 5 of 9: Business model">
   <div class="stage">
     <div class="orb orb-brand"  style="top:-200px; left:-100px; width:700px; height:700px; opacity:.28"></div>
     <div class="orb orb-accent" style="top:30%; right:-100px; width:700px; height:700px; opacity:.2"></div>
@@ -778,13 +581,13 @@ h3.subhead {
       </div>
     </div>
 
-    <div class="counter">04 / 08</div>
-    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="counter">05 / 09</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
   </div>
 </section>
 
 <!-- ========================== SLIDE 8 · GO TO MARKET ========================== -->
-<section class="slide" id="s5" aria-label="Slide 5 of 8: Go to market">
+<section class="slide" id="s6" aria-label="Slide 6 of 9: Go to market">
   <div class="stage">
     <div class="orb orb-brand"    style="top:-200px; left:-100px; width:800px; height:800px; opacity:.28"></div>
     <div class="orb orb-magenta"  style="bottom:-200px; right:-100px; width:700px; height:700px; opacity:.18"></div>
@@ -870,13 +673,13 @@ h3.subhead {
     <!-- sources -->
     <div class="mono" style="position:absolute; bottom:60px; right:48px; font-size:20px; color:var(--muted);">Sources: Atradius &middot; Flexable &middot; Bessemer &middot; BusinessDasher 2025</div>
 
-    <div class="counter">05 / 08</div>
-    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="counter">06 / 09</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
   </div>
 </section>
 
 <!-- ========================== SLIDE 9 · TEAM ========================== -->
-<section class="slide" id="s6" aria-label="Slide 6 of 8: Team">
+<section class="slide" id="s7" aria-label="Slide 7 of 9: Team">
   <div class="stage">
     <div class="orb orb-brand"   style="top:-150px; right:-100px; width:700px; height:700px; opacity:.25"></div>
     <div class="orb orb-magenta" style="bottom:-200px; left:-100px; width:600px; height:600px; opacity:.15"></div>
@@ -965,13 +768,13 @@ h3.subhead {
       </div>
     </div>
 
-    <div class="counter">06 / 08</div>
-    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="counter">07 / 09</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span><span class="dot"></span></div>
   </div>
 </section>
 
 <!-- ========================== SLIDE 10 · ROADMAP ========================== -->
-<section class="slide" id="s4" aria-label="Slide 4 of 8: Roadmap">
+<section class="slide" id="s8" aria-label="Slide 8 of 9: Roadmap">
   <div class="stage">
     <div class="orb orb-accent"   style="top:-200px; right:-100px; width:800px; height:800px; opacity:.28"></div>
     <div class="orb orb-brand"    style="bottom:-200px; left:-100px; width:800px; height:800px; opacity:.28"></div>
@@ -1083,13 +886,13 @@ h3.subhead {
       </div>
     </div>
 
-    <div class="counter">07 / 08</div>
-    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span></div>
+    <div class="counter">08 / 09</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span><span class="dot"></span></div>
   </div>
 </section>
 
 <!-- ========================== SLIDE 11 · CLOSING ========================== -->
-<section class="slide" id="s5" aria-label="Slide 5 of 8: Closing">
+<section class="slide" id="s9" aria-label="Slide 9 of 9: Closing">
   <div class="stage">
     <div class="orb orb-brand"   style="top:-200px; left:-200px; width:900px; height:900px; opacity:.5"></div>
     <div class="orb orb-accent"  style="bottom:-250px; right:-200px; width:900px; height:900px; opacity:.45"></div>
@@ -1147,8 +950,8 @@ h3.subhead {
       </div>
     </div>
 
-    <div class="counter">08 / 08</div>
-    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span></div>
+    <div class="counter">09 / 09</div>
+    <div class="rail"><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot past"></span><span class="dot current"></span></div>
   </div>
 </section>
 
