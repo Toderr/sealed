@@ -51,7 +51,9 @@ export default function ProfilePage() {
 
   const activeDealCount = deals.filter(
     (d) =>
-      d.status === DealStatus.Created || d.status === DealStatus.Active
+      d.status === DealStatus.Created ||
+      d.status === DealStatus.Funded ||
+      d.status === DealStatus.InProgress
   ).length;
   const completedDealCount = deals.filter(
     (d) => d.status === DealStatus.Completed
@@ -288,7 +290,10 @@ function InviteCard({
   );
 
   const eligibleDeals = deals.filter(
-    (d) => d.status === DealStatus.Created || d.status === DealStatus.Active
+    (d) =>
+      d.status === DealStatus.Created ||
+      d.status === DealStatus.Funded ||
+      d.status === DealStatus.InProgress
   );
 
   function generateLink() {
@@ -423,11 +428,12 @@ function StatCard({
   );
 }
 
-const STATUS_LABEL: Record<number, { label: string; color: string }> = {
+const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   [DealStatus.Created]: { label: "Awaiting counterparty", color: "text-warning" },
-  [DealStatus.Active]: { label: "Active", color: "text-success" },
+  [DealStatus.Funded]: { label: "Funded", color: "text-accent" },
+  [DealStatus.InProgress]: { label: "In progress", color: "text-success" },
   [DealStatus.Completed]: { label: "Completed", color: "text-muted" },
-  [DealStatus.Cancelled]: { label: "Cancelled", color: "text-danger" },
+  [DealStatus.Refunded]: { label: "Refunded", color: "text-danger" },
   [DealStatus.Disputed]: { label: "Disputed", color: "text-danger" },
 };
 
@@ -443,7 +449,8 @@ function DealRow({
   const [copied, setCopied] = useState(false);
   const status = STATUS_LABEL[deal.status] ?? { label: "Unknown", color: "text-muted" };
   const amountUsdc = deal.totalAmount / 1_000_000;
-  const needsCounterparty = deal.status === DealStatus.Created;
+  const needsCounterparty =
+    deal.status === DealStatus.Created || deal.status === DealStatus.Funded;
 
   function copyInvite() {
     const payload = {
