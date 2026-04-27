@@ -54,8 +54,8 @@
 ## Now
 Source of truth for current state:
 - **`DEMO.md`**: step-by-step hackathon demo walkthrough
-- **`PITCH_DECK.md`**: Colosseum submission pitch (10 slides + 3-min video script)
+- **`PITCH_DECK.md`**: Colosseum submission pitch (8 slides + 3-min video script)
 - **`DECK_BRIEF.md`**: structured input for claude.ai/design to render the visual deck
 - **`ARCHITECTURE.md`**: agent system + data model + forward-compat Scout design
 
-Remaining before submission: team bios in Slide 9, contact email + Vercel URL in Slide 10, screenshot grid for Slide 4, video uploads, track selection.
+Remaining before submission: team bios in Slide 6, contact email + Vercel URL in Slide 7, video uploads, track selection.
