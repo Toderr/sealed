@@ -9,6 +9,8 @@ import { SealedMark } from "@/components/SealedLogo";
 import {
   useProfileStore,
   LLM_MODELS,
+  X402_MODELS,
+  X402_TOP_UP_AMOUNTS,
   type LLMProvider,
 } from "@/lib/profile-store";
 
@@ -40,9 +42,10 @@ export default function OnboardingPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   // LLM fields
-  const [llmMode, setLlmMode] = useState<"own-key" | "sealed-tokens">(
-    "own-key"
-  );
+  const [llmMode, setLlmMode] = useState<"own-key" | "x402">("own-key");
+  const [x402TopUpAmount, setX402TopUpAmount] = useState(10);
+  const [x402Model, setX402Model] = useState(X402_MODELS[0].id);
+  const [topping, setTopping] = useState(false);
   const [provider, setProvider] = useState<LLMProvider>("anthropic");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("claude-sonnet-4-6");
@@ -65,8 +68,9 @@ export default function OnboardingPage() {
       setProvider(profile.llmConfig.provider);
       setApiKey(profile.llmConfig.apiKey);
       setModel(profile.llmConfig.model);
-    } else if (profile.llmConfig?.mode === "sealed-tokens") {
-      setLlmMode("sealed-tokens");
+    } else if (profile.llmConfig?.mode === "x402") {
+      setLlmMode("x402");
+      setX402Model(profile.llmConfig.model);
     }
   }, [profile]);
 
@@ -97,9 +101,13 @@ export default function OnboardingPage() {
   }
 
   function handleFinish() {
+    const existingX402Balance =
+      profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0;
     const llmConfig =
       llmMode === "own-key" && apiKey.trim()
-        ? { mode: "own-key" as const, provider, apiKey: apiKey.trim(), model }
+        ? ({ mode: "own-key", provider, apiKey: apiKey.trim(), model } as const)
+        : llmMode === "x402"
+        ? ({ mode: "x402", balance: existingX402Balance, model: x402Model } as const)
         : undefined;
     updateProfile({ llmConfig, onboardingComplete: true });
     router.push("/profile");
@@ -191,6 +199,17 @@ export default function OnboardingPage() {
               setModel={setModel}
               showKey={showKey}
               setShowKey={setShowKey}
+              x402TopUpAmount={x402TopUpAmount}
+              setX402TopUpAmount={setX402TopUpAmount}
+              x402Model={x402Model}
+              setX402Model={setX402Model}
+              x402Balance={
+                profile?.llmConfig?.mode === "x402"
+                  ? profile.llmConfig.balance
+                  : 0
+              }
+              topping={topping}
+              setTopping={setTopping}
               onBack={() => setStep("profile")}
               onFinish={handleFinish}
               onSkip={handleSkipLLM}
@@ -488,10 +507,13 @@ function LLMStep({
   apiKey, setApiKey,
   model, setModel,
   showKey, setShowKey,
+  x402TopUpAmount, setX402TopUpAmount,
+  x402Model, setX402Model,
+  x402Balance, topping, setTopping,
   onBack, onFinish, onSkip,
 }: {
-  mode: "own-key" | "sealed-tokens";
-  setMode: (m: "own-key" | "sealed-tokens") => void;
+  mode: "own-key" | "x402";
+  setMode: (m: "own-key" | "x402") => void;
   provider: LLMProvider;
   setProvider: (p: LLMProvider) => void;
   apiKey: string;
@@ -500,6 +522,13 @@ function LLMStep({
   setModel: (m: string) => void;
   showKey: boolean;
   setShowKey: (v: boolean) => void;
+  x402TopUpAmount: number;
+  setX402TopUpAmount: (v: number) => void;
+  x402Model: string;
+  setX402Model: (v: string) => void;
+  x402Balance: number;
+  topping: boolean;
+  setTopping: (v: boolean) => void;
   onBack: () => void;
   onFinish: () => void;
   onSkip: () => void;
@@ -510,11 +539,26 @@ function LLMStep({
     { id: "groq", label: "Groq" },
   ];
 
-  const TOKEN_PACKAGES = [
-    { tokens: "1,000", price: "$5", label: "Starter" },
-    { tokens: "5,000", price: "$20", label: "Pro", highlight: true },
-    { tokens: "15,000", price: "$50", label: "Team" },
-  ];
+  async function handleTopUp() {
+    setTopping(true);
+    try {
+      const res = await fetch("/api/topup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amountUsd: x402TopUpAmount }),
+      });
+      if (res.status === 402) {
+        // x402: payment required — full flow handled post-launch
+        alert("x402 payment flow coming soon. Your wallet will be charged via Solana USDC.");
+      } else if (res.ok) {
+        alert(`Top-up successful! $${x402TopUpAmount} credited.`);
+      }
+    } catch {
+      // no-op for now
+    } finally {
+      setTopping(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -523,14 +567,13 @@ function LLMStep({
           Power your agent
         </h1>
         <p className="text-[13px] text-muted">
-          Choose an LLM to power your Sealed agent&apos;s negotiation and deal
-          analysis.
+          Choose how your Sealed agent pays for LLM inference.
         </p>
       </div>
 
       {/* Mode tabs */}
       <div className="flex rounded-md bg-surface border border-card-border p-0.5">
-        {(["own-key", "sealed-tokens"] as const).map((m) => (
+        {(["own-key", "x402"] as const).map((m) => (
           <button
             key={m}
             onClick={() => setMode(m)}
@@ -541,14 +584,13 @@ function LLMStep({
             }`}
             style={{ fontWeight: 510 }}
           >
-            {m === "own-key" ? "Use my own API key" : "Buy Sealed tokens"}
+            {m === "own-key" ? "Use my own API key" : "Top up via x402"}
           </button>
         ))}
       </div>
 
       {mode === "own-key" ? (
         <div className="space-y-4">
-          {/* Provider selector */}
           <Field label="Provider">
             <div className="grid grid-cols-3 gap-2">
               {PROVIDERS.map((p) => (
@@ -558,7 +600,7 @@ function LLMStep({
                   className={`h-9 rounded-md text-[12px] border transition-colors ${
                     provider === p.id
                       ? "border-accent bg-accent/10 text-accent"
-                      : "border-card-border bg-surface text-muted hover:text-primary hover:border-card-border"
+                      : "border-card-border bg-surface text-muted hover:text-primary"
                   }`}
                   style={{ fontWeight: 510 }}
                 >
@@ -568,7 +610,6 @@ function LLMStep({
             </div>
           </Field>
 
-          {/* Model selector */}
           <Field label="Model">
             <select
               className={inputCls + " cursor-pointer"}
@@ -583,7 +624,6 @@ function LLMStep({
             </select>
           </Field>
 
-          {/* API key */}
           <Field label="API key">
             <div className="relative">
               <input
@@ -614,52 +654,15 @@ function LLMStep({
           </Field>
         </div>
       ) : (
-        <div className="space-y-3">
-          <p className="text-[12px] text-muted">
-            Buy tokens to use Sealed&apos;s hosted models — no API key needed.
-          </p>
-          <div className="grid grid-cols-3 gap-3">
-            {TOKEN_PACKAGES.map((pkg) => (
-              <div
-                key={pkg.label}
-                className={`relative rounded-md border p-4 text-center ${
-                  pkg.highlight
-                    ? "border-accent/40 bg-accent/5"
-                    : "border-card-border bg-surface"
-                }`}
-              >
-                {pkg.highlight && (
-                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px] bg-accent text-background px-2 py-0.5 rounded-full" style={{ fontWeight: 510 }}>
-                    Popular
-                  </span>
-                )}
-                <div
-                  className="text-[11px] text-muted mb-1"
-                  style={{ fontWeight: 510 }}
-                >
-                  {pkg.label}
-                </div>
-                <div
-                  className="text-[18px] text-primary"
-                  style={{ fontWeight: 590 }}
-                >
-                  {pkg.price}
-                </div>
-                <div className="text-[11px] text-muted mt-0.5">
-                  {pkg.tokens} tokens
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="rounded-md bg-surface border border-card-border px-4 py-3 text-center">
-            <p className="text-[13px] text-muted">
-              Token purchases coming soon.{" "}
-              <button className="text-accent hover:text-accent-hover underline">
-                Join the waitlist
-              </button>
-            </p>
-          </div>
-        </div>
+        <X402Panel
+          topUpAmount={x402TopUpAmount}
+          setTopUpAmount={setX402TopUpAmount}
+          x402Model={x402Model}
+          setX402Model={setX402Model}
+          balance={x402Balance}
+          topping={topping}
+          onTopUp={handleTopUp}
+        />
       )}
 
       <div className="flex gap-3">
@@ -673,9 +676,7 @@ function LLMStep({
           onClick={onFinish}
           className="btn-primary h-10 rounded-md text-[13px] flex-1"
         >
-          {mode === "own-key" && apiKey.trim()
-            ? "Save & continue"
-            : "Continue"}
+          {mode === "own-key" && apiKey.trim() ? "Save & continue" : "Continue"}
         </button>
       </div>
       <button
@@ -684,6 +685,158 @@ function LLMStep({
       >
         Skip for now — set up later
       </button>
+    </div>
+  );
+}
+
+/* --- x402 top-up panel ---------------------------------------- */
+
+function X402Panel({
+  topUpAmount,
+  setTopUpAmount,
+  x402Model,
+  setX402Model,
+  balance,
+  topping,
+  onTopUp,
+}: {
+  topUpAmount: number;
+  setTopUpAmount: (v: number) => void;
+  x402Model: string;
+  setX402Model: (v: string) => void;
+  balance: number;
+  topping: boolean;
+  onTopUp: () => void;
+}) {
+  const selectedModel = X402_MODELS.find((m) => m.id === x402Model) ?? X402_MODELS[0];
+
+  return (
+    <div className="space-y-4">
+      {/* What is x402 */}
+      <div className="rounded-md bg-surface border border-card-border px-4 py-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="pill-neutral text-accent text-[10px]">x402</span>
+          <p className="text-[12px] text-primary" style={{ fontWeight: 510 }}>
+            Pay-as-you-go via HTTP 402
+          </p>
+        </div>
+        <p className="text-[12px] text-muted leading-relaxed">
+          Top up credits with USDC — no API key needed. Credits are deducted per
+          LLM call, just like OpenRouter. Payment goes directly from your wallet
+          via the x402 protocol.
+        </p>
+      </div>
+
+      {/* Current balance */}
+      {balance > 0 && (
+        <div className="flex items-center justify-between rounded-md bg-success/10 border border-success/20 px-4 py-2.5">
+          <span className="text-[12px] text-muted">Current balance</span>
+          <span className="text-[14px] text-success tabular-nums" style={{ fontWeight: 590 }}>
+            ${(balance / 100).toFixed(2)}
+          </span>
+        </div>
+      )}
+
+      {/* Model selector */}
+      <Field label="Model">
+        <div className="space-y-1.5">
+          {X402_MODELS.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setX402Model(m.id)}
+              className={`w-full flex items-center justify-between px-3 h-10 rounded-md border text-left transition-colors ${
+                x402Model === m.id
+                  ? "border-accent bg-accent/10"
+                  : "border-card-border bg-surface hover:border-card-border"
+              }`}
+            >
+              <span
+                className={`text-[12px] ${x402Model === m.id ? "text-accent" : "text-primary"}`}
+                style={{ fontWeight: 510 }}
+              >
+                {m.label}
+              </span>
+              <span className="text-[11px] text-muted tabular-nums">
+                ~${m.costPer1k}/1k tokens
+              </span>
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      {/* Estimated calls */}
+      {topUpAmount > 0 && (
+        <p className="text-[12px] text-muted text-center">
+          $
+          {topUpAmount} ≈{" "}
+          <span className="text-primary" style={{ fontWeight: 510 }}>
+            {Math.floor((topUpAmount / selectedModel.costPer1k) * 1000).toLocaleString()} tokens
+          </span>{" "}
+          with {selectedModel.label}
+        </p>
+      )}
+
+      {/* Top-up amount selector */}
+      <div>
+        <p className="text-[12px] text-muted mb-2" style={{ fontWeight: 510 }}>
+          Top-up amount
+        </p>
+        <div className="grid grid-cols-4 gap-2">
+          {X402_TOP_UP_AMOUNTS.map((pkg) => (
+            <button
+              key={pkg.usd}
+              onClick={() => setTopUpAmount(pkg.usd)}
+              className={`relative h-10 rounded-md border text-[13px] transition-colors ${
+                topUpAmount === pkg.usd
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-card-border bg-surface text-muted hover:text-primary"
+              }`}
+              style={{ fontWeight: 510 }}
+            >
+              {pkg.popular && (
+                <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] bg-accent text-background px-1.5 py-0.5 rounded-full" style={{ fontWeight: 510 }}>
+                  Popular
+                </span>
+              )}
+              {pkg.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Top-up button */}
+      <button
+        onClick={onTopUp}
+        disabled={topping}
+        className="btn-primary w-full h-10 rounded-md text-[13px] flex items-center justify-center gap-2 disabled:opacity-50"
+      >
+        {topping ? (
+          <>
+            <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+            Processing…
+          </>
+        ) : (
+          <>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+            Top up ${topUpAmount} via x402
+          </>
+        )}
+      </button>
+      <p className="text-center text-[11px] text-subtle">
+        Payment sent via Solana USDC · Powered by{" "}
+        <a
+          href="https://x402.org"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-muted hover:text-accent transition-colors"
+        >
+          x402
+        </a>
+      </p>
     </div>
   );
 }

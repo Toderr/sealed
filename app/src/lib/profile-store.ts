@@ -14,7 +14,23 @@ export type LLMProvider = "openai" | "anthropic" | "groq";
 
 export type LLMConfig =
   | { mode: "own-key"; provider: LLMProvider; apiKey: string; model: string }
-  | { mode: "sealed-tokens"; balance: number; model: string };
+  | { mode: "x402"; balance: number; model: string }; // balance in USD cents
+
+export const X402_MODELS: { id: string; label: string; costPer1k: number }[] =
+  [
+    { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", costPer1k: 0.8 },
+    { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", costPer1k: 3.0 },
+    { id: "gpt-4o-mini", label: "GPT-4o mini", costPer1k: 0.6 },
+    { id: "gpt-4o", label: "GPT-4o", costPer1k: 5.0 },
+    { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B (Groq)", costPer1k: 0.4 },
+  ];
+
+export const X402_TOP_UP_AMOUNTS = [
+  { usd: 5, label: "$5" },
+  { usd: 10, label: "$10", popular: true },
+  { usd: 25, label: "$25" },
+  { usd: 50, label: "$50" },
+];
 
 export type UserProfile = {
   name: string;

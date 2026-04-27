@@ -74,9 +74,12 @@ export default function ProfilePage() {
   const activeLLM =
     profile.llmConfig?.mode === "own-key"
       ? profile.llmConfig.model
-      : profile.llmConfig?.mode === "sealed-tokens"
-      ? "Sealed tokens"
+      : profile.llmConfig?.mode === "x402"
+      ? profile.llmConfig.model
       : null;
+
+  const x402Balance =
+    profile.llmConfig?.mode === "x402" ? profile.llmConfig.balance : null;
 
   return (
     <Shell>
@@ -124,18 +127,36 @@ export default function ProfilePage() {
                 <SocialRow socials={profile.socials} />
 
                 {/* LLM badge */}
-                <div className="border-t border-card-border-subtle pt-3">
-                  <p className="text-[11px] text-subtle mb-1.5" style={{ fontWeight: 510 }}>
+                <div className="border-t border-card-border-subtle pt-3 space-y-2">
+                  <p className="text-[11px] text-subtle" style={{ fontWeight: 510 }}>
                     Agent model
                   </p>
                   {activeLLM ? (
-                    <span className="pill-neutral text-accent">{activeLLM}</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="pill-neutral text-accent truncate">{activeLLM}</span>
+                      {x402Balance !== null && (
+                        <span className="text-[11px] text-muted tabular-nums flex-shrink-0">
+                          ${(x402Balance / 100).toFixed(2)} left
+                        </span>
+                      )}
+                    </div>
                   ) : (
                     <Link
                       href="/onboarding?edit=1"
                       className="text-[12px] text-warning hover:text-accent transition-colors"
                     >
                       No LLM configured — set up now →
+                    </Link>
+                  )}
+                  {profile.llmConfig?.mode === "x402" && (
+                    <Link
+                      href="/onboarding?edit=1"
+                      className="flex items-center gap-1 text-[11px] text-muted hover:text-accent transition-colors"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      </svg>
+                      Top up via x402
                     </Link>
                   )}
                 </div>
