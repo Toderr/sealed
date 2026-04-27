@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/components/Header";
 import ChatInterface from "@/components/ChatInterface";
 import DealDashboard from "@/components/DealDashboard";
@@ -9,6 +10,7 @@ import NegotiationView from "@/components/NegotiationView";
 import { useToast } from "@/components/Toast";
 import { useDealsStore } from "@/lib/deals-store";
 import { useBusinessMemory } from "@/memory/localstorage-store";
+import { useProfileStore } from "@/lib/profile-store";
 import {
   DealParams,
   DealStatus,
@@ -36,7 +38,18 @@ export default function Home() {
   const { connection } = useConnection();
   const { deals, addDeal } = useDealsStore(publicKey ?? null);
   const { memory } = useBusinessMemory(publicKey ?? null);
+  const { profile, loaded: profileLoaded } = useProfileStore(
+    publicKey?.toBase58() ?? null
+  );
   const toast = useToast();
+  const router = useRouter();
+
+  // Redirect to onboarding if wallet connected but profile not set up
+  useEffect(() => {
+    if (profileLoaded && publicKey && !profile?.onboardingComplete) {
+      router.replace("/onboarding");
+    }
+  }, [profileLoaded, publicKey, profile, router]);
 
   // Enters negotiation stage rather than going straight on-chain. The final
   // terms come back from NegotiationView after both agents reach agreement.
