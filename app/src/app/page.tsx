@@ -106,7 +106,7 @@ function Hero() {
             style={headlineStyle}
           >
             Don&apos;t trust promises.
-            <br className="hidden sm:block" />
+            <br />
             <span className="text-accent"> Seal the deal.</span>
           </h1>
           <p className="mt-6 text-[17px] sm:text-[18px] text-foreground max-w-2xl leading-relaxed">
