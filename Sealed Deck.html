@@ -657,46 +657,101 @@ h3.subhead {
     </div>
 
     <!-- 5 step cards -->
-    <div style="position:absolute; top:350px; left:96px; right:96px; display:grid; grid-template-columns:repeat(5,1fr); gap:24px; height:290px;">
+    <div style="position:absolute; top:300px; left:96px; right:96px; display:grid; grid-template-columns:repeat(5,1fr); gap:24px; height:540px;">
 
       <!-- 01 Describe -->
-      <div class="glass" style="padding:36px 28px; border-radius:16px; display:flex; flex-direction:column; gap:20px; position:relative; overflow:hidden;">
+      <div class="glass" style="padding:28px 26px; border-radius:16px; display:flex; flex-direction:column; gap:16px; position:relative; overflow:hidden;">
         <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, transparent, var(--brand), transparent);"></div>
-        <div class="mono brand" style="font-size:27px; font-weight:500; letter-spacing:0.08em;">01</div>
-        <div style="font-size:38px; font-weight:590; letter-spacing:-0.02em; color:var(--text); line-height:1.08;">Describe.</div>
-        <div style="font-size:26px; color:var(--muted); line-height:1.55; flex:1;">Chat the deal in plain language.</div>
+        <!-- illustration: chat lines -->
+        <div style="height:210px; display:flex; align-items:center; justify-content:center; border-bottom:1px solid var(--border-strong); margin:-28px -26px 0 -26px; background:rgba(255,255,255,0.015);">
+          <svg width="260" height="150" viewBox="0 0 200 110" fill="none">
+            <rect x="20" y="20" width="135" height="14" rx="4" stroke="var(--brand)" stroke-width="2" opacity="0.7"/>
+            <rect x="20" y="48" width="100" height="14" rx="4" stroke="var(--brand)" stroke-width="2" opacity="0.7"/>
+            <rect x="20" y="76" width="120" height="14" rx="4" stroke="var(--brand)" stroke-width="2" opacity="0.7"/>
+          </svg>
+        </div>
+        <div class="mono brand" style="font-size:24px; font-weight:500; letter-spacing:0.08em;">01</div>
+        <div style="font-size:34px; font-weight:590; letter-spacing:-0.02em; color:var(--text); line-height:1.08;">Describe.</div>
+        <div style="font-size:22px; color:var(--muted); line-height:1.5; flex:1;">Chat the deal in plain language.</div>
       </div>
 
       <!-- 02 Negotiate -->
-      <div class="glass" style="padding:36px 28px; border-radius:16px; display:flex; flex-direction:column; gap:20px; position:relative; overflow:hidden;">
+      <div class="glass" style="padding:28px 26px; border-radius:16px; display:flex; flex-direction:column; gap:16px; position:relative; overflow:hidden;">
         <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, transparent, var(--brand), transparent);"></div>
-        <div class="mono brand" style="font-size:27px; font-weight:500; letter-spacing:0.08em;">02</div>
-        <div style="font-size:38px; font-weight:590; letter-spacing:-0.02em; color:var(--text); line-height:1.08;">Negotiate.</div>
-        <div style="font-size:26px; color:var(--muted); line-height:1.55; flex:1;">Agents counter on both sides. You accept the summary.</div>
+        <!-- illustration: network/agents -->
+        <div style="height:210px; display:flex; align-items:center; justify-content:center; border-bottom:1px solid var(--border-strong); margin:-28px -26px 0 -26px; background:rgba(255,255,255,0.015);">
+          <svg width="260" height="170" viewBox="0 0 200 130" fill="none">
+            <line x1="50" y1="40" x2="115" y2="78" stroke="var(--brand)" stroke-width="1.5" opacity="0.45"/>
+            <line x1="115" y1="78" x2="155" y2="48" stroke="var(--brand)" stroke-width="1.5" opacity="0.45"/>
+            <line x1="50" y1="40" x2="155" y2="48" stroke="var(--brand)" stroke-width="1.5" opacity="0.35"/>
+            <line x1="30" y1="92" x2="115" y2="78" stroke="var(--brand)" stroke-width="1.5" opacity="0.35"/>
+            <line x1="175" y1="92" x2="155" y2="48" stroke="var(--brand)" stroke-width="1.5" opacity="0.35"/>
+            <line x1="115" y1="78" x2="100" y2="115" stroke="var(--brand)" stroke-width="1.5" opacity="0.3"/>
+            <circle cx="50" cy="40" r="11" fill="var(--brand)" opacity="0.95"/>
+            <circle cx="155" cy="48" r="11" fill="var(--brand)" opacity="0.95"/>
+            <circle cx="115" cy="78" r="6" fill="var(--brand)" opacity="0.55"/>
+            <circle cx="30" cy="92" r="5" fill="var(--brand)" opacity="0.5"/>
+            <circle cx="175" cy="92" r="5" fill="var(--brand)" opacity="0.5"/>
+            <circle cx="100" cy="115" r="4" fill="var(--brand)" opacity="0.4"/>
+          </svg>
+        </div>
+        <div class="mono brand" style="font-size:24px; font-weight:500; letter-spacing:0.08em;">02</div>
+        <div style="font-size:34px; font-weight:590; letter-spacing:-0.02em; color:var(--text); line-height:1.08;">Negotiate.</div>
+        <div style="font-size:22px; color:var(--muted); line-height:1.5; flex:1;">Agents counter on both sides. You accept the summary.</div>
       </div>
 
       <!-- 03 Fund -->
-      <div class="glass" style="padding:36px 28px; border-radius:16px; display:flex; flex-direction:column; gap:20px; position:relative; overflow:hidden;">
+      <div class="glass" style="padding:28px 26px; border-radius:16px; display:flex; flex-direction:column; gap:16px; position:relative; overflow:hidden;">
         <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, transparent, var(--accent), transparent);"></div>
-        <div class="mono accent" style="font-size:27px; font-weight:500; letter-spacing:0.08em;">03</div>
-        <div style="font-size:38px; font-weight:590; letter-spacing:-0.02em; color:var(--text); line-height:1.08;">Fund.</div>
-        <div style="font-size:26px; color:var(--muted); line-height:1.55; flex:1;">One signature. USDC enters the on-chain vault.</div>
+        <!-- illustration: USDC vault -->
+        <div style="height:210px; display:flex; align-items:center; justify-content:center; border-bottom:1px solid var(--border-strong); margin:-28px -26px 0 -26px; background:rgba(255,255,255,0.015);">
+          <svg width="260" height="170" viewBox="0 0 200 130" fill="none">
+            <circle cx="100" cy="22" r="7" fill="var(--accent)" opacity="0.9"/>
+            <line x1="100" y1="29" x2="100" y2="48" stroke="var(--accent)" stroke-width="2" opacity="0.65"/>
+            <rect x="50" y="48" width="100" height="68" rx="8" stroke="var(--accent)" stroke-width="2" opacity="0.7"/>
+            <circle cx="100" cy="82" r="18" stroke="var(--accent)" stroke-width="2" opacity="0.6"/>
+            <circle cx="100" cy="82" r="6" fill="var(--accent)" opacity="0.8"/>
+          </svg>
+        </div>
+        <div class="mono accent" style="font-size:24px; font-weight:500; letter-spacing:0.08em;">03</div>
+        <div style="font-size:34px; font-weight:590; letter-spacing:-0.02em; color:var(--text); line-height:1.08;">Fund.</div>
+        <div style="font-size:22px; color:var(--muted); line-height:1.5; flex:1;">One signature. USDC enters the on-chain vault.</div>
       </div>
 
       <!-- 04 Verify -->
-      <div class="glass" style="padding:36px 28px; border-radius:16px; display:flex; flex-direction:column; gap:20px; position:relative; overflow:hidden;">
+      <div class="glass" style="padding:28px 26px; border-radius:16px; display:flex; flex-direction:column; gap:16px; position:relative; overflow:hidden;">
         <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, transparent, var(--accent), transparent);"></div>
-        <div class="mono accent" style="font-size:27px; font-weight:500; letter-spacing:0.08em;">04</div>
-        <div style="font-size:38px; font-weight:590; letter-spacing:-0.02em; color:var(--text); line-height:1.08;">Verify.</div>
-        <div style="font-size:26px; color:var(--muted); line-height:1.55; flex:1;">Seller uploads proof. Verifier scores it. You approve.</div>
+        <!-- illustration: verified document -->
+        <div style="height:210px; display:flex; align-items:center; justify-content:center; border-bottom:1px solid var(--border-strong); margin:-28px -26px 0 -26px; background:rgba(255,255,255,0.015);">
+          <svg width="260" height="170" viewBox="0 0 200 130" fill="none">
+            <rect x="40" y="18" width="120" height="86" rx="7" stroke="var(--accent)" stroke-width="2" opacity="0.7"/>
+            <line x1="55" y1="36" x2="145" y2="36" stroke="var(--accent)" stroke-width="1.6" opacity="0.5"/>
+            <line x1="55" y1="52" x2="130" y2="52" stroke="var(--accent)" stroke-width="1.6" opacity="0.5"/>
+            <line x1="55" y1="68" x2="140" y2="68" stroke="var(--accent)" stroke-width="1.6" opacity="0.5"/>
+            <circle cx="148" cy="92" r="18" fill="rgba(74,222,128,0.18)" stroke="var(--success)" stroke-width="2"/>
+            <path d="M139 92 L146 99 L158 86" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </div>
+        <div class="mono accent" style="font-size:24px; font-weight:500; letter-spacing:0.08em;">04</div>
+        <div style="font-size:34px; font-weight:590; letter-spacing:-0.02em; color:var(--text); line-height:1.08;">Verify.</div>
+        <div style="font-size:22px; color:var(--muted); line-height:1.5; flex:1;">Seller uploads proof. Verifier scores it. You approve.</div>
       </div>
 
       <!-- 05 Release -->
-      <div class="glass" style="padding:36px 28px; border-radius:16px; display:flex; flex-direction:column; gap:20px; position:relative; overflow:hidden; border-color:rgba(74,222,128,0.15); background:rgba(74,222,128,0.03);">
+      <div class="glass" style="padding:28px 26px; border-radius:16px; display:flex; flex-direction:column; gap:16px; position:relative; overflow:hidden; border-color:rgba(74,222,128,0.15); background:rgba(74,222,128,0.03);">
         <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, transparent, var(--success), transparent);"></div>
-        <div class="mono success" style="font-size:27px; font-weight:500; letter-spacing:0.08em;">05</div>
-        <div style="font-size:38px; font-weight:590; letter-spacing:-0.02em; color:var(--text); line-height:1.08;">Release.</div>
-        <div style="font-size:26px; color:var(--muted); line-height:1.55; flex:1;">One tap. That milestone pays. Not the pot.</div>
+        <!-- illustration: lock -->
+        <div style="height:210px; display:flex; align-items:center; justify-content:center; border-bottom:1px solid var(--border-strong); margin:-28px -26px 0 -26px; background:rgba(74,222,128,0.025);">
+          <svg width="260" height="170" viewBox="0 0 200 130" fill="none">
+            <path d="M70 46 V32 a30 30 0 0 1 60 0 V46" stroke="var(--success)" stroke-width="2" opacity="0.7" fill="none"/>
+            <rect x="56" y="46" width="88" height="64" rx="8" stroke="var(--success)" stroke-width="2" opacity="0.75"/>
+            <circle cx="100" cy="74" r="7" fill="var(--success)" opacity="0.95"/>
+            <line x1="100" y1="74" x2="100" y2="92" stroke="var(--success)" stroke-width="2.4" opacity="0.8"/>
+          </svg>
+        </div>
+        <div class="mono success" style="font-size:24px; font-weight:500; letter-spacing:0.08em;">05</div>
+        <div style="font-size:34px; font-weight:590; letter-spacing:-0.02em; color:var(--text); line-height:1.08;">Release.</div>
+        <div style="font-size:22px; color:var(--muted); line-height:1.5; flex:1;">One tap. That milestone pays. Not the pot.</div>
       </div>
 
     </div>
@@ -927,79 +982,120 @@ h3.subhead {
     <!-- header -->
     <div style="position:absolute; top:96px; left:96px; right:96px;">
       <div class="eyebrow">TEAM</div>
-      <h2 class="headline" style="margin-top:18px;">Two founders. One bet.</h2>
+      <h2 class="headline" style="margin-top:18px;">Two founders. One advisor.</h2>
     </div>
 
-    <!-- two founder cards -->
-    <div style="position:absolute; top:340px; left:160px; right:160px; display:grid; grid-template-columns:1fr 1fr; gap:56px;">
-      <!-- Dev card -->
-      <div class="glass" style="padding:40px 44px; border-radius:20px; position:relative; overflow:hidden; min-height:460px;">
+    <!-- three cards: 2 founders + 1 advisor -->
+    <div style="position:absolute; top:340px; left:96px; right:96px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:28px;">
+      <!-- Founder 1: Efunderf -->
+      <div class="glass" style="padding:32px 32px; border-radius:20px; position:relative; overflow:hidden; min-height:540px;">
+        <!-- role badge top -->
+        <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, transparent, var(--brand), transparent);"></div>
+        <div class="mono brand" style="font-size:18px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; opacity:0.85;">FOUNDER</div>
         <!-- monogram bg -->
         <div style="position:absolute; bottom:-80px; right:-40px; font-size:460px; font-weight:200; color:rgba(255,255,255,0.028); line-height:0.8; letter-spacing:-0.05em; pointer-events:none;">E</div>
         <!-- specialty icon top-right -->
-        <div class="badge-tile" style="position:absolute; top:28px; right:28px;">
+        <div class="badge-tile" style="position:absolute; top:24px; right:24px;">
           <svg class="icon" style="color:var(--brand)" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         </div>
 
         <!-- avatar row -->
-        <div style="display:flex; gap:24px; align-items:center;">
-          <div style="width:96px; height:96px; border-radius:50%; border:2px solid var(--brand); overflow:hidden; background:rgba(94,106,210,0.08); box-shadow:0 0 32px rgba(94,106,210,0.3);">
+        <div style="display:flex; gap:18px; align-items:center; margin-top:22px;">
+          <div style="width:84px; height:84px; border-radius:50%; border:2px solid var(--brand); overflow:hidden; background:rgba(94,106,210,0.08); box-shadow:0 0 32px rgba(94,106,210,0.3); flex-shrink:0;">
             <img src="screenshot-tmp/efunderf.jpg" alt="Efunderf" style="width:100%; height:100%; object-fit:cover; display:block;"/>
           </div>
-          <div>
-            <div style="font-size:36px; font-weight:590; letter-spacing:-0.012em;">Efunderf</div>
-            <div class="mono brand" style="margin-top:8px; font-size:20px;">@efunderf</div>
-            <div class="eyebrow" style="margin-top:10px;">MARKETING &amp; AI SPECIALIST</div>
+          <div style="min-width:0;">
+            <div style="font-size:30px; font-weight:590; letter-spacing:-0.012em;">Efunderf</div>
+            <div class="mono brand" style="margin-top:6px; font-size:17px;">@efunderf</div>
+            <div class="eyebrow" style="margin-top:8px; font-size:13px;">MARKETING &amp; AI</div>
           </div>
         </div>
 
-        <div style="margin-top:28px; position:relative; z-index:1; display:inline-flex; align-items:center; gap:10px; padding:10px 18px; border-radius:12px; background:rgba(94,106,210,0.1); border:1px solid rgba(94,106,210,0.35);">
+        <div style="margin-top:24px; position:relative; z-index:1; display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:12px; background:rgba(94,106,210,0.1); border:1px solid rgba(94,106,210,0.35);">
           <svg class="icon icon-sm" style="color:var(--brand)" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-          <span class="brand" style="font-size:24px; font-weight:600;">EX CCO</span>
-          <span style="font-size:22px; color:var(--text);">Marketing Agency</span>
+          <span class="brand" style="font-size:20px; font-weight:600;">EX CCO</span>
+          <span style="font-size:19px; color:var(--text);">Marketing Agency</span>
         </div>
 
-        <div style="margin-top:20px; font-size:24px; line-height:1.6; color:var(--text); position:relative; z-index:1;">
+        <div style="margin-top:18px; font-size:21px; line-height:1.55; color:var(--text); position:relative; z-index:1;">
           4+ years in digital marketing. High proficiency in agentic AI. Knows the pain from both sides of every deal.
         </div>
 
-        <div style="position:absolute; bottom:32px; left:44px; right:44px; display:flex; gap:12px; flex-wrap:wrap;">
-          <span class="pill mono" style="font-size:22px; padding:9px 20px;">AI expert</span>
-          <span class="pill mono" style="font-size:22px; padding:9px 20px;">marketing</span>
+        <div style="position:absolute; bottom:28px; left:32px; right:32px; display:flex; gap:10px; flex-wrap:wrap;">
+          <span class="pill mono" style="font-size:18px; padding:7px 16px;">AI expert</span>
+          <span class="pill mono" style="font-size:18px; padding:7px 16px;">marketing</span>
         </div>
       </div>
 
-      <!-- Partner card -->
-      <div class="glass" style="padding:40px 44px; border-radius:20px; position:relative; overflow:hidden; min-height:460px;">
-        <div style="position:absolute; bottom:-80px; right:-40px; font-size:460px; font-weight:200; color:rgba(255,255,255,0.028); line-height:0.8; letter-spacing:-0.05em; pointer-events:none;">F</div>
-        <div class="badge-tile" style="position:absolute; top:28px; right:28px;">
-          <svg class="icon" style="color:var(--brand)" viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+      <!-- Co-founder: Edkesuma -->
+      <div class="glass" style="padding:32px 32px; border-radius:20px; position:relative; overflow:hidden; min-height:540px;">
+        <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, transparent, var(--brand), transparent);"></div>
+        <div class="mono brand" style="font-size:18px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; opacity:0.85;">CO-FOUNDER</div>
+        <div style="position:absolute; bottom:-80px; right:-40px; font-size:460px; font-weight:200; color:rgba(255,255,255,0.028); line-height:0.8; letter-spacing:-0.05em; pointer-events:none;">K</div>
+        <div class="badge-tile" style="position:absolute; top:24px; right:24px;">
+          <svg class="icon" style="color:var(--brand)" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
         </div>
 
-        <div style="display:flex; gap:24px; align-items:center;">
-          <div style="width:96px; height:96px; border-radius:50%; border:2px solid var(--accent); overflow:hidden; background:rgba(113,112,255,0.08); box-shadow:0 0 32px rgba(113,112,255,0.3);">
+        <div style="display:flex; gap:18px; align-items:center; margin-top:22px;">
+          <div style="width:84px; height:84px; border-radius:50%; border:2px solid var(--brand); overflow:hidden; background:rgba(94,106,210,0.08); box-shadow:0 0 32px rgba(94,106,210,0.3); flex-shrink:0;">
+            <img src="screenshot-tmp/edkesuma.jpg" alt="Edkesuma" style="width:100%; height:100%; object-fit:cover; display:block;"/>
+          </div>
+          <div style="min-width:0;">
+            <div style="font-size:30px; font-weight:590; letter-spacing:-0.012em;">Edkesuma</div>
+            <div class="mono brand" style="margin-top:6px; font-size:17px;">@edkesuma</div>
+            <div class="eyebrow" style="margin-top:8px; font-size:13px;">AI FULL STACK ENGINEER</div>
+          </div>
+        </div>
+
+        <div style="margin-top:24px; position:relative; z-index:1; display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:12px; background:rgba(94,106,210,0.1); border:1px solid rgba(94,106,210,0.35);">
+          <svg class="icon icon-sm" style="color:var(--brand)" viewBox="0 0 24 24"><path d="M12 2 L15 9 L22 9 L17 14 L19 21 L12 17 L5 21 L7 14 L2 9 L9 9 Z"/></svg>
+          <span class="brand" style="font-size:20px; font-weight:600;">3×</span>
+          <span style="font-size:19px; color:var(--text);">Hackathon Winner SG</span>
+        </div>
+
+        <div style="margin-top:18px; font-size:21px; line-height:1.55; color:var(--text); position:relative; z-index:1;">
+          AI Full Stack Engineer @ Covena. Builds production AI systems. Ships fast, ships right.
+        </div>
+
+        <div style="position:absolute; bottom:28px; left:32px; right:32px; display:flex; gap:10px; flex-wrap:wrap;">
+          <span class="pill mono" style="font-size:18px; padding:7px 16px;">AI engineer</span>
+          <span class="pill mono" style="font-size:18px; padding:7px 16px;">developer</span>
+        </div>
+      </div>
+
+      <!-- Advisor: Friday7th -->
+      <div class="glass" style="padding:32px 32px; border-radius:20px; position:relative; overflow:hidden; min-height:540px;">
+        <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, transparent, var(--accent), transparent);"></div>
+        <div class="mono accent" style="font-size:18px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; opacity:0.85;">ADVISOR</div>
+        <div style="position:absolute; bottom:-80px; right:-40px; font-size:460px; font-weight:200; color:rgba(255,255,255,0.028); line-height:0.8; letter-spacing:-0.05em; pointer-events:none;">F</div>
+        <div class="badge-tile" style="position:absolute; top:24px; right:24px;">
+          <svg class="icon" style="color:var(--accent)" viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        </div>
+
+        <div style="display:flex; gap:18px; align-items:center; margin-top:22px;">
+          <div style="width:84px; height:84px; border-radius:50%; border:2px solid var(--accent); overflow:hidden; background:rgba(113,112,255,0.08); box-shadow:0 0 32px rgba(113,112,255,0.3); flex-shrink:0;">
             <img src="screenshot-tmp/friday.jpg" alt="Friday7th" style="width:100%; height:100%; object-fit:cover; display:block;"/>
           </div>
-          <div>
-            <div style="font-size:36px; font-weight:590; letter-spacing:-0.012em;">Friday7th</div>
-            <div class="mono accent" style="margin-top:8px; font-size:20px;">@Friday_SOL</div>
-            <div class="eyebrow" style="margin-top:10px;">DISTRIBUTION + FINANCIAL MARKETS</div>
+          <div style="min-width:0;">
+            <div style="font-size:30px; font-weight:590; letter-spacing:-0.012em;">Friday7th</div>
+            <div class="mono accent" style="margin-top:6px; font-size:17px;">@Friday_SOL</div>
+            <div class="eyebrow" style="margin-top:8px; font-size:13px;">DISTRIBUTION + MARKETS</div>
           </div>
         </div>
 
-        <div style="margin-top:28px; position:relative; z-index:1; display:inline-flex; align-items:center; gap:10px; padding:10px 18px; border-radius:12px; background:rgba(113,112,255,0.1); border:1px solid rgba(113,112,255,0.35);">
+        <div style="margin-top:24px; position:relative; z-index:1; display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:12px; background:rgba(113,112,255,0.1); border:1px solid rgba(113,112,255,0.35);">
           <svg class="icon icon-sm" style="color:var(--accent)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span class="accent" style="font-size:24px; font-weight:600;">18 years</span>
-          <span style="font-size:22px; color:var(--text);">in marketplaces</span>
+          <span class="accent" style="font-size:20px; font-weight:600;">19 years</span>
+          <span style="font-size:19px; color:var(--text);">in marketplaces</span>
         </div>
 
-        <div style="margin-top:20px; font-size:24px; line-height:1.6; color:var(--text); position:relative; z-index:1;">
+        <div style="margin-top:18px; font-size:21px; line-height:1.55; color:var(--text); position:relative; z-index:1;">
           Direct line to the target customer segment. Long track record in financial markets.
         </div>
 
-        <div style="position:absolute; bottom:32px; left:44px; right:44px; display:flex; gap:12px; flex-wrap:wrap;">
-          <span class="pill mono" style="font-size:22px; padding:9px 20px;">financial market</span>
-          <span class="pill mono" style="font-size:22px; padding:9px 20px;">marketplace</span>
+        <div style="position:absolute; bottom:28px; left:32px; right:32px; display:flex; gap:10px; flex-wrap:wrap;">
+          <span class="pill mono" style="font-size:18px; padding:7px 16px;">financial market</span>
+          <span class="pill mono" style="font-size:18px; padding:7px 16px;">marketplace</span>
         </div>
       </div>
     </div>

@@ -83,10 +83,11 @@ Universal pain · Live infrastructure · Warm distribution.
 
 ## Slide 6 · Team
 
-### Two founders. One bet.
+### Two founders. One advisor.
 
-- **Efunderf:** 4+ years in digital marketing, ex Marketing Agency CCO. High proficiency in agentic AI. Knows the pain from both sides of every deal.
-- **Friday7th:** 18-year track record across financial markets and marketplaces. Direct line to the target customer segment.
+- **Efunderf** *(Founder):* 4+ years in digital marketing, ex Marketing Agency CCO. High proficiency in agentic AI. Knows the pain from both sides of every deal.
+- **Edkesuma** *(Co-founder):* AI Full Stack Engineer @ Covena. 3× Hackathon winner in Singapore. Builds production AI systems — ships fast, ships right.
+- **Friday7th** *(Advisor):* 19-year track record across financial markets and marketplaces. Direct line to the target customer segment.
 
 ---
 
@@ -126,7 +127,7 @@ Universal pain · Live infrastructure · Warm distribution.
 [Screen recording: chat, deal preview, wallet sign, on-chain confirmation, milestone release]
 
 **2:15–2:45 · Why us**
-"The rails are built. Four hundred billion in stablecoin payments already moved in 2025. We don't need adoption. We just need to show up warm. Our team brings a twenty-year network of business operators and four years of digital marketing, ready to open the first hundred deals with zero ad spend. The product is trust. The code just enforces it."
+"The rails are built. Four hundred billion in stablecoin payments already moved in 2025. We don't need adoption. We just need to show up warm. Two co-founders shipping marketing and AI engineering, plus an advisor with nineteen years of direct lines into the exact customer segment we're targeting. Ready to open the first hundred deals with zero ad spend. The product is trust. The code just enforces it."
 
 **2:45–3:00 · Close**
 "Don't trust promises. Seal the deal. Sealed Agent makes the deal table that enforces itself, for every business that still runs on handshakes."
@@ -140,7 +141,7 @@ Universal pain · Live infrastructure · Warm distribution.
 - [ ] Under-3-min technical walkthrough uploaded
 - [x] Live demo URL (Vercel): sealed-nine.vercel.app
 - [ ] Deck link filled in Slide 8 (replace `[deck link]` placeholder)
-- [x] Team bios: `Efunderf` + `Friday7th` in Slide 6
+- [x] Team bios: `Efunderf` + `Edkesuma` (co-founders) + `Friday7th` (advisor) in Slide 6
 - [ ] Track selection on Colosseum portal
 
 **Done:**

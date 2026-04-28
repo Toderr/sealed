@@ -154,7 +154,7 @@ One richness hero per slide. Pick only the one that earns its keep. Do NOT layer
 | 6 | Gauge bar at bottom showing `10%` vs `90%` coverage | Quantifies the pull-quote visually |
 | 7 | 3 revenue flow arrows converging into a pool glyph labeled "platform revenue" | Shows the architecture of the pricing |
 | 8 | SEA geographic fragment bottom-right + timeline nodes 2-tone (solid past, faded future) | Regional specificity without making it a map slide |
-| 9 | Monogram background texture behind each founder card (`T` + `D` at 3%) | Depth without photo dependency |
+| 9 | Monogram background texture behind each card (`E` + `K` + `F` at 3%) | Depth without photo dependency |
 | 10 | Dashed future treatment on Q4 / 2027 stations; Q2 + Q3 glow brighter | Confidence decay visualization |
 | 11 | Diagonal light sweep + concentric orbit rings + endmark glyph below tagline | Book-ends Slide 1 at quieter intensity |
 
@@ -316,23 +316,24 @@ Final palette rhythm: indigo dominant, green = achieved/live/settled, red = abse
 ## Slide 6 · Team
 
 **Eyebrow:** TEAM
-**Headline:** `Two founders. One bet.`
+**Headline:** `Two founders. One advisor.`
 
 **Text (verbatim, team):**
-- `[Dev name]:` 4+ years in digital marketing, ex Marketing Agency CCO. High proficiency in agentic AI. Knows the pain from both sides of every deal.
-- `[Partner name]:` direct line to the target customer segment. Long track record in financial markets and marketplaces.
+- `Efunderf` *(Founder):* 4+ years in digital marketing, ex Marketing Agency CCO. High proficiency in agentic AI. Knows the pain from both sides of every deal.
+- `Edkesuma` *(Co-founder):* AI Full Stack Engineer @ Covena. 3× Hackathon winner in Singapore. Builds production AI systems — ships fast, ships right.
+- `Friday7th` *(Advisor):* direct line to the target customer segment. 19-year track record in financial markets and marketplaces.
 
 **Visual:**
 - Bg: brand-indigo orb top-right at 10% + warmth magenta bottom-left at 8%. Grain 2%. Scanlines at 1.5%.
-- Ambient: "TEAM" at 140pt weight 200 in 3% white behind the card row (replaces the old "TRACTION + TEAM" texture).
-- **Two founder cards as hero row** (centered, equal width, generous margin between and on both sides):
-  - Each card ~44% of content width, vertically stacked elements: 96px circular avatar placeholder (2px brand-indigo ring + glow, monogram if no photo) top-left inside the card, name weight 590 right of avatar, role muted small-caps below name, 3-line description below.
-  - Past-work badge pill at the bottom of each card: `AI expert · marketing` (Dev), `financial market · marketplace` (Partner).
-  - Specialty icon badge top-right of card: `terminal` (Dev), `trending-up` (Partner).
-  - Monogram background texture: large letter (`T` for dev, `D` for partner, or initials of placeholder names) at 3% opacity behind each card. Anchors the card, adds depth without photo dependency.
+- Ambient: "TEAM" at 140pt weight 200 in 3% white behind the card row.
+- **Three cards as hero row** (equal width, FOUNDER + CO-FOUNDER + ADVISOR labels):
+  - Each card ~30% of content width, vertically stacked elements: role tag at top, 84px circular avatar (2px brand-indigo ring + glow for founders, accent indigo for advisor), name weight 590 right of avatar, role muted small-caps below name, 2-3 line description.
+  - Past-work badge pill at the bottom of each card: `AI expert · marketing` (Efunderf), `AI engineer · developer` (Edkesuma), `financial market · marketplace` (Friday7th).
+  - Specialty icon badge top-right of card: `terminal` (Efunderf), `code` (Edkesuma), `trending-up` (Friday7th).
+  - Monogram background texture: large letter (`E`, `K`, `F`) at 3% opacity behind each card. Anchors the card, adds depth without photo dependency.
 - No stats bar, no checklist, no closing line. Contact info lives on Slide 8.
 
-**Tone:** Human. Two faces carry the whole slide.
+**Tone:** Human. Three faces carry the whole slide.
 
 ---
 
@@ -416,9 +417,9 @@ Before exporting, check:
 - [ ] Web2 / Web3 stat columns on Slide 2 are symmetric.
 - [ ] No emoji as icons. Lucide stroked SVG only.
 - [ ] Contrast passes 7:1 (WCAG AAA).
-- [ ] Placeholders intact: `[Dev name]`, `[Partner name]`, `[deck link]`, screenshot frames removed (Product Demo slide deleted). (`[url]` removed: live demo URL is baked into Slide 8's contact rail as `sealed-nine.vercel.app`.)
+- [ ] Placeholders intact: `[deck link]`, screenshot frames removed (Product Demo slide deleted). (`[url]` removed: live demo URL is baked into Slide 8's contact rail as `sealed-nine.vercel.app`.)
 - [ ] No `$17B` crypto-scam stat anywhere in the brief.
-- [ ] No `18 YEARS` credential anywhere in the brief.
+- [ ] Friday7th positioned as **Advisor** (not founder); 19-year credential, not 18.
 - [ ] No `$250K` ask figure anywhere in the brief.
 - [ ] Slide counter `NN / 08` present bottom-left on all 8 slides.
 - [ ] Progress rail visible on right edge of every slide with current-slide dot glowing.
