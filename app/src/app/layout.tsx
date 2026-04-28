@@ -23,7 +23,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sealed: AI-powered escrow on Solana",
+  title: "Sealed Agent: AI-powered escrow on Solana",
   description:
     "Autonomous B2B deal execution with milestone-based escrow on Solana.",
 };

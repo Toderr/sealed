@@ -1,6 +1,6 @@
-# Sealed
+# Sealed Agent
 
-**AI escrow for business deals. Any currency. Any chain.**
+**Escrow agent for business deals and negotiations.**
 
 **Live demo:** https://sealed-nine.vercel.app (Solana devnet)
 
@@ -14,14 +14,14 @@ Built for the Colosseum hackathon. Designed for any business that still closes d
 
 Business deals break. Both sides lose.
 
-- **Web2.** Freelancers lost `$15B` to non-payment in 2025. **58%** face unpaid invoices. **79%** of companies were targeted by payment fraud in 2024. *(Flexable 2025 Freelance Payment Report.)*
-- **Web3.** Crypto scams took `$17B` in 2025. Impersonation fraud up **1,400%**. AI-enabled scams are 4.5x more profitable than traditional ones. *(Chainalysis 2026 Crypto Crime Report.)*
+- **The scale.** `50%` of global B2B invoices are overdue in 2025. `$15B/year` lost to freelancers alone. `25%` of EU bankruptcies are caused by late payments. *(Atradius 2025 B2B Payment Practices Barometer · Flexable 2025 Global Freelancer Non-Payment Report.)*
+- **The trigger.** **70% of non-payment cases are disputes over what was delivered.** It's not a payment problem. It's a *verification problem*. Bare escrow locks funds, but can't verify delivery.
 
-Two different worlds. One root cause: no enforceable deal layer.
+The money moves. The trust doesn't.
 
-Sealed closes that gap. An AI agent layer on top of Solana escrow gives any two parties a deal table that enforces itself. The chain guarantees settlement; the agents handle structuring, negotiation, and delivery verification.
+Sealed Agent closes that gap. An AI agent layer on top of Solana escrow gives any two parties a deal table that enforces itself. The chain guarantees settlement; the agents handle structuring, negotiation, and delivery verification.
 
-Message: **"People break promises. Code doesn't."**
+Message: **"Don't trust promises. Seal the deal."**
 
 ---
 

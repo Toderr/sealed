@@ -1,0 +1,110 @@
+import { insforge, table } from "@/lib/insforge";
+import type { Reputation } from "@/lib/types";
+
+export async function getReputation(wallet: string): Promise<Reputation | null> {
+  const { data, error } = await insforge.database
+    .from(table("reputation"))
+    .select("*")
+    .eq("wallet", wallet)
+    .single();
+
+  if (error || !data) return null;
+  return data as Reputation;
+}
+
+export async function upsertReputation(wallet: string): Promise<void> {
+  await insforge.database
+    .from(table("reputation"))
+    .upsert({ wallet }, { onConflict: "wallet", ignoreDuplicates: true });
+}
+
+export async function incrementDeal(
+  wallet: string,
+  outcome: "success" | "failure"
+): Promise<void> {
+  const rep = await getReputation(wallet);
+  const base = rep ?? {
+    wallet,
+    deals_total: 0,
+    deals_successful: 0,
+    deals_failed: 0,
+    avg_rating: 0,
+  };
+
+  const updated = {
+    wallet,
+    deals_total: base.deals_total + 1,
+    deals_successful:
+      outcome === "success" ? base.deals_successful + 1 : base.deals_successful,
+    deals_failed:
+      outcome === "failure" ? base.deals_failed + 1 : base.deals_failed,
+    avg_rating: base.avg_rating,
+    updated_at: new Date().toISOString(),
+  };
+
+  await insforge.database
+    .from(table("reputation"))
+    .upsert(updated, { onConflict: "wallet" });
+}
+
+export async function recalculateAvgRating(wallet: string): Promise<void> {
+  const { data } = await insforge.database
+    .from(table("ratings"))
+    .select("stars")
+    .eq("ratee_wallet", wallet)
+    .eq("revealed", true);
+
+  if (!data || data.length === 0) return;
+
+  const avg =
+    (data as { stars: number }[]).reduce((sum, r) => sum + r.stars, 0) /
+    data.length;
+
+  await insforge.database
+    .from(table("reputation"))
+    .update({
+      avg_rating: Math.round(avg * 100) / 100,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("wallet", wallet);
+}
+
+export async function submitRating(
+  dealId: string,
+  raterWallet: string,
+  rateeWallet: string,
+  stars: number,
+  reviewText: string
+): Promise<{ revealed: boolean }> {
+  await insforge.database.from(table("ratings")).insert({
+    deal_id: dealId,
+    rater_wallet: raterWallet,
+    ratee_wallet: rateeWallet,
+    stars,
+    review_text: reviewText,
+    revealed: false,
+  });
+
+  // Check if the other party has already rated
+  const { data: counterRating } = await insforge.database
+    .from(table("ratings"))
+    .select("id")
+    .eq("deal_id", dealId)
+    .eq("rater_wallet", rateeWallet)
+    .eq("ratee_wallet", raterWallet)
+    .single();
+
+  if (counterRating) {
+    // Both submitted — reveal all ratings for this deal
+    await insforge.database
+      .from(table("ratings"))
+      .update({ revealed: true })
+      .eq("deal_id", dealId);
+
+    await recalculateAvgRating(raterWallet);
+    await recalculateAvgRating(rateeWallet);
+    return { revealed: true };
+  }
+
+  return { revealed: false };
+}

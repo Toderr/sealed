@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -9,7 +9,7 @@ import { SealedMark } from "@/components/SealedLogo";
 import { useProfileStore, encodeInvite } from "@/lib/profile-store";
 import { useDealsStore } from "@/lib/deals-store";
 import { DealStatus } from "@/lib/types";
-import type { Deal } from "@/lib/types";
+import type { Deal, AgentTemplate, NotificationPrefs } from "@/lib/types";
 
 const WalletMultiButton = dynamic(
   () =>
@@ -62,6 +62,8 @@ export default function ProfilePage() {
     (sum, d) => sum + d.totalAmount / 1_000_000,
     0
   );
+
+  const [activeTab, setActiveTab] = useState<"overview" | "agent" | "settings">("overview");
 
   const shortWallet = wallet.slice(0, 4) + "..." + wallet.slice(-4);
   const initials = profile.name
@@ -180,48 +182,77 @@ export default function ProfilePage() {
 
             {/* Right: Dashboard */}
             <main className="flex-1 min-w-0 space-y-6">
-              {/* Stats row */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <StatCard label="Total deals" value={deals.length} />
-                <StatCard label="Active" value={activeDealCount} accent />
-                <StatCard label="Completed" value={completedDealCount} />
-                <StatCard
-                  label="Volume (USDC)"
-                  value={`$${totalVolumeUsdc.toLocaleString()}`}
-                />
+              {/* Tab bar */}
+              <div className="flex gap-0.5 border-b border-card-border-subtle">
+                {(["overview", "agent", "settings"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-4 h-9 text-[13px] rounded-t-md transition-colors capitalize ${
+                      activeTab === tab
+                        ? "text-primary border-b-2 border-accent -mb-px"
+                        : "text-muted hover:text-primary"
+                    }`}
+                    style={{ fontWeight: activeTab === tab ? 590 : 400 }}
+                  >
+                    {tab === "agent" ? "Agent Setup" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  </button>
+                ))}
               </div>
 
-              {/* Deals */}
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h2
-                    className="text-[14px] text-primary"
-                    style={{ fontWeight: 590 }}
-                  >
-                    Your deals
-                  </h2>
-                  <Link
-                    href="/app"
-                    className="btn-primary h-8 px-4 rounded-md text-[12px] flex items-center gap-1.5"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="12" y1="5" x2="12" y2="19" />
-                      <line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
-                    New deal
-                  </Link>
-                </div>
-
-                {deals.length === 0 ? (
-                  <EmptyDeals />
-                ) : (
-                  <div className="space-y-2">
-                    {deals.map((deal) => (
-                      <DealRow key={deal.dealId} deal={deal} profile={profile} wallet={wallet} />
-                    ))}
+              {/* Overview tab */}
+              {activeTab === "overview" && (
+                <>
+                  {/* Stats row */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <StatCard label="Total deals" value={deals.length} />
+                    <StatCard label="Active" value={activeDealCount} accent />
+                    <StatCard label="Completed" value={completedDealCount} />
+                    <StatCard
+                      label="Volume (USDC)"
+                      value={`$${totalVolumeUsdc.toLocaleString()}`}
+                    />
                   </div>
-                )}
-              </div>
+
+                  {/* Deals */}
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h2
+                        className="text-[14px] text-primary"
+                        style={{ fontWeight: 590 }}
+                      >
+                        Your deals
+                      </h2>
+                      <Link
+                        href="/app"
+                        className="btn-primary h-8 px-4 rounded-md text-[12px] flex items-center gap-1.5"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="12" y1="5" x2="12" y2="19" />
+                          <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        New deal
+                      </Link>
+                    </div>
+
+                    {deals.length === 0 ? (
+                      <EmptyDeals />
+                    ) : (
+                      <div className="space-y-2">
+                        {deals.map((deal) => (
+                          <DealRow key={deal.dealId} deal={deal} profile={profile} wallet={wallet} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Agent Setup tab */}
+              {activeTab === "agent" && <AgentSetupTab wallet={wallet} />}
+
+              {/* Settings tab */}
+              {activeTab === "settings" && <SettingsTab wallet={wallet} />}
             </main>
           </div>
         </div>
@@ -599,6 +630,472 @@ function SocialRow({
           {l.label}
         </a>
       ))}
+    </div>
+  );
+}
+
+/* ── Agent Setup Tab ──────────────────────────────────────────────────────── */
+
+const STYLE_LABELS: Record<string, string> = {
+  firm: "Firm",
+  flexible: "Flexible",
+  collaborative: "Collaborative",
+};
+
+function AgentSetupTab({ wallet }: { wallet: string }) {
+  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+  const [limit, setLimit] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<Partial<AgentTemplate>>({
+    name: "",
+    negotiation_style: "flexible",
+    price_floor_pct: 80,
+    escalate_after_rounds: 3,
+    agent_intro_message: "",
+    deal_types: [],
+    auto_approve_if: [],
+  });
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchTemplates();
+  }, [wallet]);
+
+  async function fetchTemplates() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/agent-templates?wallet=${wallet}`);
+      if (res.ok) {
+        const data = await res.json();
+        setTemplates(data.templates ?? []);
+        // Infer limit from kyc status via user endpoint
+        const uRes = await fetch(`/api/users/${wallet}/public`);
+        if (uRes.ok) {
+          const u = await uRes.json();
+          setLimit(u.is_verified ? 10 : 1);
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSave() {
+    if (!form.name?.trim()) {
+      setFormError("Template name is required.");
+      return;
+    }
+    setSaving(true);
+    setFormError(null);
+    try {
+      const res = await fetch("/api/agent-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet, ...form }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setFormError(data.error ?? "Failed to save template.");
+        return;
+      }
+      setShowForm(false);
+      setForm({ name: "", negotiation_style: "flexible", price_floor_pct: 80, escalate_after_rounds: 3, agent_intro_message: "" });
+      fetchTemplates();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSetActive(id: string) {
+    await fetch("/api/agent-templates", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, wallet, action: "set-active" }),
+    });
+    fetchTemplates();
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this template?")) return;
+    await fetch("/api/agent-templates", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, wallet }),
+    });
+    fetchTemplates();
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Verification banner */}
+      <div className={`rounded-xl px-4 py-3 flex items-center justify-between gap-4 ${
+        limit === 10
+          ? "bg-success/10 border border-success/20"
+          : "bg-warning/10 border border-warning/20"
+      }`}>
+        <div>
+          <p className="text-[13px] text-primary" style={{ fontWeight: 510 }}>
+            {limit === 10 ? "✓ Verified account" : "Unverified account"}
+          </p>
+          <p className="text-[12px] text-muted mt-0.5">
+            {limit === 10
+              ? "Up to 10 templates available."
+              : `Using ${templates.length} of 1 template. Get verified to unlock 10.`}
+          </p>
+        </div>
+        {limit < 10 && (
+          <Link
+            href="/profile/verify"
+            className="btn-ghost h-8 px-3 rounded-md text-[12px] flex-shrink-0"
+          >
+            Get Verified →
+          </Link>
+        )}
+      </div>
+
+      {/* Template list */}
+      {loading ? (
+        <div className="text-[13px] text-muted">Loading templates…</div>
+      ) : (
+        <div className="space-y-2">
+          {templates.map((t) => (
+            <div
+              key={t.id}
+              className={`surface-card rounded-xl px-4 py-3 flex items-start justify-between gap-4 ${
+                t.active ? "border border-accent/30" : ""
+              }`}
+            >
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-[14px] text-primary truncate" style={{ fontWeight: 510 }}>
+                    {t.name}
+                  </p>
+                  {t.active && (
+                    <span className="pill-neutral text-accent text-[10px]">Active</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="pill-neutral text-[11px]">{STYLE_LABELS[t.negotiation_style]}</span>
+                  <span className="pill-neutral text-[11px]">Floor {t.price_floor_pct}%</span>
+                  <span className="pill-neutral text-[11px]">Escalate after {t.escalate_after_rounds} rounds</span>
+                </div>
+                {t.agent_intro_message && (
+                  <p className="text-[12px] text-muted truncate">{t.agent_intro_message}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {!t.active && (
+                  <button
+                    onClick={() => handleSetActive(t.id)}
+                    className="text-[11px] px-2.5 h-7 rounded border border-card-border text-muted hover:text-accent hover:border-accent/40 transition-colors"
+                  >
+                    Set active
+                  </button>
+                )}
+                <button
+                  onClick={() => handleDelete(t.id)}
+                  className="text-[11px] px-2.5 h-7 rounded border border-card-border text-muted hover:text-danger hover:border-danger/40 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {templates.length === 0 && !showForm && (
+            <div className="surface-card rounded-xl py-10 flex flex-col items-center gap-3 text-center">
+              <p className="text-[14px] text-muted">No agent templates yet.</p>
+              <p className="text-[13px] text-subtle">Create a template so your agent knows how to negotiate on your behalf.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* New template form */}
+      {showForm && (
+        <div className="surface-card rounded-xl p-5 space-y-4 border border-accent/20">
+          <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>New Template</p>
+          {formError && (
+            <p className="text-[12px] text-danger">{formError}</p>
+          )}
+          <div className="space-y-3">
+            <Field label="Template name">
+              <input
+                value={form.name ?? ""}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g. Standard Vendor Terms"
+                className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors"
+              />
+            </Field>
+            <Field label="Negotiation style">
+              <select
+                value={form.negotiation_style ?? "flexible"}
+                onChange={(e) => setForm({ ...form, negotiation_style: e.target.value as AgentTemplate["negotiation_style"] })}
+                className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
+              >
+                <option value="firm">Firm — hold your ground</option>
+                <option value="flexible">Flexible — balanced trade-offs</option>
+                <option value="collaborative">Collaborative — win-win focus</option>
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={`Price floor (${form.price_floor_pct}% of ask)`}>
+                <input
+                  type="range"
+                  min={50}
+                  max={100}
+                  value={form.price_floor_pct ?? 80}
+                  onChange={(e) => setForm({ ...form, price_floor_pct: Number(e.target.value) })}
+                  className="w-full accent-accent"
+                />
+              </Field>
+              <Field label="Escalate to me after N rounds">
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={form.escalate_after_rounds ?? 3}
+                  onChange={(e) => setForm({ ...form, escalate_after_rounds: Number(e.target.value) })}
+                  className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors"
+                />
+              </Field>
+            </div>
+            <Field label="Agent opening message (optional)">
+              <textarea
+                value={form.agent_intro_message ?? ""}
+                onChange={(e) => setForm({ ...form, agent_intro_message: e.target.value })}
+                placeholder="First message your agent sends when starting a negotiation…"
+                rows={2}
+                className="w-full rounded-md bg-surface border border-card-border px-3 py-2 text-[13px] text-primary outline-none focus:border-accent resize-none transition-colors"
+              />
+            </Field>
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="btn-primary h-9 px-5 rounded-md text-[13px] disabled:opacity-40"
+            >
+              {saving ? "Saving…" : "Save Template"}
+            </button>
+            <button
+              onClick={() => { setShowForm(false); setFormError(null); }}
+              className="btn-ghost h-9 px-4 rounded-md text-[13px]"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Add button */}
+      {!showForm && templates.length < limit && (
+        <button
+          onClick={() => setShowForm(true)}
+          className="btn-ghost h-9 px-4 rounded-md text-[13px] flex items-center gap-1.5"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          New Template
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+/* ── Settings Tab ─────────────────────────────────────────────────────────── */
+
+function SettingsTab({ wallet }: { wallet: string }) {
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [notifyPrefs, setNotifyPrefs] = useState<NotificationPrefs>({
+    deal_review_needed: true,
+    milestone_due: true,
+    deal_accepted: true,
+    deal_declined: true,
+    new_deal_invite: true,
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/users/${wallet}/public?self=1`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.notify_on) setNotifyPrefs(data.notify_on);
+        if (data.email) setEmail(data.email);
+        if (data.email_verified) setEmailVerified(data.email_verified);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [wallet]);
+
+  async function sendOtp() {
+    const res = await fetch("/api/users/email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wallet, email }),
+    });
+    if (res.ok) setOtpSent(true);
+  }
+
+  async function verifyOtp() {
+    const res = await fetch("/api/users/email/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wallet, otp }),
+    });
+    if (res.ok) {
+      setEmailVerified(true);
+      setOtpSent(false);
+    }
+  }
+
+  async function savePrefs() {
+    setSaving(true);
+    await fetch("/api/users/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wallet, notify_on: notifyPrefs }),
+    });
+    setSaving(false);
+    setSavedMsg(true);
+    setTimeout(() => setSavedMsg(false), 2000);
+  }
+
+  const NOTIFY_LABELS: Record<keyof NotificationPrefs, string> = {
+    deal_review_needed: "Deal review needed",
+    milestone_due: "Milestone confirmation due",
+    deal_accepted: "Deal accepted by counterparty",
+    deal_declined: "Deal declined by counterparty",
+    new_deal_invite: "New deal invite received",
+  };
+
+  if (loading) return <div className="text-[13px] text-muted">Loading settings…</div>;
+
+  return (
+    <div className="space-y-6">
+      {/* Email section */}
+      <div className="surface-card rounded-xl p-5 space-y-4">
+        <div>
+          <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>Email notifications</p>
+          <p className="text-[12px] text-muted mt-0.5">Receive deal alerts to your email.</p>
+        </div>
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your@email.com"
+              disabled={emailVerified}
+              className="flex-1 h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors disabled:opacity-50"
+            />
+            {!emailVerified && (
+              <button
+                onClick={sendOtp}
+                disabled={!email.includes("@")}
+                className="btn-ghost h-10 px-4 rounded-md text-[13px] disabled:opacity-40"
+              >
+                {otpSent ? "Resend OTP" : "Send OTP"}
+              </button>
+            )}
+            {emailVerified && (
+              <span className="flex items-center gap-1 text-[13px] text-success px-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Verified
+              </span>
+            )}
+          </div>
+          {otpSent && !emailVerified && (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                placeholder="6-digit code"
+                maxLength={6}
+                className="w-36 h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors font-mono"
+              />
+              <button
+                onClick={verifyOtp}
+                disabled={otp.length !== 6}
+                className="btn-primary h-10 px-4 rounded-md text-[13px] disabled:opacity-40"
+              >
+                Verify
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Telegram section */}
+      <div className="surface-card rounded-xl p-5 space-y-4 opacity-60">
+        <div>
+          <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>Telegram notifications</p>
+          <p className="text-[12px] text-muted mt-0.5">Setup coming soon.</p>
+        </div>
+        <input
+          disabled
+          placeholder="@your_telegram_handle"
+          className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-muted cursor-not-allowed"
+        />
+      </div>
+
+      {/* Notification toggles */}
+      <div className="surface-card rounded-xl p-5 space-y-4">
+        <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>Notification events</p>
+        <div className="space-y-3">
+          {(Object.keys(NOTIFY_LABELS) as (keyof NotificationPrefs)[]).map((key) => (
+            <label key={key} className="flex items-center justify-between gap-4 cursor-pointer">
+              <span className="text-[13px] text-foreground">{NOTIFY_LABELS[key]}</span>
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={notifyPrefs[key]}
+                  onChange={(e) => setNotifyPrefs({ ...notifyPrefs, [key]: e.target.checked })}
+                  className="sr-only"
+                />
+                <div
+                  onClick={() => setNotifyPrefs({ ...notifyPrefs, [key]: !notifyPrefs[key] })}
+                  className={`w-10 h-5 rounded-full cursor-pointer transition-colors ${
+                    notifyPrefs[key] ? "bg-accent" : "bg-surface-hover"
+                  }`}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform mt-0.5 ${
+                    notifyPrefs[key] ? "translate-x-5 ml-0.5" : "translate-x-0.5"
+                  }`} />
+                </div>
+              </div>
+            </label>
+          ))}
+        </div>
+        <button
+          onClick={savePrefs}
+          disabled={saving}
+          className="btn-primary h-9 px-5 rounded-md text-[13px] disabled:opacity-40"
+        >
+          {savedMsg ? "Saved ✓" : saving ? "Saving…" : "Save preferences"}
+        </button>
+      </div>
     </div>
   );
 }

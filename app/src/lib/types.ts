@@ -110,3 +110,81 @@ export function formatUsdc(amount: number): string {
     maximumFractionDigits: 2,
   }).format(amount);
 }
+
+// ── New feature types ─────────────────────────────────────────────────────────
+
+export interface AgentTemplate {
+  id: string;
+  wallet: string;
+  name: string;
+  deal_types: string[];
+  negotiation_style: "firm" | "flexible" | "collaborative";
+  price_floor_pct: number;
+  auto_approve_if: string[];
+  escalate_after_rounds: number;
+  agent_intro_message: string;
+  active: boolean;
+  created_at: string;
+}
+
+export interface Reputation {
+  wallet: string;
+  deals_total: number;
+  deals_successful: number;
+  deals_failed: number;
+  avg_rating: number;
+}
+
+export interface Rating {
+  id: string;
+  deal_id: string;
+  rater_wallet: string;
+  ratee_wallet: string;
+  stars: number;
+  review_text: string;
+  revealed: boolean;
+  submitted_at: string;
+}
+
+export interface NotificationPrefs {
+  deal_review_needed: boolean;
+  milestone_due: boolean;
+  deal_accepted: boolean;
+  deal_declined: boolean;
+  new_deal_invite: boolean;
+}
+
+export interface SealedUser {
+  wallet: string;
+  handle: string;
+  email: string | null;
+  email_verified: boolean;
+  telegram_username: string | null;
+  notify_on: NotificationPrefs;
+  kyc_status: "none" | "pending" | "approved" | "rejected";
+  verified_at: string | null;
+  member_since: string;
+}
+
+export interface PublicProfile {
+  handle: string;
+  deals_total: number;
+  deals_successful: number;
+  avg_rating: number;
+  is_verified: boolean;
+  member_since: string;
+}
+
+export interface DealCardData {
+  deal_id: string;
+  title: string;
+  amount_usdc: number;
+  show_amount: boolean;
+  duration_days: number;
+  milestones_total: number;
+  milestones_done: number;
+  party_a_handle: string;
+  party_b_handle: string;
+  avg_rating: number;
+  completed_at: string;
+}
