@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { insforge } from "@/lib/insforge";
+import { supabase } from "@/lib/supabase";
 
 export async function GET(request: NextRequest) {
   const key = request.nextUrl.searchParams.get("key");
@@ -7,8 +7,13 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: "Missing key" }, { status: 400 });
   }
 
-  // For now return the public URL directly from InsForge Storage.
-  // In production, generate short-lived signed URLs here.
-  const url = insforge.storage.from("sealed-docs").getPublicUrl(key);
-  return Response.json({ url });
+  const { data, error } = await supabase.storage
+    .from("sealed-docs")
+    .createSignedUrl(key, 3600);
+
+  if (error || !data) {
+    return Response.json({ error: "Failed to generate URL" }, { status: 500 });
+  }
+
+  return Response.json({ url: data.signedUrl });
 }

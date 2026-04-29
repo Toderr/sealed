@@ -1,8 +1,8 @@
-import { insforge, table } from "@/lib/insforge";
+import { supabase, table } from "@/lib/supabase";
 import type { AgentTemplate } from "@/lib/types";
 
 export async function getTierLimit(wallet: string): Promise<number> {
-  const { data } = await insforge.database
+  const { data } = await supabase
     .from(table("users"))
     .select("verified_at, kyc_status")
     .eq("wallet", wallet)
@@ -14,7 +14,7 @@ export async function getTierLimit(wallet: string): Promise<number> {
 }
 
 export async function getTemplates(wallet: string): Promise<AgentTemplate[]> {
-  const { data } = await insforge.database
+  const { data } = await supabase
     .from(table("agent_templates"))
     .select("*")
     .eq("wallet", wallet)
@@ -26,7 +26,7 @@ export async function getTemplates(wallet: string): Promise<AgentTemplate[]> {
 export async function getActiveTemplate(
   wallet: string
 ): Promise<AgentTemplate | null> {
-  const { data } = await insforge.database
+  const { data } = await supabase
     .from(table("agent_templates"))
     .select("*")
     .eq("wallet", wallet)
@@ -56,7 +56,7 @@ export async function createTemplate(
   // If first template, make it active
   const makeActive = existing.length === 0 ? true : data.active;
 
-  const { data: created, error } = await insforge.database
+  const { data: created, error } = await supabase
     .from(table("agent_templates"))
     .insert({ ...data, wallet, active: makeActive })
     .select()
@@ -71,7 +71,7 @@ export async function updateTemplate(
   wallet: string,
   updates: Partial<Omit<AgentTemplate, "id" | "wallet" | "created_at">>
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { error } = await insforge.database
+  const { error } = await supabase
     .from(table("agent_templates"))
     .update(updates)
     .eq("id", id)
@@ -85,7 +85,7 @@ export async function deleteTemplate(
   id: string,
   wallet: string
 ): Promise<void> {
-  await insforge.database
+  await supabase
     .from(table("agent_templates"))
     .delete()
     .eq("id", id)
@@ -94,13 +94,13 @@ export async function deleteTemplate(
 
 export async function setActive(id: string, wallet: string): Promise<void> {
   // Deactivate all templates for this wallet first
-  await insforge.database
+  await supabase
     .from(table("agent_templates"))
     .update({ active: false })
     .eq("wallet", wallet);
 
   // Activate the selected one
-  await insforge.database
+  await supabase
     .from(table("agent_templates"))
     .update({ active: true })
     .eq("id", id)

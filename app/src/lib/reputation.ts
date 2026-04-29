@@ -1,8 +1,8 @@
-import { insforge, table } from "@/lib/insforge";
+import { supabase, table } from "@/lib/supabase";
 import type { Reputation } from "@/lib/types";
 
 export async function getReputation(wallet: string): Promise<Reputation | null> {
-  const { data, error } = await insforge.database
+  const { data, error } = await supabase
     .from(table("reputation"))
     .select("*")
     .eq("wallet", wallet)
@@ -13,7 +13,7 @@ export async function getReputation(wallet: string): Promise<Reputation | null> 
 }
 
 export async function upsertReputation(wallet: string): Promise<void> {
-  await insforge.database
+  await supabase
     .from(table("reputation"))
     .upsert({ wallet }, { onConflict: "wallet", ignoreDuplicates: true });
 }
@@ -42,13 +42,13 @@ export async function incrementDeal(
     updated_at: new Date().toISOString(),
   };
 
-  await insforge.database
+  await supabase
     .from(table("reputation"))
     .upsert(updated, { onConflict: "wallet" });
 }
 
 export async function recalculateAvgRating(wallet: string): Promise<void> {
-  const { data } = await insforge.database
+  const { data } = await supabase
     .from(table("ratings"))
     .select("stars")
     .eq("ratee_wallet", wallet)
@@ -60,7 +60,7 @@ export async function recalculateAvgRating(wallet: string): Promise<void> {
     (data as { stars: number }[]).reduce((sum, r) => sum + r.stars, 0) /
     data.length;
 
-  await insforge.database
+  await supabase
     .from(table("reputation"))
     .update({
       avg_rating: Math.round(avg * 100) / 100,
@@ -76,7 +76,7 @@ export async function submitRating(
   stars: number,
   reviewText: string
 ): Promise<{ revealed: boolean }> {
-  await insforge.database.from(table("ratings")).insert({
+  await supabase.from(table("ratings")).insert({
     deal_id: dealId,
     rater_wallet: raterWallet,
     ratee_wallet: rateeWallet,
@@ -86,7 +86,7 @@ export async function submitRating(
   });
 
   // Check if the other party has already rated
-  const { data: counterRating } = await insforge.database
+  const { data: counterRating } = await supabase
     .from(table("ratings"))
     .select("id")
     .eq("deal_id", dealId)
@@ -96,7 +96,7 @@ export async function submitRating(
 
   if (counterRating) {
     // Both submitted — reveal all ratings for this deal
-    await insforge.database
+    await supabase
       .from(table("ratings"))
       .update({ revealed: true })
       .eq("deal_id", dealId);

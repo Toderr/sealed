@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { insforge, table } from "@/lib/insforge";
+import { supabase, table } from "@/lib/supabase";
 import { randomUUID } from "crypto";
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -82,12 +82,12 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Step 4: Upload to InsForge Storage
+  // Step 4: Upload to Supabase Storage
   const uuid = randomUUID();
   const storagePath = `deals/${dealId}/${uuid}.${detected.ext}`;
   const blob = new Blob([buf], { type: detected.mime });
 
-  const { error: storageError } = await insforge.storage
+  const { error: storageError } = await supabase.storage
     .from("sealed-docs")
     .upload(storagePath, blob);
 
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Step 5: Record in sealed_deliverables
-  const { data: record, error: dbError } = await insforge.database
+  const { data: record, error: dbError } = await supabase
     .from(table("deliverables"))
     .insert({
       deal_id: dealId,

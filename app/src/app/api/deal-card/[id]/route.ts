@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 import React from "react";
-import { insforge, table } from "@/lib/insforge";
+import { supabase, table } from "@/lib/supabase";
 import { getPublicProfile } from "@/lib/sealed-users";
 
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  const { data: deal } = await insforge.database
+  const { data: deal } = await supabase
     .from(table("deals"))
     .select("*")
     .eq("deal_id", id)

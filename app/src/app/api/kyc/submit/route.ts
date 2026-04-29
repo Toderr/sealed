@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { insforge, table } from "@/lib/insforge";
+import { supabase, table } from "@/lib/supabase";
 import { randomUUID } from "crypto";
 
 const MAGIC_PDF = [0x25, 0x50, 0x44, 0x46];
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
   const storagePath = `kyc/${wallet}/${uuid}`;
   const blob = new Blob([buf], { type: mimeType ?? "application/octet-stream" });
 
-  const { error: storageError } = await insforge.storage
+  const { error: storageError } = await supabase.storage
     .from("sealed-kyc")
     .upload(storagePath, blob);
 
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Storage failed" }, { status: 500 });
   }
 
-  await insforge.database
+  await supabase
     .from(table("users"))
     .update({
       kyc_status: "pending",

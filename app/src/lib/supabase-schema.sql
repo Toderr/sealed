@@ -1,9 +1,8 @@
--- Sealed off-chain tables. Applied to the shared InsForge Postgres DB.
--- Apply with:
---   docker exec -i insforge-postgres-1 psql -U postgres -d insforge < sealed/app/src/lib/insforge-schema.sql
+-- Sealed off-chain tables. Applied via the Supabase SQL editor.
+-- Service-role key bypasses RLS, so no GRANT statements needed.
 --
 -- Convention: on-chain is source of truth for deal state and escrow balances.
--- InsForge holds off-chain context only: chat history, agent memory,
+-- Supabase holds off-chain context only: chat history, agent memory,
 -- deliverable files, human-readable deal descriptions.
 
 -- Deal rows mirror the on-chain Deal PDA by deal_id. Off-chain fields are
@@ -37,8 +36,7 @@ CREATE TABLE IF NOT EXISTS sealed_messages (
 );
 CREATE INDEX IF NOT EXISTS sealed_messages_deal_idx ON sealed_messages (deal_id, created_at);
 
--- Long-term agent memory across deals, keyed by wallet. Distillation of
--- lessons learned from past deals for this counterparty or business.
+-- Long-term agent memory across deals, keyed by wallet.
 CREATE TABLE IF NOT EXISTS sealed_agent_memory (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     wallet TEXT NOT NULL,
@@ -49,16 +47,17 @@ CREATE TABLE IF NOT EXISTS sealed_agent_memory (
 );
 CREATE INDEX IF NOT EXISTS sealed_agent_memory_wallet_idx ON sealed_agent_memory (wallet, memory_type);
 
--- Deliverable file metadata. Actual bytes live in InsForge Storage at key = storage_key.
+-- Deliverable file metadata. Actual bytes live in Supabase Storage.
 CREATE TABLE IF NOT EXISTS sealed_deliverables (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     deal_id TEXT NOT NULL,
     milestone_index INT NOT NULL,
     submitter_wallet TEXT NOT NULL,
-    storage_key TEXT NOT NULL,                       -- path in InsForge Storage
+    storage_key TEXT NOT NULL,
     filename TEXT NOT NULL,
     content_type TEXT,
     size_bytes BIGINT,
+    scan_status TEXT DEFAULT 'clean' CHECK (scan_status IN ('clean', 'rejected', 'pending')),
     verified_at TIMESTAMPTZ,
     verification_note TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -79,23 +78,7 @@ CREATE TRIGGER sealed_deals_touch
 BEFORE UPDATE ON sealed_deals
 FOR EACH ROW EXECUTE FUNCTION sealed_touch_updated_at();
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON sealed_deals TO authenticated;
-GRANT SELECT, INSERT ON sealed_messages TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON sealed_agent_memory TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON sealed_deliverables TO authenticated;
-
--- Add scan_status to deliverables for upload pipeline
-ALTER TABLE sealed_deliverables
-    ADD COLUMN IF NOT EXISTS scan_status TEXT DEFAULT 'clean'
-    CHECK (scan_status IN ('clean', 'rejected', 'pending'));
-
--- anon grants for existing tables (SDK runs as anon when no JWT is provided)
-GRANT SELECT, INSERT, UPDATE, DELETE ON sealed_deals TO anon;
-GRANT SELECT, INSERT ON sealed_messages TO anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON sealed_agent_memory TO anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON sealed_deliverables TO anon;
-
--- ── Users ─────────────────────────────────────────────────────────────────────
+-- Users
 CREATE TABLE IF NOT EXISTS sealed_users (
     wallet            TEXT PRIMARY KEY,
     handle            TEXT UNIQUE NOT NULL,
@@ -113,10 +96,7 @@ CREATE TABLE IF NOT EXISTS sealed_users (
     member_since      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-GRANT SELECT, INSERT, UPDATE ON sealed_users TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON sealed_users TO anon;
-
--- ── Agent Templates ───────────────────────────────────────────────────────────
+-- Agent Templates
 CREATE TABLE IF NOT EXISTS sealed_agent_templates (
     id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     wallet                TEXT NOT NULL,
@@ -134,10 +114,7 @@ CREATE TABLE IF NOT EXISTS sealed_agent_templates (
 CREATE INDEX IF NOT EXISTS sealed_agent_templates_wallet_idx ON sealed_agent_templates (wallet);
 CREATE UNIQUE INDEX IF NOT EXISTS sealed_agent_templates_active_idx ON sealed_agent_templates (wallet) WHERE active = TRUE;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON sealed_agent_templates TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON sealed_agent_templates TO anon;
-
--- ── Reputation ────────────────────────────────────────────────────────────────
+-- Reputation
 CREATE TABLE IF NOT EXISTS sealed_reputation (
     wallet           TEXT PRIMARY KEY,
     deals_total      INT NOT NULL DEFAULT 0,
@@ -147,10 +124,7 @@ CREATE TABLE IF NOT EXISTS sealed_reputation (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-GRANT SELECT, INSERT, UPDATE ON sealed_reputation TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON sealed_reputation TO anon;
-
--- ── Per-deal ratings ──────────────────────────────────────────────────────────
+-- Per-deal ratings
 CREATE TABLE IF NOT EXISTS sealed_ratings (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     deal_id      TEXT NOT NULL,
@@ -165,10 +139,7 @@ CREATE TABLE IF NOT EXISTS sealed_ratings (
 
 CREATE INDEX IF NOT EXISTS sealed_ratings_ratee_idx ON sealed_ratings (ratee_wallet);
 
-GRANT SELECT, INSERT, UPDATE ON sealed_ratings TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON sealed_ratings TO anon;
-
--- ── Notification queue ────────────────────────────────────────────────────────
+-- Notification queue
 CREATE TABLE IF NOT EXISTS sealed_notification_queue (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     recipient_wallet TEXT NOT NULL,
@@ -181,6 +152,3 @@ CREATE TABLE IF NOT EXISTS sealed_notification_queue (
 );
 
 CREATE INDEX IF NOT EXISTS sealed_notif_queue_status_idx ON sealed_notification_queue (status, created_at);
-
-GRANT SELECT, INSERT, UPDATE ON sealed_notification_queue TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON sealed_notification_queue TO anon;

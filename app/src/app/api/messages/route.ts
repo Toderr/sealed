@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
-import { insforge, table } from "@/lib/insforge";
+import { supabase, table } from "@/lib/supabase";
 
 export async function GET(request: NextRequest) {
   const dealId = request.nextUrl.searchParams.get("deal_id");
   if (!dealId) return Response.json({ error: "Missing deal_id" }, { status: 400 });
 
-  const { data, error } = await insforge.database
+  const { data, error } = await supabase
     .from(table("messages"))
     .select("id, role, content, wallet, created_at")
     .eq("deal_id", dealId)
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const { data, error } = await insforge.database
+  const { data, error } = await supabase
     .from(table("messages"))
     .insert({ deal_id, role, content, wallet })
     .select()

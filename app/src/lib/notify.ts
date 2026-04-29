@@ -1,4 +1,4 @@
-import { insforge, table } from "@/lib/insforge";
+import { supabase, table } from "@/lib/supabase";
 
 export async function queueNotification(
   recipientWallet: string,
@@ -6,7 +6,7 @@ export async function queueNotification(
   payload: Record<string, unknown>
 ): Promise<void> {
   // Try email channel if user has a verified email
-  const { data: user } = await insforge.database
+  const { data: user } = await supabase
     .from(table("users"))
     .select("email, email_verified, telegram_chat_id, notify_on")
     .eq("wallet", recipientWallet)
@@ -28,7 +28,7 @@ export async function queueNotification(
   if (u.telegram_chat_id) channels.push("telegram");
 
   for (const channel of channels) {
-    await insforge.database.from(table("notification_queue")).insert({
+    await supabase.from(table("notification_queue")).insert({
       recipient_wallet: recipientWallet,
       channel,
       event_type: eventType,
@@ -39,7 +39,7 @@ export async function queueNotification(
 }
 
 export async function drainQueue(): Promise<{ sent: number; failed: number }> {
-  const { data: pending } = await insforge.database
+  const { data: pending } = await supabase
     .from(table("notification_queue"))
     .select("*")
     .eq("status", "pending")
@@ -64,13 +64,13 @@ export async function drainQueue(): Promise<{ sent: number; failed: number }> {
       }
       // Telegram: reserved, no-op for now
 
-      await insforge.database
+      await supabase
         .from(table("notification_queue"))
         .update({ status: "sent", sent_at: new Date().toISOString() })
         .eq("id", row.id);
       sent++;
     } catch {
-      await insforge.database
+      await supabase
         .from(table("notification_queue"))
         .update({ status: "failed" })
         .eq("id", row.id);
@@ -86,7 +86,7 @@ async function sendEmailForEvent(
   eventType: string,
   payload: Record<string, unknown>
 ): Promise<void> {
-  const { data: user } = await insforge.database
+  const { data: user } = await supabase
     .from(table("users"))
     .select("email, handle")
     .eq("wallet", wallet)
