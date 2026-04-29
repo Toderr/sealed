@@ -126,6 +126,34 @@ export default function Home() {
     try {
       const ix = await buildCreateDealIx(publicKey, params);
       const sig = await sendTx(connection, ix, signTransaction);
+
+      // Mirror deal to Supabase so it shows up in the dashboard cross-device
+      // and across reloads. Best-effort; on-chain remains source of truth.
+      try {
+        await fetch("/api/deals/mirror", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-wallet": publicKey.toBase58(),
+          },
+          body: JSON.stringify({
+            deal_id: params.dealId,
+            seller_wallet: params.sellerWallet,
+            title: params.dealId,
+            description: params.milestones.map((m) => m.description).join(" | "),
+            total_amount_usdc: params.totalAmount,
+            milestones: params.milestones.map((m) => ({
+              description: m.description,
+              amount: m.amount,
+              status: "Pending",
+            })),
+            tx_signature: sig,
+          }),
+        });
+      } catch (mirrorErr) {
+        console.warn("Deal mirror to Supabase failed (non-fatal):", mirrorErr);
+      }
+
       toast.update(pendingId, {
         variant: "success",
         title: "Deal created on-chain",

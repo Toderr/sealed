@@ -35,5 +35,6 @@ screenshot-tmp/*
 !package.json
 !package-lock.json
 !tsconfig.json
+!vercel.json
 !Cargo.toml
 !Anchor.toml

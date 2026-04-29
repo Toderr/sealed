@@ -49,7 +49,7 @@ export default function ChatInterface({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { connected } = useWallet();
+  const { connected, publicKey } = useWallet();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -76,9 +76,14 @@ export default function ChatInterface({
         content: m.content,
       }));
 
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (publicKey) headers["x-wallet"] = publicKey.toBase58();
+
       const res = await fetch("/api/agent", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ messages: apiMessages }),
       });
 

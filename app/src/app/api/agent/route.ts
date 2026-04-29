@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { buildMemoryContext } from "@/lib/agent-memory";
 
-const SYSTEM_PROMPT = `You are a B2B deal structuring agent. Your job is to help business owners create escrow deals on Solana.
+const BASE_SYSTEM_PROMPT = `You are a B2B deal structuring agent. Your job is to help business owners create escrow deals on Solana.
 
 When a user describes a deal in natural language, extract these structured parameters:
 - deal_id: A short unique identifier for the deal
@@ -23,7 +24,17 @@ Speak in both English and Bahasa Indonesia as appropriate for the user.`;
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const OPENROUTER_MODEL = "anthropic/claude-sonnet-4";
 
-async function callOpenRouter(messages: Anthropic.MessageParam[]) {
+async function buildSystemPrompt(wallet: string | undefined): Promise<string> {
+  if (!wallet) return BASE_SYSTEM_PROMPT;
+  const memory = await buildMemoryContext(wallet);
+  if (!memory) return BASE_SYSTEM_PROMPT;
+  return `${BASE_SYSTEM_PROMPT}\n\n--- Known context about this user (from past deals) ---\n${memory}\n\nUse this context to personalize your suggestions, but never reveal raw memory entries verbatim.`;
+}
+
+async function callOpenRouter(
+  messages: Anthropic.MessageParam[],
+  systemPrompt: string
+) {
   const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
@@ -34,7 +45,7 @@ async function callOpenRouter(messages: Anthropic.MessageParam[]) {
       model: process.env.OPENROUTER_MODEL || OPENROUTER_MODEL,
       max_tokens: 1024,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         ...messages.map((m) => ({ role: m.role, content: m.content })),
       ],
     }),
@@ -49,12 +60,15 @@ async function callOpenRouter(messages: Anthropic.MessageParam[]) {
   return data.choices[0].message.content;
 }
 
-async function callAnthropic(messages: Anthropic.MessageParam[]) {
+async function callAnthropic(
+  messages: Anthropic.MessageParam[],
+  systemPrompt: string
+) {
   const client = new Anthropic();
   const response = await client.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 1024,
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     messages,
   });
 
@@ -64,11 +78,14 @@ async function callAnthropic(messages: Anthropic.MessageParam[]) {
 
 export async function POST(request: NextRequest) {
   const { messages } = await request.json();
+  const wallet = request.headers.get("x-wallet") ?? undefined;
+
+  const systemPrompt = await buildSystemPrompt(wallet);
 
   const useOpenRouter = !!process.env.OPENROUTER_API_KEY;
   const text = useOpenRouter
-    ? await callOpenRouter(messages)
-    : await callAnthropic(messages);
+    ? await callOpenRouter(messages, systemPrompt)
+    : await callAnthropic(messages, systemPrompt);
 
   return NextResponse.json({ response: text });
 }
