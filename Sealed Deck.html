@@ -52,24 +52,40 @@ html, body {
 }
 
 body {
-  scroll-snap-type: y mandatory;
-  overflow-y: scroll;
   height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
 
-/* ===== DECK FRAME ===== */
-.deck { display: block; }
+/* ===== DECK FRAME (horizontal slider) ===== */
+.deck {
+  display: flex;
+  flex-direction: row;
+  width: 100vw;
+  height: 100vh;
+  transform: translate3d(0, 0, 0);
+  transition: transform 720ms cubic-bezier(0.65, 0.05, 0.36, 1);
+  will-change: transform;
+}
 
 .slide {
+  flex: 0 0 100vw;
   width: 100vw;
   height: 100vh;
   display: grid;
   place-items: center;
   overflow: hidden;
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
   position: relative;
   background: var(--bg);
+}
+
+/* Stage entrance — runs whenever a slide becomes active */
+.slide.active .stage {
+  animation: stageEnter 720ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes stageEnter {
+  from { opacity: 0; transform: scale(calc(var(--s) * 0.97)); }
+  to   { opacity: 1; transform: scale(var(--s)); }
 }
 
 .stage {
@@ -367,24 +383,334 @@ h3.subhead {
   transform: translate(-50%, -50%); box-shadow: 0 0 8px rgba(94,106,210,0.8);
 }
 
+/* ===== AMBIENT ANIMATIONS (always on) ===== */
+@keyframes orbPulse {
+  0%, 100% { scale: 1; }
+  50% { scale: 1.06; }
+}
+.orb { animation: orbPulse 11s ease-in-out infinite; }
+.orb:nth-of-type(2) { animation-duration: 13s; animation-delay: -3s; }
+.orb:nth-of-type(3) { animation-duration: 9s;  animation-delay: -5s; }
+
+@keyframes particleFloat {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-10px, -14px); }
+  50% { transform: translate(8px, -22px); }
+  75% { transform: translate(-4px, -8px); }
+}
+.particle { animation: particleFloat 7s ease-in-out infinite; }
+.particle:nth-of-type(odd) { animation-duration: 9s; animation-delay: -2s; }
+.particle:nth-of-type(3n)  { animation-duration: 11s; animation-delay: -4s; }
+.particle:nth-of-type(4n)  { animation-duration: 6s;  animation-delay: -1s; }
+
+@keyframes sweepGlide {
+  0%   { transform: rotate(30deg) translate3d(-100%, 0, 0); opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: rotate(30deg) translate3d(380%, 0, 0); opacity: 0; }
+}
+.sweep { animation: sweepGlide 9s linear infinite; }
+
+@keyframes ringGlow {
+  0%, 100% { border-color: rgba(255,255,255,0.04); }
+  50%      { border-color: rgba(94,106,210,0.18); }
+}
+.rings { animation: ringGlow 5.5s ease-in-out infinite; }
+.rings:nth-of-type(2) { animation-delay: -1.5s; }
+.rings:nth-of-type(3) { animation-delay: -3s; }
+
+@keyframes agentPulse {
+  0%, 100% { box-shadow: 0 0 32px rgba(94,106,210,0.25), inset 0 0 24px rgba(94,106,210,0.1); }
+  50%      { box-shadow: 0 0 56px rgba(94,106,210,0.55), inset 0 0 32px rgba(94,106,210,0.22); }
+}
+.agent-circle { animation: agentPulse 3.6s ease-in-out infinite; }
+
+@keyframes nodePulse {
+  0%, 100% { box-shadow: 0 0 24px rgba(94,106,210,0.4); }
+  50%      { box-shadow: 0 0 40px rgba(94,106,210,0.75); }
+}
+.node:not(.dim-node) { animation: nodePulse 4s ease-in-out infinite; }
+
+@keyframes wordmarkShimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+.wordmark {
+  background: linear-gradient(90deg, #f7f8f8 0%, #c47aff 35%, #7170ff 50%, #c47aff 65%, #f7f8f8 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: wordmarkShimmer 8s ease-in-out infinite;
+}
+
+/* ===== ENTRANCE ANIMATIONS (per active slide) ===== */
+@keyframes revealUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.slide.active .eyebrow {
+  animation: revealUp 700ms cubic-bezier(0.2, 0.8, 0.2, 1) 120ms both;
+}
+.slide.active .headline,
+.slide.active h1.hero {
+  animation: revealUp 760ms cubic-bezier(0.2, 0.8, 0.2, 1) 220ms both;
+}
+.slide.active h3.subhead {
+  animation: revealUp 700ms cubic-bezier(0.2, 0.8, 0.2, 1) 300ms both;
+}
+.slide.active .big-stat,
+.slide.active .mid-stat {
+  animation: revealUp 800ms cubic-bezier(0.2, 0.8, 0.2, 1) 350ms both;
+}
+
+@keyframes gaugeFill {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
+.slide.active .gauge-fill {
+  animation: gaugeFill 1.4s cubic-bezier(0.2, 0.8, 0.2, 1) 380ms both;
+}
+
+/* ===== STAGGERED CARD ENTRANCE (slides 5–8) ===== */
+@keyframes cardRise {
+  from { opacity: 0; transform: translateY(40px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+#s5.active .glass,
+#s6.active .glass,
+#s7.active .glass,
+#s8.active .glass {
+  animation: cardRise 720ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--card-delay, 0ms);
+}
+
+/* ===== NAVIGATION HINT ===== */
+.nav-hint {
+  position: fixed; bottom: 28px; right: 36px; z-index: 100;
+  display: inline-flex; gap: 10px; align-items: center;
+  padding: 10px 16px; border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(15,16,17,0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  font-family: var(--font-mono); font-size: 13px; color: var(--muted);
+  letter-spacing: 0.05em;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 500ms ease;
+}
+.nav-hint.show { opacity: 0.9; }
+.nav-hint .key {
+  display: inline-grid; place-items: center;
+  min-width: 22px; height: 22px; padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: rgba(255,255,255,0.06);
+  color: var(--text); font-size: 13px;
+}
+
+.rail .dot { cursor: pointer; transition: background 200ms ease, box-shadow 200ms ease, transform 200ms ease; }
+.rail .dot:hover { background: rgba(255,255,255,0.35); transform: scale(1.3); }
+
+/* ===== SVG ILLUSTRATION ANIMATIONS (slides 2-4) =====
+   Mirrors the landing page motion vocabulary (one-way travel, spin, scan,
+   ping-pong, draw, lift) — looped continuously for the deck. */
+.illus * { transform-box: fill-box; transform-origin: center; }
+
+/* Slide 2 — Card 1: payment dot travels right then resets (matches landing) */
+@keyframes payTravel {
+  0%        { transform: translateX(0);   opacity: 0.85; }
+  35%       { transform: translateX(84px); opacity: 0; }
+  36%, 60%  { transform: translateX(0);   opacity: 0; }
+  72%, 100% { transform: translateX(0);   opacity: 0.85; }
+}
+.illus-pay .coin {
+  transform-box: view-box;
+  animation: payTravel 2.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Slide 2 — Card 2: only minute hand spins (matches landing's sealed-loop-spin) */
+@keyframes clockSpin { to { transform: rotate(360deg); } }
+.illus-clock .hand-min {
+  transform-box: view-box;
+  transform-origin: 155px 40px;
+  animation: clockSpin 1.6s linear infinite;
+}
+/* hour hand stationary, like landing */
+
+/* Slide 2 — Card 3: paper stack rises in sequence + coin squashes (matches landing) */
+@keyframes stackRise1 { 0%, 100% { transform: translateY(0); } 40%, 60% { transform: translateY(-4px); } }
+@keyframes stackRise2 { 0%, 100% { transform: translateY(0); } 40%, 60% { transform: translateY(-8px); } }
+@keyframes stackRise3 { 0%, 100% { transform: translateY(0); } 40%, 60% { transform: translateY(-14px); } }
+.illus-stack .layer:nth-of-type(1) { transform-box: view-box; animation: stackRise1 2.6s ease-in-out infinite; }
+.illus-stack .layer:nth-of-type(2) { transform-box: view-box; animation: stackRise2 2.6s ease-in-out infinite; }
+.illus-stack .layer:nth-of-type(3) { transform-box: view-box; animation: stackRise3 2.6s ease-in-out infinite; }
+@keyframes coinSquash {
+  0%, 100% { transform: scaleY(1); }
+  40%, 60% { transform: scaleY(0.3); }
+}
+.illus-stack .blob {
+  transform-box: view-box;
+  transform-origin: 100px 80px; /* squash from bottom */
+  animation: coinSquash 2.6s ease-in-out infinite;
+}
+
+/* Slide 3 — Structurer: chat fades out left, doc fades in right (matches landing) */
+@keyframes chatExit {
+  0%, 100% { transform: translateX(0);    opacity: 0.55; }
+  40%, 60% { transform: translateX(-12px); opacity: 0; }
+}
+.illus-structurer .chat { transform-box: view-box; animation: chatExit 3.4s ease-in-out infinite; }
+
+@keyframes arrowGlow {
+  0%, 100% { opacity: 0.4; }
+  40%, 60% { opacity: 1; }
+}
+.illus-structurer .flow-arrow { animation: arrowGlow 3.4s ease-in-out infinite; }
+
+@keyframes docEnter {
+  0%, 100% { transform: translateX(0);   opacity: 0.4; }
+  40%, 60% { transform: translateX(5px); opacity: 1; }
+}
+.illus-structurer .form,
+.illus-structurer .formline { transform-box: view-box; animation: docEnter 3.4s ease-in-out infinite; }
+
+/* Slide 3 — Negotiator: arrows ping-pong toward center (matches landing) */
+@keyframes negoMeetR { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(20px); } }
+@keyframes negoMeetL { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-20px); } }
+.illus-negotiator .arrow-l { transform-box: view-box; animation: negoMeetR 1.4s ease-in-out infinite; }
+.illus-negotiator .arrow-r { transform-box: view-box; animation: negoMeetL 1.4s ease-in-out infinite; }
+
+/* Slide 3 — Verifier: outer ring intensifies + check draws in (matches landing) */
+@keyframes ringIntensify {
+  0%, 100% { opacity: 0.4; }
+  40%, 60% { opacity: 1; }
+}
+.illus-verifier .ring-outer { animation: ringIntensify 3s ease-in-out infinite; }
+.illus-verifier .ring-inner { animation: ringIntensify 3s ease-in-out infinite -1.5s; }
+
+@keyframes drawCheckV {
+  0%, 100% { stroke-dashoffset: 30; }
+  35%, 75% { stroke-dashoffset: 0; }
+}
+.illus-verifier .check {
+  stroke-dasharray: 30;
+  animation: drawCheckV 3s ease-in-out infinite;
+}
+
+/* Slide 4 — Step 01 Describe: text bars scale-x in stagger (matches landing) */
+@keyframes typeIn {
+  0%        { transform: scaleX(0); }
+  25%, 90%  { transform: scaleX(1); }
+  100%      { transform: scaleX(0); }
+}
+.illus-describe .bubble {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: typeIn 3s ease-out infinite;
+}
+.illus-describe .bubble:nth-of-type(2) { animation-delay: 0.2s; }
+.illus-describe .bubble:nth-of-type(3) { animation-delay: 0.4s; }
+
+/* Slide 4 — Step 02 Negotiate: hubs ping-pong toward center (matches landing) */
+@keyframes pingR { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(20px); } }
+@keyframes pingL { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-20px); } }
+.illus-network .hub:nth-of-type(1) { transform-box: view-box; animation: pingR 1.4s ease-in-out infinite; }
+.illus-network .hub:nth-of-type(2) { transform-box: view-box; animation: pingL 1.4s ease-in-out infinite; }
+@keyframes linkBlink {
+  0%, 100% { opacity: 0.18; }
+  50%      { opacity: 0.7; }
+}
+.illus-network .link { animation: linkBlink 1.4s ease-in-out infinite; }
+
+/* Slide 4 — Step 03 Fund: coin drops down + fades (matches landing) */
+@keyframes coinFall {
+  0%, 100% { transform: translateY(0);    opacity: 1; }
+  55%      { transform: translateY(28px); opacity: 0; }
+  56%, 75% { transform: translateY(0);    opacity: 0; }
+}
+.illus-fund .coin {
+  transform-box: view-box;
+  animation: coinFall 2.4s cubic-bezier(0.4, 0, 0.7, 1) infinite;
+}
+
+/* Slide 4 — Step 04 Verify: scan bar travels down (matches landing's sealed-loop-scan) */
+@keyframes scanDown {
+  0%   { transform: translateY(0);    opacity: 0; }
+  10%  { opacity: 0.9; }
+  85%  { opacity: 0.9; }
+  100% { transform: translateY(82px); opacity: 0; }
+}
+.illus-verify .scanbar {
+  transform-box: view-box;
+  animation: scanDown 1.6s ease-in-out infinite;
+}
+@keyframes drawCheckOnly {
+  0%, 100% { stroke-dashoffset: 30; }
+  40%, 80% { stroke-dashoffset: 0; }
+}
+.illus-verify .check {
+  stroke-dasharray: 30;
+  animation: drawCheckOnly 3.2s ease-in-out infinite;
+}
+
+/* Slide 4 — Step 05 Release: shackle rotates open + body lifts (matches landing) */
+@keyframes shackleOpen {
+  0%, 100% { transform: rotate(0); }
+  40%, 60% { transform: rotate(-30deg); }
+}
+.illus-lock .shackle {
+  transform-box: view-box;
+  transform-origin: 130px 46px;
+  animation: shackleOpen 3s ease-in-out infinite;
+}
+@keyframes lockLift {
+  0%, 100% { transform: translateY(0); }
+  40%, 60% { transform: translateY(-10px); }
+}
+.illus-lock .body,
+.illus-lock .keyhead,
+.illus-lock .keystem {
+  transform-box: view-box;
+  animation: lockLift 3s ease-in-out infinite;
+}
+
 /* ===== REDUCED MOTION ===== */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+  .deck { transition: none !important; }
 }
 
 /* ===== PRINT / PDF EXPORT ===== */
 @media print {
   @page { size: 1920px 1080px; margin: 0; }
-  html, body { overflow: visible !important; height: auto !important; scroll-snap-type: none !important; }
+  html, body { overflow: visible !important; height: auto !important; width: auto !important; }
+  .deck {
+    display: block !important;
+    transform: none !important;
+    width: auto !important;
+    height: auto !important;
+    transition: none !important;
+  }
   .slide {
     page-break-after: always; break-after: page;
     width: 1920px !important; height: 1080px !important;
+    flex: none !important;
   }
-  .stage { transform: none !important; }
+  .stage { transform: none !important; opacity: 1 !important; animation: none !important; }
+  .nav-hint { display: none !important; }
 }
 </style>
 </head>
 <body>
+
+<div class="nav-hint" id="navHint">
+  <span class="key">←</span><span class="key">→</span>
+  <span>swipe / arrow keys to navigate</span>
+</div>
+
+<div class="deck" id="deck">
 
 <!-- ========================== SLIDE 1 · TITLE ========================== -->
 <section class="slide" id="s1" aria-label="Slide 1 of 9: Sealed Agent title">
@@ -429,7 +755,7 @@ h3.subhead {
         <circle cx="60" cy="60" r="13" fill="#f7f8f8"/>
       </svg>
       <!-- Wordmark -->
-      <div style="font-size:160px; font-weight:600; letter-spacing:-0.05em; color:var(--text); line-height:.9; white-space:nowrap;">SEALED AGENT</div>
+      <div class="wordmark" style="font-size:160px; font-weight:600; letter-spacing:-0.05em; line-height:.9; white-space:nowrap;">SEALED AGENT</div>
       <!-- gradient underline -->
       <div style="width:640px; height:2px; margin:28px auto 0; background: linear-gradient(90deg, transparent, var(--brand), var(--accent), transparent); border-radius:2px;"></div>
       <!-- tagline -->
@@ -483,18 +809,18 @@ h3.subhead {
       <!-- Card 1: Buyer pays first -->
       <div class="glass" style="border-radius:16px; overflow:hidden; display:flex; flex-direction:column;">
         <div style="height:220px; border-bottom:1px solid var(--border-strong); background:rgba(255,255,255,0.015); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-          <svg width="390" height="120" viewBox="0 0 260 80" fill="none">
+          <svg class="illus illus-pay" width="390" height="120" viewBox="0 0 260 80" fill="none">
             <!-- Wallet/card (left) -->
             <rect x="20" y="22" width="72" height="46" rx="6" stroke="var(--muted)" stroke-width="1.4"/>
             <line x1="20" y1="36" x2="92" y2="36" stroke="var(--muted)" stroke-width="1.2" opacity="0.5"/>
             <rect x="28" y="44" width="28" height="8" rx="2" fill="rgba(148,154,165,0.25)"/>
-            <!-- Dot = payment -->
-            <circle cx="118" cy="45" r="9" fill="var(--brand)" opacity="0.85"/>
             <!-- Dashed arrow -->
-            <line x1="136" y1="45" x2="196" y2="45" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="5 4" opacity="0.5"/>
-            <path d="M189 38 L196 45 L189 52" stroke="var(--muted)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+            <line class="track" x1="136" y1="45" x2="196" y2="45" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="5 4" opacity="0.5"/>
+            <path class="arrow-tip" d="M189 38 L196 45 L189 52" stroke="var(--muted)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
             <!-- Empty dashed box (right) -->
-            <rect x="202" y="22" width="50" height="46" rx="6" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="5 4" opacity="0.4"/>
+            <rect class="target" x="202" y="22" width="50" height="46" rx="6" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="5 4" opacity="0.4"/>
+            <!-- Dot = payment (animated) -->
+            <circle class="coin" cx="118" cy="45" r="9" fill="var(--brand)" opacity="0.85"/>
           </svg>
         </div>
         <div style="padding:28px 32px; flex:1;">
@@ -506,16 +832,16 @@ h3.subhead {
       <!-- Card 2: Seller delivers first -->
       <div class="glass" style="border-radius:16px; overflow:hidden; display:flex; flex-direction:column;">
         <div style="height:220px; border-bottom:1px solid var(--border-strong); background:rgba(255,255,255,0.015); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-          <svg width="330" height="120" viewBox="0 0 220 80" fill="none">
+          <svg class="illus illus-clock" width="330" height="120" viewBox="0 0 220 80" fill="none">
             <!-- Document -->
             <rect x="20" y="10" width="72" height="60" rx="5" stroke="var(--muted)" stroke-width="1.4"/>
-            <line x1="33" y1="28" x2="79" y2="28" stroke="var(--muted)" stroke-width="1.1" opacity="0.4"/>
-            <line x1="33" y1="39" x2="72" y2="39" stroke="var(--muted)" stroke-width="1.1" opacity="0.4"/>
-            <line x1="33" y1="50" x2="76" y2="50" stroke="var(--muted)" stroke-width="1.1" opacity="0.4"/>
+            <line class="docline" x1="33" y1="28" x2="79" y2="28" stroke="var(--muted)" stroke-width="1.1" opacity="0.4"/>
+            <line class="docline" x1="33" y1="39" x2="72" y2="39" stroke="var(--muted)" stroke-width="1.1" opacity="0.4"/>
+            <line class="docline" x1="33" y1="50" x2="76" y2="50" stroke="var(--muted)" stroke-width="1.1" opacity="0.4"/>
             <!-- Clock -->
             <circle cx="155" cy="40" r="30" stroke="var(--muted)" stroke-width="1.4"/>
-            <line x1="155" y1="40" x2="155" y2="22" stroke="var(--muted)" stroke-width="1.4" stroke-linecap="round"/>
-            <line x1="155" y1="40" x2="170" y2="48" stroke="var(--muted)" stroke-width="1.4" stroke-linecap="round"/>
+            <line class="hand-hour" x1="155" y1="40" x2="155" y2="22" stroke="var(--muted)" stroke-width="1.4" stroke-linecap="round"/>
+            <line class="hand-min"  x1="155" y1="40" x2="170" y2="48" stroke="var(--muted)" stroke-width="1.4" stroke-linecap="round"/>
           </svg>
         </div>
         <div style="padding:28px 32px; flex:1;">
@@ -527,13 +853,13 @@ h3.subhead {
       <!-- Card 3: Both hire lawyers -->
       <div class="glass" style="border-radius:16px; overflow:hidden; display:flex; flex-direction:column;">
         <div style="height:220px; border-bottom:1px solid var(--border-strong); background:rgba(255,255,255,0.015); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-          <svg width="300" height="120" viewBox="0 0 200 80" fill="none">
+          <svg class="illus illus-stack" width="300" height="120" viewBox="0 0 200 80" fill="none">
             <!-- Stacked docs -->
-            <rect x="40" y="8"  width="110" height="16" rx="3" stroke="var(--muted)" stroke-width="1.4" opacity="0.4"/>
-            <rect x="40" y="28" width="110" height="16" rx="3" stroke="var(--muted)" stroke-width="1.4" opacity="0.6"/>
-            <rect x="40" y="48" width="110" height="16" rx="3" stroke="var(--muted)" stroke-width="1.4"/>
+            <rect class="layer" x="40" y="8"  width="110" height="16" rx="3" stroke="var(--muted)" stroke-width="1.4" opacity="0.4"/>
+            <rect class="layer" x="40" y="28" width="110" height="16" rx="3" stroke="var(--muted)" stroke-width="1.4" opacity="0.6"/>
+            <rect class="layer" x="40" y="48" width="110" height="16" rx="3" stroke="var(--muted)" stroke-width="1.4"/>
             <!-- Coin/dollar blob -->
-            <ellipse cx="100" cy="70" rx="32" ry="10" fill="var(--brand)" opacity="0.55"/>
+            <ellipse class="blob" cx="100" cy="70" rx="32" ry="10" fill="var(--brand)" opacity="0.55"/>
           </svg>
         </div>
         <div style="padding:28px 32px; flex:1;">
@@ -578,15 +904,15 @@ h3.subhead {
       <!-- Structurer -->
       <div class="glass" style="border-radius:16px; overflow:hidden; display:flex; flex-direction:column;">
         <div style="height:220px; border-bottom:1px solid var(--border-strong); background:rgba(255,255,255,0.015); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-          <svg width="380" height="126" viewBox="0 0 240 80" fill="none">
-            <rect x="20" y="16" width="90" height="12" rx="3" stroke="var(--brand)" stroke-width="1.4" opacity="0.55"/>
-            <rect x="20" y="36" width="70" height="12" rx="3" stroke="var(--brand)" stroke-width="1.4" opacity="0.55"/>
-            <rect x="20" y="56" width="80" height="12" rx="3" stroke="var(--brand)" stroke-width="1.4" opacity="0.55"/>
-            <path d="M125 40 L148 40 M141 33 L148 40 L141 47" stroke="var(--brand)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <rect x="155" y="12" width="65" height="56" rx="4" stroke="var(--brand)" stroke-width="1.4" opacity="0.55"/>
-            <line x1="166" y1="28" x2="208" y2="28" stroke="var(--brand)" stroke-width="1.1" opacity="0.35"/>
-            <line x1="166" y1="40" x2="200" y2="40" stroke="var(--brand)" stroke-width="1.1" opacity="0.35"/>
-            <line x1="166" y1="52" x2="204" y2="52" stroke="var(--brand)" stroke-width="1.1" opacity="0.35"/>
+          <svg class="illus illus-structurer" width="380" height="126" viewBox="0 0 240 80" fill="none">
+            <rect class="chat" x="20" y="16" width="90" height="12" rx="3" stroke="var(--brand)" stroke-width="1.4" opacity="0.55"/>
+            <rect class="chat" x="20" y="36" width="70" height="12" rx="3" stroke="var(--brand)" stroke-width="1.4" opacity="0.55"/>
+            <rect class="chat" x="20" y="56" width="80" height="12" rx="3" stroke="var(--brand)" stroke-width="1.4" opacity="0.55"/>
+            <path class="flow-arrow" d="M125 40 L148 40 M141 33 L148 40 L141 47" stroke="var(--brand)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect class="form" x="155" y="12" width="65" height="56" rx="4" stroke="var(--brand)" stroke-width="1.4" opacity="0.55"/>
+            <line class="formline" x1="166" y1="28" x2="208" y2="28" stroke="var(--brand)" stroke-width="1.1" opacity="0.35"/>
+            <line class="formline" x1="166" y1="40" x2="200" y2="40" stroke="var(--brand)" stroke-width="1.1" opacity="0.35"/>
+            <line class="formline" x1="166" y1="52" x2="204" y2="52" stroke="var(--brand)" stroke-width="1.1" opacity="0.35"/>
           </svg>
         </div>
         <div style="padding:28px 32px; flex:1;">
@@ -599,9 +925,9 @@ h3.subhead {
       <!-- Negotiator -->
       <div class="glass" style="border-radius:16px; overflow:hidden; display:flex; flex-direction:column;">
         <div style="height:220px; border-bottom:1px solid var(--border-strong); background:rgba(255,255,255,0.015); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-          <svg width="380" height="95" viewBox="0 0 240 60" fill="none">
-            <path d="M20 30 L100 30 M85 20 L100 30 L85 40" stroke="var(--brand)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M220 30 L140 30 M155 20 L140 30 L155 40" stroke="var(--brand)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <svg class="illus illus-negotiator" width="380" height="95" viewBox="0 0 240 60" fill="none">
+            <path class="arrow-l" d="M20 30 L100 30 M85 20 L100 30 L85 40" stroke="var(--brand)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path class="arrow-r" d="M220 30 L140 30 M155 20 L140 30 L155 40" stroke="var(--brand)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </div>
         <div style="padding:28px 32px; flex:1;">
@@ -614,14 +940,14 @@ h3.subhead {
       <!-- Verifier -->
       <div class="glass" style="border-radius:16px; overflow:hidden; display:flex; flex-direction:column;">
         <div style="height:220px; border-bottom:1px solid var(--border-strong); background:rgba(255,255,255,0.015); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-          <svg width="316" height="126" viewBox="0 0 200 80" fill="none">
+          <svg class="illus illus-verifier" width="316" height="126" viewBox="0 0 200 80" fill="none">
             <rect x="20" y="8" width="100" height="64" rx="5" stroke="var(--brand)" stroke-width="1.4" opacity="0.55"/>
-            <line x1="35" y1="28" x2="105" y2="28" stroke="var(--brand)" stroke-width="1.1" opacity="0.35"/>
-            <line x1="35" y1="40" x2="95" y2="40" stroke="var(--brand)" stroke-width="1.1" opacity="0.35"/>
-            <line x1="35" y1="52" x2="100" y2="52" stroke="var(--brand)" stroke-width="1.1" opacity="0.35"/>
-            <circle cx="155" cy="40" r="28" stroke="var(--brand)" stroke-width="1.4" opacity="0.55"/>
-            <circle cx="155" cy="40" r="16" stroke="var(--brand)" stroke-width="1" opacity="0.3"/>
-            <path d="M145 40 L152 47 L165 33" stroke="var(--success)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <line class="docline" x1="35" y1="28" x2="105" y2="28" stroke="var(--brand)" stroke-width="1.1" opacity="0.35"/>
+            <line class="docline" x1="35" y1="40" x2="95" y2="40" stroke="var(--brand)" stroke-width="1.1" opacity="0.35"/>
+            <line class="docline" x1="35" y1="52" x2="100" y2="52" stroke="var(--brand)" stroke-width="1.1" opacity="0.35"/>
+            <circle class="ring-outer" cx="155" cy="40" r="28" stroke="var(--brand)" stroke-width="1.4" opacity="0.55"/>
+            <circle class="ring-inner" cx="155" cy="40" r="16" stroke="var(--brand)" stroke-width="1" opacity="0.3"/>
+            <path class="check" d="M145 40 L152 47 L165 33" stroke="var(--success)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </div>
         <div style="padding:28px 32px; flex:1;">
@@ -664,10 +990,10 @@ h3.subhead {
         <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, transparent, var(--brand), transparent);"></div>
         <!-- illustration: chat lines -->
         <div style="height:210px; display:flex; align-items:center; justify-content:center; border-bottom:1px solid var(--border-strong); margin:-28px -26px 0 -26px; background:rgba(255,255,255,0.015);">
-          <svg width="260" height="150" viewBox="0 0 200 110" fill="none">
-            <rect x="20" y="20" width="135" height="14" rx="4" stroke="var(--brand)" stroke-width="2" opacity="0.7"/>
-            <rect x="20" y="48" width="100" height="14" rx="4" stroke="var(--brand)" stroke-width="2" opacity="0.7"/>
-            <rect x="20" y="76" width="120" height="14" rx="4" stroke="var(--brand)" stroke-width="2" opacity="0.7"/>
+          <svg class="illus illus-describe" width="260" height="150" viewBox="0 0 200 110" fill="none">
+            <rect class="bubble" x="20" y="20" width="135" height="14" rx="4" stroke="var(--brand)" stroke-width="2" opacity="0.7"/>
+            <rect class="bubble" x="20" y="48" width="100" height="14" rx="4" stroke="var(--brand)" stroke-width="2" opacity="0.7"/>
+            <rect class="bubble" x="20" y="76" width="120" height="14" rx="4" stroke="var(--brand)" stroke-width="2" opacity="0.7"/>
           </svg>
         </div>
         <div class="mono brand" style="font-size:24px; font-weight:500; letter-spacing:0.08em;">01</div>
@@ -680,19 +1006,19 @@ h3.subhead {
         <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, transparent, var(--brand), transparent);"></div>
         <!-- illustration: network/agents -->
         <div style="height:210px; display:flex; align-items:center; justify-content:center; border-bottom:1px solid var(--border-strong); margin:-28px -26px 0 -26px; background:rgba(255,255,255,0.015);">
-          <svg width="260" height="170" viewBox="0 0 200 130" fill="none">
-            <line x1="50" y1="40" x2="115" y2="78" stroke="var(--brand)" stroke-width="1.5" opacity="0.45"/>
-            <line x1="115" y1="78" x2="155" y2="48" stroke="var(--brand)" stroke-width="1.5" opacity="0.45"/>
-            <line x1="50" y1="40" x2="155" y2="48" stroke="var(--brand)" stroke-width="1.5" opacity="0.35"/>
-            <line x1="30" y1="92" x2="115" y2="78" stroke="var(--brand)" stroke-width="1.5" opacity="0.35"/>
-            <line x1="175" y1="92" x2="155" y2="48" stroke="var(--brand)" stroke-width="1.5" opacity="0.35"/>
-            <line x1="115" y1="78" x2="100" y2="115" stroke="var(--brand)" stroke-width="1.5" opacity="0.3"/>
-            <circle cx="50" cy="40" r="11" fill="var(--brand)" opacity="0.95"/>
-            <circle cx="155" cy="48" r="11" fill="var(--brand)" opacity="0.95"/>
-            <circle cx="115" cy="78" r="6" fill="var(--brand)" opacity="0.55"/>
-            <circle cx="30" cy="92" r="5" fill="var(--brand)" opacity="0.5"/>
-            <circle cx="175" cy="92" r="5" fill="var(--brand)" opacity="0.5"/>
-            <circle cx="100" cy="115" r="4" fill="var(--brand)" opacity="0.4"/>
+          <svg class="illus illus-network" width="260" height="170" viewBox="0 0 200 130" fill="none">
+            <line class="link" x1="50" y1="40" x2="115" y2="78" stroke="var(--brand)" stroke-width="1.5" opacity="0.45"/>
+            <line class="link" x1="115" y1="78" x2="155" y2="48" stroke="var(--brand)" stroke-width="1.5" opacity="0.45"/>
+            <line class="link" x1="50" y1="40" x2="155" y2="48" stroke="var(--brand)" stroke-width="1.5" opacity="0.35"/>
+            <line class="link" x1="30" y1="92" x2="115" y2="78" stroke="var(--brand)" stroke-width="1.5" opacity="0.35"/>
+            <line class="link" x1="175" y1="92" x2="155" y2="48" stroke="var(--brand)" stroke-width="1.5" opacity="0.35"/>
+            <line class="link" x1="115" y1="78" x2="100" y2="115" stroke="var(--brand)" stroke-width="1.5" opacity="0.3"/>
+            <circle class="hub" cx="50" cy="40" r="11" fill="var(--brand)" opacity="0.95"/>
+            <circle class="hub" cx="155" cy="48" r="11" fill="var(--brand)" opacity="0.95"/>
+            <circle class="dot-mid" cx="115" cy="78" r="6" fill="var(--brand)" opacity="0.55"/>
+            <circle class="dot-sm" cx="30" cy="92" r="5" fill="var(--brand)" opacity="0.5"/>
+            <circle class="dot-sm" cx="175" cy="92" r="5" fill="var(--brand)" opacity="0.5"/>
+            <circle class="dot-sm" cx="100" cy="115" r="4" fill="var(--brand)" opacity="0.4"/>
           </svg>
         </div>
         <div class="mono brand" style="font-size:24px; font-weight:500; letter-spacing:0.08em;">02</div>
@@ -705,12 +1031,12 @@ h3.subhead {
         <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, transparent, var(--accent), transparent);"></div>
         <!-- illustration: USDC vault -->
         <div style="height:210px; display:flex; align-items:center; justify-content:center; border-bottom:1px solid var(--border-strong); margin:-28px -26px 0 -26px; background:rgba(255,255,255,0.015);">
-          <svg width="260" height="170" viewBox="0 0 200 130" fill="none">
-            <circle cx="100" cy="22" r="7" fill="var(--accent)" opacity="0.9"/>
-            <line x1="100" y1="29" x2="100" y2="48" stroke="var(--accent)" stroke-width="2" opacity="0.65"/>
-            <rect x="50" y="48" width="100" height="68" rx="8" stroke="var(--accent)" stroke-width="2" opacity="0.7"/>
-            <circle cx="100" cy="82" r="18" stroke="var(--accent)" stroke-width="2" opacity="0.6"/>
-            <circle cx="100" cy="82" r="6" fill="var(--accent)" opacity="0.8"/>
+          <svg class="illus illus-fund" width="260" height="170" viewBox="0 0 200 130" fill="none">
+            <circle class="coin" cx="100" cy="22" r="7" fill="var(--accent)" opacity="0.9"/>
+            <line class="trail" x1="100" y1="29" x2="100" y2="48" stroke="var(--accent)" stroke-width="2" opacity="0.65"/>
+            <rect class="vault" x="50" y="48" width="100" height="68" rx="8" stroke="var(--accent)" stroke-width="2" opacity="0.7"/>
+            <circle class="lid" cx="100" cy="82" r="18" stroke="var(--accent)" stroke-width="2" opacity="0.6"/>
+            <circle class="core" cx="100" cy="82" r="6" fill="var(--accent)" opacity="0.8"/>
           </svg>
         </div>
         <div class="mono accent" style="font-size:24px; font-weight:500; letter-spacing:0.08em;">03</div>
@@ -723,13 +1049,14 @@ h3.subhead {
         <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, transparent, var(--accent), transparent);"></div>
         <!-- illustration: verified document -->
         <div style="height:210px; display:flex; align-items:center; justify-content:center; border-bottom:1px solid var(--border-strong); margin:-28px -26px 0 -26px; background:rgba(255,255,255,0.015);">
-          <svg width="260" height="170" viewBox="0 0 200 130" fill="none">
+          <svg class="illus illus-verify" width="260" height="170" viewBox="0 0 200 130" fill="none">
             <rect x="40" y="18" width="120" height="86" rx="7" stroke="var(--accent)" stroke-width="2" opacity="0.7"/>
-            <line x1="55" y1="36" x2="145" y2="36" stroke="var(--accent)" stroke-width="1.6" opacity="0.5"/>
-            <line x1="55" y1="52" x2="130" y2="52" stroke="var(--accent)" stroke-width="1.6" opacity="0.5"/>
-            <line x1="55" y1="68" x2="140" y2="68" stroke="var(--accent)" stroke-width="1.6" opacity="0.5"/>
-            <circle cx="148" cy="92" r="18" fill="rgba(74,222,128,0.18)" stroke="var(--success)" stroke-width="2"/>
-            <path d="M139 92 L146 99 L158 86" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <line class="docline" x1="55" y1="36" x2="145" y2="36" stroke="var(--accent)" stroke-width="1.6" opacity="0.5"/>
+            <line class="docline" x1="55" y1="52" x2="130" y2="52" stroke="var(--accent)" stroke-width="1.6" opacity="0.5"/>
+            <line class="docline" x1="55" y1="68" x2="140" y2="68" stroke="var(--accent)" stroke-width="1.6" opacity="0.5"/>
+            <rect class="scanbar" x="40" y="18" width="120" height="2" fill="var(--accent)" opacity="0.85"/>
+            <circle class="badge" cx="148" cy="92" r="18" fill="rgba(74,222,128,0.18)" stroke="var(--success)" stroke-width="2"/>
+            <path class="check" d="M139 92 L146 99 L158 86" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
           </svg>
         </div>
         <div class="mono accent" style="font-size:24px; font-weight:500; letter-spacing:0.08em;">04</div>
@@ -742,11 +1069,11 @@ h3.subhead {
         <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, transparent, var(--success), transparent);"></div>
         <!-- illustration: lock -->
         <div style="height:210px; display:flex; align-items:center; justify-content:center; border-bottom:1px solid var(--border-strong); margin:-28px -26px 0 -26px; background:rgba(74,222,128,0.025);">
-          <svg width="260" height="170" viewBox="0 0 200 130" fill="none">
-            <path d="M70 46 V32 a30 30 0 0 1 60 0 V46" stroke="var(--success)" stroke-width="2" opacity="0.7" fill="none"/>
-            <rect x="56" y="46" width="88" height="64" rx="8" stroke="var(--success)" stroke-width="2" opacity="0.75"/>
-            <circle cx="100" cy="74" r="7" fill="var(--success)" opacity="0.95"/>
-            <line x1="100" y1="74" x2="100" y2="92" stroke="var(--success)" stroke-width="2.4" opacity="0.8"/>
+          <svg class="illus illus-lock" width="260" height="170" viewBox="0 0 200 130" fill="none">
+            <path class="shackle" d="M70 46 V32 a30 30 0 0 1 60 0 V46" stroke="var(--success)" stroke-width="2" opacity="0.7" fill="none"/>
+            <rect class="body" x="56" y="46" width="88" height="64" rx="8" stroke="var(--success)" stroke-width="2" opacity="0.75"/>
+            <circle class="keyhead" cx="100" cy="74" r="7" fill="var(--success)" opacity="0.95"/>
+            <line class="keystem" x1="100" y1="74" x2="100" y2="92" stroke="var(--success)" stroke-width="2.4" opacity="0.8"/>
           </svg>
         </div>
         <div class="mono success" style="font-size:24px; font-weight:500; letter-spacing:0.08em;">05</div>
@@ -1257,7 +1584,7 @@ h3.subhead {
         </g>
         <circle cx="60" cy="60" r="13" fill="#f7f8f8"/>
       </svg>
-      <div style="font-size:160px; font-weight:600; letter-spacing:-0.05em; color:var(--text); line-height:.9; white-space:nowrap;">SEALED AGENT</div>
+      <div class="wordmark" style="font-size:160px; font-weight:600; letter-spacing:-0.05em; line-height:.9; white-space:nowrap;">SEALED AGENT</div>
       <div style="width:640px; height:2px; margin:28px auto 0; background: linear-gradient(90deg, transparent, var(--brand), var(--accent), transparent); border-radius:2px;"></div>
       <div class="italic muted" style="margin-top:36px; font-size:30px; letter-spacing:-0.005em;">Don't trust promises. Seal the deal.</div>
       <!-- endmark -->
@@ -1270,7 +1597,7 @@ h3.subhead {
     <div class="glass" style="position:absolute; bottom:96px; left:280px; right:280px; padding:18px 28px; border-radius:999px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:0; align-items:center; border-top:1px solid rgba(255,255,255,0.12);">
       <div style="display:flex; align-items:center; gap:12px; justify-content:center; padding:6px 16px; border-right:1px solid var(--border);">
         <svg class="icon icon-sm" style="color:var(--brand)" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        <span class="mono" style="font-size:20px;">[deck link]</span>
+        <span class="mono" style="font-size:20px;">bit.ly/SealedDeck</span>
       </div>
       <div style="display:flex; align-items:center; gap:12px; justify-content:center; padding:6px 16px; border-right:1px solid var(--border);">
         <svg class="icon icon-sm" style="color:var(--brand)" viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
@@ -1287,28 +1614,113 @@ h3.subhead {
   </div>
 </section>
 
-<script>
-// keyboard navigation (accessibility)
-document.addEventListener('keydown', (e) => {
-  const slides = document.querySelectorAll('.slide');
-  const vh = window.innerHeight;
-  const current = Math.round(window.scrollY / vh);
-  let target = current;
-  if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ' || e.key === 'ArrowRight') { target = Math.min(slides.length - 1, current + 1); e.preventDefault(); }
-  else if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'ArrowLeft') { target = Math.max(0, current - 1); e.preventDefault(); }
-  else if (e.key === 'Home') { target = 0; e.preventDefault(); }
-  else if (e.key === 'End') { target = slides.length - 1; e.preventDefault(); }
-  if (target !== current && slides[target]) slides[target].scrollIntoView({ behavior: 'smooth' });
-});
+</div><!-- /.deck -->
 
-// click anywhere on right-edge rail to jump (optional, subtle)
-document.querySelectorAll('.rail .dot').forEach((dot, i) => {
-  dot.style.cursor = 'pointer';
-  dot.addEventListener('click', () => {
-    const slides = document.querySelectorAll('.slide');
-    if (slides[i]) slides[i].scrollIntoView({ behavior: 'smooth' });
+<script>
+(() => {
+  const deck   = document.getElementById('deck');
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const hint   = document.getElementById('navHint');
+  const TRANSITION_MS = 720;
+
+  let current = 0;
+  let isAnimating = false;
+
+  function render() {
+    deck.style.transform = `translate3d(-${current * 100}vw, 0, 0)`;
+    slides.forEach((s, i) => {
+      // re-trigger entrance animation on the active slide by toggling the class
+      s.classList.remove('active');
+      if (i === current) {
+        // force reflow so the animation restarts
+        void s.offsetWidth;
+        s.classList.add('active');
+      }
+    });
+  }
+
+  function go(target) {
+    target = Math.max(0, Math.min(slides.length - 1, target));
+    if (target === current || isAnimating) return;
+    current = target;
+    isAnimating = true;
+    render();
+    setTimeout(() => { isAnimating = false; }, TRANSITION_MS);
+  }
+  const next = () => go(current + 1);
+  const prev = () => go(current - 1);
+
+  // ----- staggered card delays for slides 5–8 -----
+  ['s5', 's6', 's7', 's8'].forEach((id) => {
+    const slide = document.getElementById(id);
+    if (!slide) return;
+    slide.querySelectorAll('.glass').forEach((card, idx) => {
+      card.style.setProperty('--card-delay', `${250 + idx * 140}ms`);
+    });
   });
-});
+
+  // ----- initial state -----
+  slides[0].classList.add('active');
+
+  // ----- keyboard -----
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'Enter') {
+      e.preventDefault(); next();
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'ArrowUp' || e.key === 'Backspace') {
+      e.preventDefault(); prev();
+    } else if (e.key === 'Home') {
+      e.preventDefault(); go(0);
+    } else if (e.key === 'End') {
+      e.preventDefault(); go(slides.length - 1);
+    }
+  });
+
+  // ----- rail dot click (each slide has its own rail; map dot index -> slide) -----
+  document.querySelectorAll('.rail').forEach((rail) => {
+    Array.from(rail.querySelectorAll('.dot')).forEach((dot, idx) => {
+      dot.addEventListener('click', () => go(idx));
+    });
+  });
+
+  // ----- touch swipe -----
+  let touchStartX = 0;
+  let touchStartY = 0;
+  document.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
+      if (dx < 0) next(); else prev();
+    }
+  });
+
+  // ----- mouse wheel / trackpad -----
+  let wheelLock = false;
+  let wheelAcc  = 0;
+  document.addEventListener('wheel', (e) => {
+    if (wheelLock) return;
+    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    wheelAcc += delta;
+    if (Math.abs(wheelAcc) < 40) return;
+    wheelLock = true;
+    setTimeout(() => { wheelLock = false; wheelAcc = 0; }, 850);
+    if (wheelAcc > 0) next(); else prev();
+    wheelAcc = 0;
+  }, { passive: true });
+
+  // ----- nav hint: show briefly on first load -----
+  if (hint) {
+    setTimeout(() => hint.classList.add('show'), 600);
+    const dismiss = () => hint.classList.remove('show');
+    setTimeout(dismiss, 5200);
+    document.addEventListener('keydown', dismiss, { once: true });
+    document.addEventListener('touchstart', dismiss, { once: true, passive: true });
+    document.addEventListener('wheel', dismiss, { once: true, passive: true });
+  }
+})();
 </script>
 </body>
 </html>

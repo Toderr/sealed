@@ -8,7 +8,7 @@ A single-page orientation for anyone landing on this repo cold: collaborator, ju
 
 AI-powered escrow on Solana. Two business owners describe a deal in plain language; three agents (Structurer, Negotiator, Verifier) take it from chat to signed milestones. Funds lock in USDC on-chain. Release requires explicit buyer confirmation; refunds require both sides to sign.
 
-Pitch line: **"Don't trust promises. Seal the deal."**
+Pitch line: **"Sealed: an AI agent that negotiates, escrows, and releases payment on Solana, so you can seal the deal with ease."**
 
 ---
 
