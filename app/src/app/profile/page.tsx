@@ -23,6 +23,7 @@ export default function ProfilePage() {
   const { profile, loaded } = useProfileStore(wallet);
   const { deals } = useDealsStore(publicKey ?? null);
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<"overview" | "agent" | "settings">("overview");
 
   if (!loaded) return null;
 
@@ -62,8 +63,6 @@ export default function ProfilePage() {
     (sum, d) => sum + d.totalAmount / 1_000_000,
     0
   );
-
-  const [activeTab, setActiveTab] = useState<"overview" | "agent" | "settings">("overview");
 
   const shortWallet = wallet.slice(0, 4) + "..." + wallet.slice(-4);
   const initials = profile.name
@@ -919,6 +918,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 /* ── Settings Tab ─────────────────────────────────────────────────────────── */
 
 function SettingsTab({ wallet }: { wallet: string }) {
+  const { profile, updateProfile } = useProfileStore(wallet);
+
+  // AI provider state
+  const [llmProvider, setLlmProvider] = useState<"openai" | "anthropic" | "groq" | "gemini" | "openrouter">("anthropic");
+  const [llmModel, setLlmModel] = useState("claude-sonnet-4-6");
+  const [llmKey, setLlmKey] = useState("");
+  const [showLlmKey, setShowLlmKey] = useState(false);
+  const [llmSaved, setLlmSaved] = useState(false);
+
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
@@ -933,6 +941,38 @@ function SettingsTab({ wallet }: { wallet: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
+
+  useEffect(() => {
+    if (profile?.llmConfig?.mode === "own-key") {
+      setLlmProvider(profile.llmConfig.provider as typeof llmProvider);
+      setLlmModel(profile.llmConfig.model);
+      setLlmKey(profile.llmConfig.apiKey);
+    }
+  }, [profile]);
+
+  const PROVIDERS: { id: typeof llmProvider; label: string; hint: string }[] = [
+    { id: "anthropic", label: "Anthropic", hint: "sk-ant-..." },
+    { id: "openai", label: "OpenAI", hint: "sk-..." },
+    { id: "groq", label: "Groq", hint: "gsk_..." },
+    { id: "gemini", label: "Gemini", hint: "AIza..." },
+    { id: "openrouter", label: "OpenRouter", hint: "sk-or-..." },
+  ];
+
+  const LLM_MODELS_MAP: Record<typeof llmProvider, string[]> = {
+    openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+    anthropic: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
+    groq: ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"],
+    gemini: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+    openrouter: ["anthropic/claude-sonnet-4", "openai/gpt-4o", "google/gemini-2.5-pro", "meta-llama/llama-3.3-70b-instruct"],
+  };
+
+  function saveLlmConfig() {
+    updateProfile({
+      llmConfig: { mode: "own-key", provider: llmProvider, model: llmModel, apiKey: llmKey },
+    });
+    setLlmSaved(true);
+    setTimeout(() => setLlmSaved(false), 2000);
+  }
 
   useEffect(() => {
     fetch(`/api/users/${wallet}/public?self=1`)
@@ -991,6 +1031,70 @@ function SettingsTab({ wallet }: { wallet: string }) {
 
   return (
     <div className="space-y-6">
+      {/* AI Provider section */}
+      <div className="surface-card rounded-xl p-5 space-y-4">
+        <div>
+          <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>AI Provider</p>
+          <p className="text-[12px] text-muted mt-0.5">API key your Sealed agent uses for deal structuring, negotiation, and milestone verification.</p>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Provider</label>
+          <div className="grid grid-cols-3 gap-2">
+            {PROVIDERS.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => { setLlmProvider(p.id); setLlmModel(LLM_MODELS_MAP[p.id][0]); }}
+                className={`h-9 rounded-md text-[12px] border transition-colors ${
+                  llmProvider === p.id
+                    ? "border-accent bg-accent/10 text-accent"
+                    : "border-card-border bg-surface text-muted hover:text-primary"
+                }`}
+                style={{ fontWeight: 510 }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Model</label>
+          <select
+            value={llmModel}
+            onChange={(e) => setLlmModel(e.target.value)}
+            className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
+          >
+            {LLM_MODELS_MAP[llmProvider].map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>API Key</label>
+          <div className="flex gap-2">
+            <input
+              type={showLlmKey ? "text" : "password"}
+              value={llmKey}
+              onChange={(e) => setLlmKey(e.target.value)}
+              placeholder={PROVIDERS.find((p) => p.id === llmProvider)?.hint ?? "sk-..."}
+              className="flex-1 h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors font-mono"
+            />
+            <button
+              onClick={() => setShowLlmKey(!showLlmKey)}
+              className="btn-ghost h-10 px-3 rounded-md text-[12px]"
+            >
+              {showLlmKey ? "Hide" : "Show"}
+            </button>
+          </div>
+        </div>
+        <button
+          onClick={saveLlmConfig}
+          disabled={!llmKey.trim()}
+          className="btn-primary h-9 px-5 rounded-md text-[13px] disabled:opacity-40"
+        >
+          {llmSaved ? "Saved ✓" : "Save provider"}
+        </button>
+      </div>
+
       {/* Email section */}
       <div className="surface-card rounded-xl p-5 space-y-4">
         <div>

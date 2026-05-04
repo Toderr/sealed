@@ -1,110 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 import { VERIFIER_SYSTEM_PROMPT } from "@/agents/prompts/verifier";
 import type { ProofType, VerifierReview } from "@/lib/types";
-
-const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
-const OPENROUTER_MODEL = "anthropic/claude-sonnet-4";
+import { dispatchLlm, getLlmOptsFromEnv, type LlmMessage } from "@/lib/llm-dispatch";
 
 interface VerifyRequest {
   milestoneDescription: string;
   proofType: ProofType;
-  proofData: string; // data URL for image, raw string for url/text
+  proofData: string;
   sellerNote?: string;
 }
 
-function parseDataUrl(dataUrl: string): {
-  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
-  base64: string;
-} {
-  const match = dataUrl.match(/^data:(image\/(?:jpeg|png|gif|webp));base64,(.+)$/);
-  if (!match) throw new Error("Invalid image data URL");
-  return {
-    mediaType: match[1] as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-    base64: match[2],
-  };
-}
+function buildUserMessage(body: VerifyRequest): LlmMessage {
+  const note = body.sellerNote ? `\n\nSeller's note: ${body.sellerNote}` : "";
 
-function buildUserText(body: VerifyRequest): string {
-  const note = body.sellerNote
-    ? `\n\nSeller's note: ${body.sellerNote}`
-    : "";
   if (body.proofType === "image") {
-    return `Milestone description:
-${body.milestoneDescription}
-
-Proof submitted: see attached image.${note}
-
-Review the image and respond with the JSON decision.`;
-  }
-  if (body.proofType === "url") {
-    return `Milestone description:
-${body.milestoneDescription}
-
-Proof submitted (URL reference): ${body.proofData}${note}
-
-You cannot fetch the URL. Advise based on the reference plus any seller note. Respond with JSON.`;
-  }
-  // text
-  return `Milestone description:
-${body.milestoneDescription}
-
-Proof submitted (text): ${body.proofData}${note}
-
-Respond with JSON.`;
-}
-
-async function callOpenRouter(body: VerifyRequest): Promise<string> {
-  const userContent: unknown[] = [{ type: "text", text: buildUserText(body) }];
-  if (body.proofType === "image") {
-    userContent.push({
-      type: "image_url",
-      image_url: { url: body.proofData },
-    });
-  }
-  const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: process.env.OPENROUTER_MODEL || OPENROUTER_MODEL,
-      max_tokens: 512,
-      messages: [
-        { role: "system", content: VERIFIER_SYSTEM_PROMPT },
-        { role: "user", content: userContent },
+    return {
+      role: "user",
+      content: [
+        {
+          text: `Milestone description:\n${body.milestoneDescription}\n\nProof submitted: see attached image.${note}\n\nReview the image and respond with the JSON decision.`,
+        },
+        { imageDataUrl: body.proofData },
       ],
-    }),
-  });
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenRouter error ${response.status}: ${err}`);
+    };
   }
-  const data = await response.json();
-  return data.choices[0].message.content;
-}
 
-async function callAnthropic(body: VerifyRequest): Promise<string> {
-  const client = new Anthropic();
-  const userContent: Anthropic.ContentBlockParam[] = [
-    { type: "text", text: buildUserText(body) },
-  ];
-  if (body.proofType === "image") {
-    const { mediaType, base64 } = parseDataUrl(body.proofData);
-    userContent.push({
-      type: "image",
-      source: { type: "base64", media_type: mediaType, data: base64 },
-    });
+  if (body.proofType === "url") {
+    return {
+      role: "user",
+      content: `Milestone description:\n${body.milestoneDescription}\n\nProof submitted (URL reference): ${body.proofData}${note}\n\nYou cannot fetch the URL. Advise based on the reference plus any seller note. Respond with JSON.`,
+    };
   }
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 512,
-    system: VERIFIER_SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userContent }],
-  });
-  const content = response.content[0];
-  return content.type === "text" ? content.text : "";
+
+  return {
+    role: "user",
+    content: `Milestone description:\n${body.milestoneDescription}\n\nProof submitted (text): ${body.proofData}${note}\n\nRespond with JSON.`,
+  };
 }
 
 function extractJson<T>(text: string): T {
@@ -116,6 +47,14 @@ function extractJson<T>(text: string): T {
     throw new Error("No JSON object found in verifier response");
   }
   return JSON.parse(raw.slice(start, end + 1)) as T;
+}
+
+function getLlmOpts(request: NextRequest) {
+  const provider = request.headers.get("x-llm-provider");
+  const model = request.headers.get("x-llm-model");
+  const apiKey = request.headers.get("x-llm-key");
+  if (provider && model && apiKey) return { provider, model, apiKey };
+  return getLlmOptsFromEnv();
 }
 
 export async function POST(request: NextRequest) {
@@ -137,9 +76,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const raw = process.env.OPENROUTER_API_KEY
-      ? await callOpenRouter(body)
-      : await callAnthropic(body);
+    const llm = getLlmOpts(request);
+    if (!llm) {
+      return NextResponse.json({ error: "No LLM provider configured" }, { status: 500 });
+    }
+
+    const raw = await dispatchLlm({
+      ...llm,
+      system: VERIFIER_SYSTEM_PROMPT,
+      messages: [buildUserMessage(body)],
+      maxTokens: 512,
+    });
 
     const parsed = extractJson<Omit<VerifierReview, "reviewedAt">>(raw);
     const review: VerifierReview = {

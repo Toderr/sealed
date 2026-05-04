@@ -1,55 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 import { runNegotiation } from "@/negotiation/engine";
 import { defaultSellerBoundaries } from "@/negotiation/types";
 import type { DealParams } from "@/lib/types";
 import type { NegotiationBoundaries } from "@/memory/types";
-
-const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
-const OPENROUTER_MODEL = "anthropic/claude-sonnet-4";
-
-async function callOpenRouter(system: string, user: string): Promise<string> {
-  const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: process.env.OPENROUTER_MODEL || OPENROUTER_MODEL,
-      max_tokens: 1024,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
-  });
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenRouter error ${response.status}: ${err}`);
-  }
-  const data = await response.json();
-  return data.choices[0].message.content;
-}
-
-async function callAnthropic(system: string, user: string): Promise<string> {
-  const client = new Anthropic();
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 1024,
-    system,
-    messages: [{ role: "user", content: user }],
-  });
-  const content = response.content[0];
-  return content.type === "text" ? content.text : "";
-}
+import { dispatchLlm, getLlmOptsFromEnv } from "@/lib/llm-dispatch";
 
 interface NegotiateRequest {
   proposalId: string;
   buyerWallet: string;
   initialTerms: DealParams;
   buyerBoundaries: NegotiationBoundaries;
-  sellerBoundaries?: NegotiationBoundaries; // optional override; defaults used
+  sellerBoundaries?: NegotiationBoundaries;
+}
+
+function getLlmOpts(request: NextRequest) {
+  const provider = request.headers.get("x-llm-provider");
+  const model = request.headers.get("x-llm-model");
+  const apiKey = request.headers.get("x-llm-key");
+  if (provider && model && apiKey) return { provider, model, apiKey };
+  return getLlmOptsFromEnv();
 }
 
 export async function POST(request: NextRequest) {
@@ -67,9 +36,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const callLlm = process.env.OPENROUTER_API_KEY
-      ? callOpenRouter
-      : callAnthropic;
+    const llm = getLlmOpts(request);
+    if (!llm) {
+      return NextResponse.json({ error: "No LLM provider configured" }, { status: 500 });
+    }
+
+    const callLlm = (system: string, user: string) =>
+      dispatchLlm({
+        ...llm,
+        system,
+        messages: [{ role: "user", content: user }],
+        maxTokens: 1024,
+      });
 
     const proposal = await runNegotiation(
       {

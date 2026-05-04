@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { formatUsdc, type DealParams } from "@/lib/types";
 import type { NegotiationBoundaries } from "@/memory/types";
 import type { Proposal, Revision } from "@/negotiation/types";
+import { getLlmHeaders } from "@/lib/llm-headers";
 
 type ViewState =
   | { kind: "running" }
@@ -42,7 +43,7 @@ export default function NegotiationView({
       try {
         const res = await fetch("/api/negotiate", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...getLlmHeaders(buyerWallet) },
           body: JSON.stringify({
             proposalId,
             buyerWallet,

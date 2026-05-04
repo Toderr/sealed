@@ -28,6 +28,7 @@ import {
 import { useToast } from "@/components/Toast";
 import { useDealsStore } from "@/lib/deals-store";
 import { useRefundHandoffs } from "@/lib/refund-handoff";
+import { getLlmHeaders } from "@/lib/llm-headers";
 import {
   getAssociatedTokenAddress,
   getAccount,
@@ -544,6 +545,7 @@ export default function DealDetail({
                     dealStatus={deal.status}
                     isBuyer={!!isBuyer}
                     isSeller={!!isSeller}
+                    wallet={publicKey?.toBase58() ?? null}
                     onProofSubmitted={(proof) =>
                       updateDeal(deal.dealId, (d) => ({
                         ...d,
@@ -635,6 +637,7 @@ function MilestoneProofSection({
   dealStatus,
   isBuyer,
   isSeller,
+  wallet,
   onProofSubmitted,
   onRelease,
 }: {
@@ -644,6 +647,7 @@ function MilestoneProofSection({
   dealStatus: DealStatus;
   isBuyer: boolean;
   isSeller: boolean;
+  wallet: string | null;
   onProofSubmitted: (proof: MilestoneProof) => void;
   onRelease: () => void;
 }) {
@@ -731,7 +735,7 @@ function MilestoneProofSection({
     try {
       const res = await fetch("/api/verify-milestone", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getLlmHeaders(wallet) },
         body: JSON.stringify({
           milestoneDescription: milestone.description,
           proofType,

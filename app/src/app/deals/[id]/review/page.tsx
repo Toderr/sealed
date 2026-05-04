@@ -9,6 +9,7 @@ import { useToast } from "@/components/Toast";
 import { useDealsStore } from "@/lib/deals-store";
 import { useProfileStore } from "@/lib/profile-store";
 import { formatUsdc } from "@/lib/types";
+import { getLlmHeaders } from "@/lib/llm-headers";
 import { DocumentPanel } from "@/components/DocumentPanel";
 
 interface Message {
@@ -124,7 +125,7 @@ export default function DealReviewPage() {
     try {
       const res = await fetch("/api/negotiate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getLlmHeaders(wallet) },
         body: JSON.stringify({
           proposalId: deal!.dealId,
           buyerWallet: wallet,

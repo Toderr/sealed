@@ -537,6 +537,8 @@ function LLMStep({
     { id: "anthropic", label: "Anthropic" },
     { id: "openai", label: "OpenAI" },
     { id: "groq", label: "Groq" },
+    { id: "gemini", label: "Gemini" },
+    { id: "openrouter", label: "OpenRouter" },
   ];
 
   async function handleTopUp() {

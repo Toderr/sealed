@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { ChatMessage, DealParams, formatUsdc } from "@/lib/types";
 import { SealedMark } from "@/components/SealedLogo";
+import { getLlmHeaders } from "@/lib/llm-headers";
 
 function tryParseDealParams(text: string): DealParams | undefined {
   // Look for JSON block in the response (```json...``` or raw JSON object)
@@ -78,6 +79,7 @@ export default function ChatInterface({
 
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
+        ...getLlmHeaders(publicKey?.toBase58() ?? null),
       };
       if (publicKey) headers["x-wallet"] = publicKey.toBase58();
 

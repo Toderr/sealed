@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 import { buildMemoryContext } from "@/lib/agent-memory";
+import { dispatchLlm, getLlmOptsFromEnv } from "@/lib/llm-dispatch";
 
 const BASE_SYSTEM_PROMPT = `You are a B2B deal structuring agent. Your job is to help business owners create escrow deals on Solana.
 
@@ -21,9 +21,6 @@ Respond in JSON format when you have enough information to create the deal.
 Ask clarifying questions if the deal terms are incomplete.
 Speak in both English and Bahasa Indonesia as appropriate for the user.`;
 
-const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
-const OPENROUTER_MODEL = "anthropic/claude-sonnet-4";
-
 async function buildSystemPrompt(wallet: string | undefined): Promise<string> {
   if (!wallet) return BASE_SYSTEM_PROMPT;
   const memory = await buildMemoryContext(wallet);
@@ -31,61 +28,34 @@ async function buildSystemPrompt(wallet: string | undefined): Promise<string> {
   return `${BASE_SYSTEM_PROMPT}\n\n--- Known context about this user (from past deals) ---\n${memory}\n\nUse this context to personalize your suggestions, but never reveal raw memory entries verbatim.`;
 }
 
-async function callOpenRouter(
-  messages: Anthropic.MessageParam[],
-  systemPrompt: string
-) {
-  const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: process.env.OPENROUTER_MODEL || OPENROUTER_MODEL,
-      max_tokens: 1024,
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...messages.map((m) => ({ role: m.role, content: m.content })),
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenRouter error ${response.status}: ${err}`);
-  }
-
-  const data = await response.json();
-  return data.choices[0].message.content;
-}
-
-async function callAnthropic(
-  messages: Anthropic.MessageParam[],
-  systemPrompt: string
-) {
-  const client = new Anthropic();
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 1024,
-    system: systemPrompt,
-    messages,
-  });
-
-  const content = response.content[0];
-  return content.type === "text" ? content.text : "";
+function getLlmOpts(request: NextRequest) {
+  const provider = request.headers.get("x-llm-provider");
+  const model = request.headers.get("x-llm-model");
+  const apiKey = request.headers.get("x-llm-key");
+  if (provider && model && apiKey) return { provider, model, apiKey };
+  return getLlmOptsFromEnv();
 }
 
 export async function POST(request: NextRequest) {
   const { messages } = await request.json();
   const wallet = request.headers.get("x-wallet") ?? undefined;
 
+  const llm = getLlmOpts(request);
+  if (!llm) {
+    return NextResponse.json({ error: "No LLM provider configured" }, { status: 500 });
+  }
+
   const systemPrompt = await buildSystemPrompt(wallet);
 
-  const useOpenRouter = !!process.env.OPENROUTER_API_KEY;
-  const text = useOpenRouter
-    ? await callOpenRouter(messages, systemPrompt)
-    : await callAnthropic(messages, systemPrompt);
+  const text = await dispatchLlm({
+    ...llm,
+    system: systemPrompt,
+    messages: messages.map((m: { role: string; content: string }) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    })),
+    maxTokens: 1024,
+  });
 
   return NextResponse.json({ response: text });
 }

@@ -10,7 +10,7 @@ export type SocialLinks = {
   website: string;
 };
 
-export type LLMProvider = "openai" | "anthropic" | "groq";
+export type LLMProvider = "openai" | "anthropic" | "groq" | "gemini" | "openrouter";
 
 export type LLMConfig =
   | { mode: "own-key"; provider: LLMProvider; apiKey: string; model: string }
@@ -53,6 +53,13 @@ export const LLM_MODELS: Record<LLMProvider, string[]> = {
     "claude-haiku-4-5-20251001",
   ],
   groq: ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"],
+  gemini: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+  openrouter: [
+    "anthropic/claude-sonnet-4",
+    "openai/gpt-4o",
+    "google/gemini-2.5-pro",
+    "meta-llama/llama-3.3-70b-instruct",
+  ],
 };
 
 const EMPTY_SOCIALS: SocialLinks = {
