@@ -25,6 +25,13 @@ export default function ProfilePage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"overview" | "agent" | "settings">("overview");
 
+  useEffect(() => {
+    if (!loaded || !wallet) return;
+    if (!profile?.onboardingComplete) {
+      router.replace("/onboarding");
+    }
+  }, [loaded, wallet, profile, router]);
+
   if (!loaded) return null;
 
   if (!wallet) {
@@ -46,7 +53,6 @@ export default function ProfilePage() {
   }
 
   if (!profile?.onboardingComplete) {
-    router.replace("/onboarding");
     return null;
   }
 
