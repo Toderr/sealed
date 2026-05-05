@@ -1,0 +1,13 @@
+node_modules
+app/node_modules
+.next
+app/.next
+target
+programs
+test-ledger
+.anchor
+screenshot-tmp
+sealed-highlight
+Sealed logo
+*.html
+deck-text-size-fix-plan.md
