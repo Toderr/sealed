@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { SealedMark } from "@/components/SealedLogo";
 import type { PublicProfile } from "@/lib/types";
 
@@ -20,12 +21,20 @@ type FullProfile = PublicProfile & {
   };
 };
 
+type FriendStatus = "none" | "friends" | "outgoing" | "incoming" | "self";
+
 export default function PublicProfilePage() {
   const params = useParams();
-  const wallet = Array.isArray(params.wallet) ? params.wallet[0] : params.wallet;
+  const profileWallet = Array.isArray(params.wallet) ? params.wallet[0] : params.wallet;
+  const { publicKey } = useWallet();
+  const myWallet = publicKey?.toBase58() ?? null;
 
   const [profile, setProfile] = useState<FullProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [friendStatus, setFriendStatus] = useState<FriendStatus>("none");
+  const [friendLoading, setFriendLoading] = useState(false);
+
+  const wallet = profileWallet;
 
   useEffect(() => {
     if (!wallet) return;
@@ -37,6 +46,45 @@ export default function PublicProfilePage() {
       })
       .catch(() => setLoading(false));
   }, [wallet]);
+
+  // Check friendship status
+  useEffect(() => {
+    if (!myWallet || !wallet || myWallet === wallet) return;
+    fetch(`/api/friends/status?with=${wallet}`, { headers: { "x-wallet": myWallet } })
+      .then((r) => r.json())
+      .then((d) => setFriendStatus(d.status as FriendStatus))
+      .catch(() => {});
+  }, [myWallet, wallet]);
+
+  async function handleFriendAction() {
+    if (!myWallet || !wallet) return;
+    setFriendLoading(true);
+
+    if (friendStatus === "none") {
+      const res = await fetch("/api/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-wallet": myWallet },
+        body: JSON.stringify({ friendWallet: wallet }),
+      });
+      const d = await res.json();
+      if (res.ok) setFriendStatus(d.status === "accepted" ? "friends" : "outgoing");
+    } else if (friendStatus === "incoming") {
+      await fetch(`/api/friends/${wallet}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-wallet": myWallet },
+        body: JSON.stringify({ action: "accept" }),
+      });
+      setFriendStatus("friends");
+    } else if (friendStatus === "friends" || friendStatus === "outgoing") {
+      await fetch(`/api/friends/${wallet}`, {
+        method: "DELETE",
+        headers: { "x-wallet": myWallet },
+      });
+      setFriendStatus("none");
+    }
+
+    setFriendLoading(false);
+  }
 
   const shortWallet = wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-6)}` : "";
   const initials = profile?.handle
@@ -88,6 +136,15 @@ export default function PublicProfilePage() {
                   <p className="text-[12px] text-muted mt-1">Member since {new Date(profile.member_since).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</p>
                 )}
               </div>
+
+              {/* Friend action button — only shown when wallet connected and not own profile */}
+              {myWallet && myWallet !== wallet && (
+                <FriendButton
+                  status={friendStatus}
+                  loading={friendLoading}
+                  onClick={handleFriendAction}
+                />
+              )}
             </div>
 
             {/* Stats */}
@@ -156,5 +213,37 @@ function SocialLink({ href, label }: { href: string; label: string }) {
       </svg>
       {label}
     </a>
+  );
+}
+
+function FriendButton({
+  status,
+  loading,
+  onClick,
+}: {
+  status: FriendStatus;
+  loading: boolean;
+  onClick: () => void;
+}) {
+  const cfg: Record<FriendStatus, { label: string; cls: string }> = {
+    none:     { label: "Add Friend",        cls: "btn-primary" },
+    outgoing: { label: "Request sent",      cls: "btn-ghost opacity-70" },
+    incoming: { label: "Accept request",    cls: "btn-primary" },
+    friends:  { label: "Friends ✓",         cls: "btn-ghost" },
+    self:     { label: "",                  cls: "" },
+  };
+
+  if (status === "self") return null;
+  const { label, cls } = cfg[status];
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading || status === "outgoing"}
+      className={`${cls} h-9 px-4 rounded-md text-[12px] flex-shrink-0 transition-colors disabled:opacity-50`}
+      style={{ fontWeight: 510 }}
+    >
+      {loading ? "…" : label}
+    </button>
   );
 }

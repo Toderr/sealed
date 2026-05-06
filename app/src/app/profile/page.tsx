@@ -9,7 +9,7 @@ import { SealedMark } from "@/components/SealedLogo";
 import { useProfileStore, encodeInvite, X402_MODELS, X402_TOP_UP_AMOUNTS } from "@/lib/profile-store";
 import { useDealsStore } from "@/lib/deals-store";
 import { DealStatus } from "@/lib/types";
-import type { Deal, AgentTemplate, NotificationPrefs } from "@/lib/types";
+import type { Deal, AgentTemplate, NotificationPrefs, PublicProfile } from "@/lib/types";
 
 const WalletMultiButton = dynamic(
   () =>
@@ -23,7 +23,7 @@ export default function ProfilePage() {
   const { profile, loaded } = useProfileStore(wallet);
   const { deals } = useDealsStore(publicKey ?? null);
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"overview" | "agent" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "agent" | "friends" | "settings">("overview");
 
   useEffect(() => {
     if (!loaded || !wallet) return;
@@ -189,7 +189,7 @@ export default function ProfilePage() {
             <main className="flex-1 min-w-0 space-y-6">
               {/* Tab bar */}
               <div className="flex gap-0.5 border-b border-card-border-subtle">
-                {(["overview", "agent", "settings"] as const).map((tab) => (
+                {(["overview", "agent", "friends", "settings"] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -255,6 +255,9 @@ export default function ProfilePage() {
 
               {/* Agent Setup tab */}
               {activeTab === "agent" && <AgentSetupTab wallet={wallet} />}
+
+              {/* Friends tab */}
+              {activeTab === "friends" && <FriendsTab wallet={wallet} />}
 
               {/* Settings tab */}
               {activeTab === "settings" && <SettingsTab wallet={wallet} />}
@@ -1321,6 +1324,257 @@ function SettingsTab({ wallet }: { wallet: string }) {
           {savedMsg ? "Saved ✓" : saving ? "Saving…" : "Save preferences"}
         </button>
       </div>
+    </div>
+  );
+}
+
+/* ── Friends Tab ──────────────────────────────────────────────────────────── */
+
+type FriendEntry = {
+  id: string;
+  wallet: string;
+  friend_wallet: string;
+  status: string;
+  created_at: string;
+  counterpartyWallet: string;
+  profile: PublicProfile | null;
+};
+
+function FriendsTab({ wallet }: { wallet: string }) {
+  const [friends, setFriends] = useState<FriendEntry[]>([]);
+  const [incoming, setIncoming] = useState<FriendEntry[]>([]);
+  const [outgoing, setOutgoing] = useState<FriendEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addWallet, setAddWallet] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [addMsg, setAddMsg] = useState<string | null>(null);
+
+  function loadFriends() {
+    setLoading(true);
+    fetch("/api/friends", { headers: { "x-wallet": wallet } })
+      .then((r) => r.json())
+      .then((d) => {
+        setFriends(d.friends ?? []);
+        setIncoming(d.incoming ?? []);
+        setOutgoing(d.outgoing ?? []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => { loadFriends(); }, [wallet]);
+
+  async function handleAdd() {
+    const fw = addWallet.trim();
+    if (!fw) return;
+    setAdding(true);
+    setAddMsg(null);
+    const res = await fetch("/api/friends", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-wallet": wallet },
+      body: JSON.stringify({ friendWallet: fw }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setAddMsg(data.status === "accepted" ? "Now friends!" : "Request sent!");
+      setAddWallet("");
+      loadFriends();
+    } else {
+      setAddMsg(data.error ?? "Failed");
+    }
+    setAdding(false);
+  }
+
+  async function handleAccept(cpWallet: string) {
+    await fetch(`/api/friends/${cpWallet}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-wallet": wallet },
+      body: JSON.stringify({ action: "accept" }),
+    });
+    loadFriends();
+  }
+
+  async function handleDecline(cpWallet: string) {
+    await fetch(`/api/friends/${cpWallet}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-wallet": wallet },
+      body: JSON.stringify({ action: "decline" }),
+    });
+    loadFriends();
+  }
+
+  async function handleRemove(cpWallet: string) {
+    await fetch(`/api/friends/${cpWallet}`, {
+      method: "DELETE",
+      headers: { "x-wallet": wallet },
+    });
+    loadFriends();
+  }
+
+  if (loading) return <div className="text-[13px] text-muted">Loading friends…</div>;
+
+  return (
+    <div className="space-y-6">
+      {/* Add by wallet */}
+      <div className="surface-card rounded-xl p-5 space-y-3">
+        <div>
+          <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>Add a friend</p>
+          <p className="text-[12px] text-muted mt-0.5">Enter their Solana wallet address.</p>
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={addWallet}
+            onChange={(e) => setAddWallet(e.target.value)}
+            placeholder="Wallet address…"
+            className="flex-1 h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary font-mono outline-none focus:border-accent transition-colors"
+          />
+          <button
+            onClick={handleAdd}
+            disabled={adding || !addWallet.trim()}
+            className="btn-primary h-10 px-5 rounded-md text-[13px] disabled:opacity-40"
+          >
+            {adding ? "Sending…" : "Send request"}
+          </button>
+        </div>
+        {addMsg && (
+          <p className={`text-[12px] ${addMsg.includes("sent") || addMsg.includes("friends") ? "text-success" : "text-danger"}`}>
+            {addMsg}
+          </p>
+        )}
+      </div>
+
+      {/* Incoming requests */}
+      {incoming.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-[13px] text-primary" style={{ fontWeight: 590 }}>
+            Incoming requests <span className="ml-1 px-1.5 py-0.5 rounded-full bg-accent/20 text-accent text-[11px]">{incoming.length}</span>
+          </p>
+          {incoming.map((f) => (
+            <FriendCard key={f.id} entry={f} myWallet={wallet}>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleAccept(f.counterpartyWallet)}
+                  className="btn-primary h-8 px-4 rounded-md text-[12px]"
+                >
+                  Accept
+                </button>
+                <button
+                  onClick={() => handleDecline(f.counterpartyWallet)}
+                  className="btn-ghost h-8 px-3 rounded-md text-[12px]"
+                >
+                  Decline
+                </button>
+              </div>
+            </FriendCard>
+          ))}
+        </div>
+      )}
+
+      {/* Accepted friends */}
+      {friends.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-[13px] text-primary" style={{ fontWeight: 590 }}>
+            Friends <span className="ml-1 text-muted text-[12px]">({friends.length})</span>
+          </p>
+          {friends.map((f) => (
+            <FriendCard key={f.id} entry={f} myWallet={wallet}>
+              <div className="flex gap-2">
+                <Link
+                  href="/app"
+                  className="btn-ghost h-8 px-3 rounded-md text-[12px] flex items-center gap-1.5"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  Invite to deal
+                </Link>
+                <button
+                  onClick={() => handleRemove(f.counterpartyWallet)}
+                  className="btn-ghost h-8 px-3 rounded-md text-[12px] text-danger hover:text-danger"
+                >
+                  Remove
+                </button>
+              </div>
+            </FriendCard>
+          ))}
+        </div>
+      )}
+
+      {/* Outgoing pending */}
+      {outgoing.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-[13px] text-muted" style={{ fontWeight: 590 }}>Pending sent</p>
+          {outgoing.map((f) => (
+            <FriendCard key={f.id} entry={f} myWallet={wallet}>
+              <button
+                onClick={() => handleRemove(f.counterpartyWallet)}
+                className="btn-ghost h-8 px-3 rounded-md text-[12px]"
+              >
+                Cancel
+              </button>
+            </FriendCard>
+          ))}
+        </div>
+      )}
+
+      {friends.length === 0 && incoming.length === 0 && outgoing.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+          <div className="w-10 h-10 rounded-full bg-surface border border-card-border flex items-center justify-center text-muted">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>No friends yet</p>
+            <p className="text-[12px] text-muted mt-0.5">Add people you&apos;ve worked with or send requests from their public profile.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FriendCard({
+  entry,
+  myWallet,
+  children,
+}: {
+  entry: FriendEntry;
+  myWallet: string;
+  children: React.ReactNode;
+}) {
+  const cp = entry.counterpartyWallet;
+  const p = entry.profile;
+  const shortWallet = cp ? `${cp.slice(0, 4)}…${cp.slice(-4)}` : "—";
+  const initials = p?.handle ? p.handle.slice(0, 2).toUpperCase() : shortWallet.slice(0, 2).toUpperCase();
+
+  return (
+    <div className="surface-card rounded-xl p-4 flex items-center gap-4">
+      <Link href={`/profile/${cp}`} className="flex-shrink-0">
+        <div className="w-10 h-10 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-[14px] text-accent" style={{ fontWeight: 590 }}>
+          {initials}
+        </div>
+      </Link>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <Link href={`/profile/${cp}`} className="text-[13px] text-primary hover:text-accent transition-colors truncate" style={{ fontWeight: 510 }}>
+            {p?.handle ? `@${p.handle}` : shortWallet}
+          </Link>
+          {p?.is_verified && (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-success flex-shrink-0">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9 12 11 14 15 10" />
+            </svg>
+          )}
+        </div>
+        <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted">
+          <span>{p?.deals_successful ?? 0} deals done</span>
+          {p && p.deals_total > 0 && (
+            <span>{Math.round((p.deals_successful / p.deals_total) * 100)}% success</span>
+          )}
+          {p && p.avg_rating > 0 && <span>{p.avg_rating.toFixed(1)} ★</span>}
+        </div>
+      </div>
+      <div className="flex-shrink-0">{children}</div>
     </div>
   );
 }

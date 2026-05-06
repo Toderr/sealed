@@ -152,3 +152,15 @@ CREATE TABLE IF NOT EXISTS sealed_notification_queue (
 );
 
 CREATE INDEX IF NOT EXISTS sealed_notif_queue_status_idx ON sealed_notification_queue (status, created_at);
+
+-- Friend connections between wallets
+CREATE TABLE IF NOT EXISTS sealed_friends (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    wallet       TEXT NOT NULL,           -- who sent the request
+    friend_wallet TEXT NOT NULL,          -- who received it
+    status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'blocked')),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (wallet, friend_wallet)
+);
+CREATE INDEX IF NOT EXISTS sealed_friends_wallet_idx ON sealed_friends (wallet);
+CREATE INDEX IF NOT EXISTS sealed_friends_friend_wallet_idx ON sealed_friends (friend_wallet);
