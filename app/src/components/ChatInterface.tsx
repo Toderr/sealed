@@ -89,7 +89,10 @@ export default function ChatInterface({
         body: JSON.stringify({ messages: apiMessages }),
       });
 
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error ?? `API error: ${res.status}`);
+      }
 
       const data = await res.json();
       const dealParams = tryParseDealParams(data.response);

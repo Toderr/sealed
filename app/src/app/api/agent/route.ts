@@ -47,15 +47,20 @@ export async function POST(request: NextRequest) {
 
   const systemPrompt = await buildSystemPrompt(wallet);
 
-  const text = await dispatchLlm({
-    ...llm,
-    system: systemPrompt,
-    messages: messages.map((m: { role: string; content: string }) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content,
-    })),
-    maxTokens: 1024,
-  });
-
-  return NextResponse.json({ response: text });
+  try {
+    const text = await dispatchLlm({
+      ...llm,
+      system: systemPrompt,
+      messages: messages.map((m: { role: string; content: string }) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      })),
+      maxTokens: 1024,
+    });
+    return NextResponse.json({ response: text });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[agent] LLM call failed:", message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
