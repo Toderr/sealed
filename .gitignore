@@ -38,3 +38,5 @@ screenshot-tmp/*
 !vercel.json
 !Cargo.toml
 !Anchor.toml
+
+.vercel

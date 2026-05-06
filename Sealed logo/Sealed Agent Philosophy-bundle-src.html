@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Sealed Agent — Brand Philosophy</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  html, body { margin: 0; padding: 0; }
+  body { font-family: 'Inter Tight', system-ui, sans-serif; background: #F4F1EA; color: #0B1220; }
+  *, *::before, *::after { box-sizing: border-box; }
+  ::selection { background: #D6A852; color: #0B1220; }
+</style>
+</head>
+<body>
+<template id="__bundler_thumbnail" data-bg-color="#F4F1EA">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <g transform="translate(600 400) scale(5)" stroke="#0B1220" fill="#0B1220">
+      <circle cx="0" cy="0" r="54" fill="none" stroke-width="2.5" opacity="0.85"/>
+      <line x1="20" y1="-12" x2="37" y2="-15" stroke-width="3" stroke-linecap="round"/>
+      <line x1="20" y1="0"  x2="37" y2="0"   stroke-width="3" stroke-linecap="round"/>
+      <line x1="20" y1="12" x2="37" y2="15"  stroke-width="3" stroke-linecap="round"/>
+      <line x1="-20" y1="-12" x2="-37" y2="-15" stroke-width="3" stroke-linecap="round"/>
+      <line x1="-20" y1="0"  x2="-37" y2="0"   stroke-width="3" stroke-linecap="round"/>
+      <line x1="-20" y1="12" x2="-37" y2="15"  stroke-width="3" stroke-linecap="round"/>
+      <circle cx="0" cy="0" r="13"/>
+    </g>
+  </svg>
+</template>
+<div id="root"></div>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="logo-final.jsx"></script>
+<script type="text/babel" src="philosophy.jsx"></script>
+<script type="text/babel">
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(<PhilosophyApp />);
+</script>
+</body>
+</html>

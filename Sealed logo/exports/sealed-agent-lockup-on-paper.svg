@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="200" viewBox="0 0 720 200" fill="none">
+  <defs>
+    
+  </defs>
+  <rect width="720" height="200" fill="#F4F1EA"></rect>
+  <svg x="40" y="30" width="140" height="140" viewBox="0 0 120 120" fill="none">
+    <circle cx="60" cy="60" r="54" fill="none" stroke="#0B1220" stroke-width="2.5" opacity="0.85"></circle>
+    <line x1="80" y1="48" x2="97" y2="45" stroke="#0B1220" stroke-width="3" stroke-linecap="round"></line>
+    <line x1="80" y1="60" x2="97" y2="60" stroke="#0B1220" stroke-width="3" stroke-linecap="round"></line>
+    <line x1="80" y1="72" x2="97" y2="75" stroke="#0B1220" stroke-width="3" stroke-linecap="round"></line>
+    <line x1="40" y1="48" x2="23" y2="45" stroke="#0B1220" stroke-width="3" stroke-linecap="round"></line>
+    <line x1="40" y1="60" x2="23" y2="60" stroke="#0B1220" stroke-width="3" stroke-linecap="round"></line>
+    <line x1="40" y1="72" x2="23" y2="75" stroke="#0B1220" stroke-width="3" stroke-linecap="round"></line>
+    <circle cx="60" cy="60" r="13" fill="#0B1220"></circle>
+  </svg>
+  <text x="208" y="132" class="wm">Sealed Agent</text>
+</svg>

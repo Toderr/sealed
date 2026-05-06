@@ -1,0 +1,957 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        margin: 0; width: 1920px; height: 1080px; overflow: hidden;
+        background: #08090a;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+        color: #f7f8f8;
+        -webkit-font-smoothing: antialiased;
+        font-feature-settings: 'cv11', 'ss01', 'ss03';
+      }
+
+      /* === ROOT CANVAS === */
+      #root {
+        position: relative;
+        width: 1920px; height: 1080px;
+        background: #08090a;
+        overflow: hidden;
+      }
+
+      /* === AMBIENT BACKDROP — always on, subtle === */
+      .bg-grid {
+        position: absolute; inset: 0;
+        background-image:
+          linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+        background-size: 80px 80px;
+        mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 75%);
+        opacity: 0.6;
+        pointer-events: none;
+      }
+      .bg-orb {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(120px);
+        pointer-events: none;
+        will-change: transform, opacity;
+      }
+      .orb-indigo  { width: 900px; height: 900px; background: rgba(94,106,210,0.55); top: -200px; left: -150px; }
+      .orb-violet  { width: 800px; height: 800px; background: rgba(113,112,255,0.45); bottom: -200px; right: -150px; }
+      .orb-magenta { width: 600px; height: 600px; background: rgba(196,122,255,0.35); top: 200px; right: 300px; }
+
+      /* === SCENE WRAPPER === */
+      .scene {
+        position: absolute; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        will-change: opacity, transform;
+      }
+      .scene-content {
+        width: 100%; height: 100%;
+        display: flex; flex-direction: column; justify-content: center; align-items: center;
+        padding: 120px;
+        gap: 32px; text-align: center;
+        box-sizing: border-box;
+      }
+
+      /* ====== SCENE 1 — COLD OPEN ====== */
+      .s1-tag {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: 26px; letter-spacing: 0.18em; text-transform: uppercase;
+        color: #c47aff;
+        padding: 12px 22px;
+        border: 1px solid rgba(196,122,255,0.4);
+        border-radius: 999px;
+        background: rgba(196,122,255,0.08);
+      }
+      .s1-line {
+        font-size: 168px; font-weight: 700; letter-spacing: -0.045em; line-height: 1.0;
+        color: #f7f8f8;
+      }
+      .s1-line .word { display: inline-block; will-change: transform, opacity; padding: 0 0.04em; }
+      .s1-line .accent { color: #c47aff; }
+      .s1-foot {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: 22px; color: #a8acb6; letter-spacing: 0.04em;
+      }
+
+      /* ====== SCENE 2 — PROBLEM ====== */
+      .s2-eyebrow {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: 24px; letter-spacing: 0.22em; text-transform: uppercase; color: #f87171;
+      }
+      .s2-row { display: flex; gap: 32px; flex-wrap: wrap; justify-content: center; }
+      .s2-pill {
+        font-size: 88px; font-weight: 700; letter-spacing: -0.03em;
+        padding: 24px 56px;
+        border-radius: 22px;
+        background: rgba(248,113,113,0.06);
+        border: 1px solid rgba(248,113,113,0.35);
+        color: #f7f8f8;
+        box-shadow: 0 0 80px rgba(248,113,113,0.18);
+        will-change: transform, opacity;
+      }
+      .s2-strike {
+        position: relative;
+        font-size: 96px; font-weight: 700; color: #a8acb6; letter-spacing: -0.03em;
+      }
+      .s2-strike::after {
+        content: ''; position: absolute; left: -10px; right: -10px; top: 52%;
+        height: 6px; background: #f87171;
+        transform: scaleX(0); transform-origin: left;
+        will-change: transform;
+        border-radius: 3px;
+      }
+
+      /* ====== SCENE 3 — LOGO REVEAL ====== */
+      .s3-stack { display: flex; flex-direction: column; align-items: center; gap: 28px; position: relative; }
+      .s3-shock {
+        position: absolute; top: 50%; left: 50%;
+        width: 100px; height: 100px;
+        margin: -50px 0 0 -50px;
+        border-radius: 50%;
+        border: 6px solid #7170ff;
+        opacity: 0;
+        will-change: transform, opacity;
+        pointer-events: none;
+      }
+      .s3-shock-2 {
+        position: absolute; top: 50%; left: 50%;
+        width: 100px; height: 100px;
+        margin: -50px 0 0 -50px;
+        border-radius: 50%;
+        border: 4px solid #c47aff;
+        opacity: 0;
+        will-change: transform, opacity;
+        pointer-events: none;
+      }
+      .s3-logo {
+        font-size: 280px; font-weight: 800; letter-spacing: -0.06em; line-height: 1;
+        background: linear-gradient(135deg, #f7f8f8 0%, #c47aff 50%, #5e6ad2 100%);
+        -webkit-background-clip: text; background-clip: text;
+        -webkit-text-fill-color: transparent;
+        will-change: transform, opacity;
+      }
+      .s3-mark {
+        width: 220px; height: 220px;
+        display: block;
+        filter: drop-shadow(0 0 32px rgba(214,168,82,0.55))
+                drop-shadow(0 0 60px rgba(113,112,255,0.35));
+        will-change: transform, opacity, filter;
+      }
+      .s3-mark img { width: 100%; height: 100%; display: block; }
+      .s3-tagline {
+        font-size: 64px; font-weight: 600; color: #f7f8f8; letter-spacing: -0.025em;
+      }
+      .s3-sub {
+        font-size: 28px; color: #a8acb6; letter-spacing: 0.02em;
+      }
+
+      /* ====== SCENE 4 — CHAT ====== */
+      .s4-window {
+        width: 1200px;
+        background: #0f1011;
+        border: 1px solid rgba(255,255,255,0.10);
+        border-radius: 28px;
+        padding: 44px 48px 48px;
+        box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 80px rgba(94,106,210,0.15);
+        display: flex; flex-direction: column; gap: 24px;
+      }
+      .s4-bar { display: flex; gap: 10px; align-items: center; padding-bottom: 8px; }
+      .s4-dot { width: 14px; height: 14px; border-radius: 50%; background: #2a2c30; }
+      .s4-dot.r { background: #f87171; } .s4-dot.y { background: #fbbf24; } .s4-dot.g { background: #4ade80; }
+      .s4-title-bar {
+        font-family: 'JetBrains Mono', monospace; font-size: 18px; color: #a8acb6; margin-left: 16px;
+      }
+      .s4-msg {
+        max-width: 760px;
+        padding: 22px 28px;
+        border-radius: 22px;
+        font-size: 30px; line-height: 1.45; font-weight: 500;
+        will-change: transform, opacity;
+      }
+      .s4-msg.user {
+        align-self: flex-end;
+        background: linear-gradient(135deg, #5e6ad2, #7170ff);
+        color: #f7f8f8;
+        border-bottom-right-radius: 6px;
+      }
+      .s4-msg.agent {
+        align-self: flex-start;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        color: #f7f8f8;
+        border-bottom-left-radius: 6px;
+      }
+      .s4-msg .label {
+        display: block; font-family: 'JetBrains Mono', monospace; font-size: 16px;
+        letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; margin-bottom: 6px;
+      }
+      .s4-typing { display: inline-flex; gap: 8px; align-items: center; padding: 8px 0 0; }
+      .s4-typing span {
+        width: 10px; height: 10px; border-radius: 50%; background: #c47aff;
+        will-change: opacity, transform;
+      }
+
+      /* ====== SCENE 5 — MILESTONES ====== */
+      .s5-title {
+        font-size: 64px; font-weight: 700; letter-spacing: -0.03em;
+        background: linear-gradient(90deg, #f7f8f8 0%, #c47aff 100%);
+        -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+        margin-bottom: 16px;
+      }
+      .s5-grid { display: grid; grid-template-columns: repeat(2, 580px); gap: 28px; }
+      .s5-card {
+        background: #0f1011;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 24px;
+        padding: 32px 36px;
+        display: flex; align-items: center; gap: 24px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+        will-change: transform, opacity;
+        position: relative;
+        overflow: hidden;
+      }
+      .s5-card::before {
+        content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+        background: linear-gradient(180deg, #5e6ad2, #c47aff);
+      }
+      .s5-num {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 38px; font-weight: 700;
+        color: #c47aff;
+        width: 64px;
+      }
+      .s5-text { flex: 1; }
+      .s5-name { font-size: 32px; font-weight: 600; color: #f7f8f8; margin-bottom: 4px; letter-spacing: -0.01em; }
+      .s5-meta { font-family: 'JetBrains Mono', monospace; font-size: 18px; color: #a8acb6; letter-spacing: 0.04em; }
+      .s5-amount {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 32px; font-weight: 700; color: #fbbf24;
+        text-align: right;
+      }
+      .s5-amount .unit { font-size: 18px; color: #a8acb6; margin-left: 6px; font-weight: 500; }
+      .s5-check {
+        position: absolute; right: 20px; top: 20px;
+        width: 28px; height: 28px;
+        border-radius: 50%; background: #4ade80;
+        display: flex; align-items: center; justify-content: center;
+        opacity: 0;
+        will-change: opacity, transform;
+        font-size: 18px; color: #08090a; font-weight: 700;
+      }
+
+      /* ====== SCENE 6 — VAULT ====== */
+      .s6-stage {
+        position: relative; width: 100%; height: 100%;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 36px;
+      }
+      .s6-vault {
+        position: relative;
+        width: 420px; height: 420px;
+        background: linear-gradient(180deg, #191a1b 0%, #0f1011 100%);
+        border-radius: 36px;
+        border: 4px solid #2a2c30;
+        box-shadow:
+          inset 0 0 60px rgba(0,0,0,0.6),
+          0 30px 100px rgba(0,0,0,0.7),
+          0 0 80px rgba(94,106,210,0.0);
+        display: flex; align-items: center; justify-content: center;
+        will-change: box-shadow, transform;
+      }
+      .s6-vault-door-l, .s6-vault-door-r {
+        position: absolute; top: 0; bottom: 0;
+        width: 50%;
+        background: linear-gradient(180deg, #1c1d1f, #131415);
+        border: 2px solid rgba(255,255,255,0.06);
+        will-change: transform;
+      }
+      .s6-vault-door-l { left: 0; border-radius: 32px 0 0 32px; transform-origin: left center; }
+      .s6-vault-door-r { right: 0; border-radius: 0 32px 32px 0; transform-origin: right center; }
+      .s6-vault-handle {
+        position: absolute; top: 50%; left: 50%;
+        width: 100px; height: 100px;
+        margin: -50px 0 0 -50px;
+        border-radius: 50%;
+        border: 4px solid #5e6ad2;
+        background: radial-gradient(circle, rgba(94,106,210,0.2) 0%, transparent 70%);
+        z-index: 10;
+        opacity: 0;
+        will-change: opacity, transform;
+      }
+      .s6-vault-handle::before, .s6-vault-handle::after {
+        content: ''; position: absolute; top: 50%; left: 50%;
+        width: 80px; height: 4px; background: #5e6ad2;
+        transform-origin: center;
+      }
+      .s6-vault-handle::before { transform: translate(-50%, -50%) rotate(0deg); }
+      .s6-vault-handle::after { transform: translate(-50%, -50%) rotate(90deg); }
+      .s6-shock {
+        position: absolute; top: 50%; left: 50%;
+        width: 200px; height: 200px;
+        margin: -100px 0 0 -100px;
+        border-radius: 50%;
+        border: 5px solid #5e6ad2;
+        opacity: 0;
+        will-change: transform, opacity;
+        pointer-events: none;
+      }
+      .s6-coin {
+        position: absolute;
+        width: 64px; height: 64px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 30%, #fde98a 0%, #fbbf24 50%, #b07a08 100%);
+        box-shadow: 0 0 30px rgba(251,191,36,0.5), inset 0 -6px 12px rgba(0,0,0,0.3);
+        display: flex; align-items: center; justify-content: center;
+        font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 800; color: #08090a;
+        will-change: transform, opacity;
+        z-index: 5;
+      }
+      .s6-caption {
+        text-align: center;
+      }
+      .s6-amount {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 96px; font-weight: 800; color: #fbbf24;
+        letter-spacing: -0.02em; line-height: 1;
+        text-shadow: 0 0 40px rgba(251,191,36,0.5);
+      }
+      .s6-amount .unit { font-size: 40px; color: #a8acb6; margin-left: 12px; font-weight: 500; }
+      .s6-sub {
+        margin-top: 12px;
+        font-size: 30px; color: #f7f8f8; font-weight: 500;
+      }
+      .s6-sub .chain { color: #5e6ad2; font-weight: 700; }
+
+      /* ====== SCENE 7 — DUAL SIGN ====== */
+      .s7-headline {
+        font-size: 80px; font-weight: 700; letter-spacing: -0.035em; color: #f7f8f8;
+        margin-bottom: 32px;
+      }
+      .s7-headline .grad {
+        background: linear-gradient(90deg, #4ade80, #5e6ad2);
+        -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+      }
+      .s7-row { display: flex; gap: 36px; }
+      .s7-card {
+        width: 380px;
+        background: #0f1011;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 26px;
+        padding: 36px 32px;
+        display: flex; flex-direction: column; align-items: center; gap: 16px;
+        position: relative;
+        will-change: transform, opacity;
+      }
+      .s7-card.signed {
+        border-color: rgba(74,222,128,0.55);
+        box-shadow: 0 0 50px rgba(74,222,128,0.20);
+      }
+      .s7-role {
+        font-family: 'JetBrains Mono', monospace; font-size: 18px; letter-spacing: 0.18em;
+        text-transform: uppercase; color: #a8acb6;
+      }
+      .s7-name { font-size: 38px; font-weight: 700; color: #f7f8f8; letter-spacing: -0.02em; }
+      .s7-stamp {
+        width: 100px; height: 100px;
+        border-radius: 50%;
+        background: rgba(74,222,128,0.12);
+        border: 3px solid #4ade80;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 56px; color: #4ade80;
+        opacity: 0;
+        will-change: opacity, transform;
+      }
+      .s7-release {
+        margin-top: 24px;
+        font-family: 'JetBrains Mono', monospace; font-size: 34px; font-weight: 700;
+        color: #4ade80; letter-spacing: 0.08em; text-transform: uppercase;
+        text-shadow: 0 0 30px rgba(74,222,128,0.5);
+        opacity: 0;
+        will-change: opacity, transform;
+      }
+
+      /* ====== SCENE 8 — STATS ====== */
+      .s8-eyebrow {
+        font-family: 'JetBrains Mono', monospace; font-size: 26px; letter-spacing: 0.2em;
+        text-transform: uppercase; color: #c47aff;
+        margin-bottom: 32px;
+      }
+      .s8-row { display: flex; gap: 32px; }
+      .s8-tile {
+        width: 400px; height: 360px;
+        background: linear-gradient(180deg, #131415 0%, #0c0d0e 100%);
+        border: 1px solid rgba(255,255,255,0.10);
+        border-radius: 28px;
+        padding: 40px 36px 36px;
+        display: flex; flex-direction: column; align-items: flex-start;
+        gap: 20px;
+        will-change: transform, opacity;
+        position: relative;
+        overflow: hidden;
+        text-align: left;
+      }
+      .s8-tile::before {
+        content: ''; position: absolute; left: 0; top: 0; right: 0; height: 3px;
+        background: linear-gradient(90deg, transparent, var(--accent, #7170ff), transparent);
+      }
+      .s8-tile.t1 { --accent: #7170ff; }
+      .s8-tile.t2 { --accent: #fbbf24; }
+      .s8-tile.t3 { --accent: #4ade80; }
+      .s8-dot {
+        width: 12px; height: 12px; border-radius: 50%;
+        background: var(--accent, #7170ff);
+        box-shadow: 0 0 18px var(--accent, #7170ff);
+      }
+      .s8-tag {
+        font-family: 'JetBrains Mono', monospace; font-size: 18px;
+        letter-spacing: 0.22em; text-transform: uppercase; color: #c0c4cc;
+      }
+      .s8-big {
+        font-size: 96px; font-weight: 800; line-height: 0.95; letter-spacing: -0.045em;
+        white-space: nowrap;
+      }
+      .s8-big.indigo { color: #8b97ff; }
+      .s8-big.gold { color: #fbbf24; }
+      .s8-big.green { color: #4ade80; }
+      .s8-desc {
+        font-size: 22px; line-height: 1.4; color: #d6d8dd; font-weight: 500;
+        margin-top: auto;
+      }
+
+      /* ====== SCENE 9 — CTA ====== */
+      .s9-stack { display: flex; flex-direction: column; align-items: center; gap: 28px; }
+      .s9-mark {
+        width: 200px; height: 200px;
+        display: block;
+        filter: drop-shadow(0 0 28px rgba(214,168,82,0.55))
+                drop-shadow(0 0 50px rgba(113,112,255,0.3));
+        will-change: transform, opacity, filter;
+      }
+      .s9-mark img { width: 100%; height: 100%; display: block; }
+      .s9-name {
+        font-size: 200px; font-weight: 800; letter-spacing: -0.05em;
+        background: linear-gradient(135deg, #f7f8f8 0%, #c47aff 60%, #5e6ad2 100%);
+        -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+      }
+      .s9-tag { font-size: 44px; font-weight: 600; color: #f7f8f8; letter-spacing: -0.02em; }
+      .s9-url {
+        font-family: 'JetBrains Mono', monospace; font-size: 28px; color: #c47aff;
+        padding: 14px 28px; border: 1px solid rgba(196,122,255,0.4);
+        border-radius: 999px; background: rgba(196,122,255,0.06);
+        margin-top: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="38" data-width="1920" data-height="1080">
+
+      <!-- ===== AMBIENT BACKDROP (entire video) — one per track ===== -->
+      <div id="bg-grid" class="bg-grid clip" data-start="0" data-duration="38" data-track-index="10"></div>
+      <div id="orb-1" class="bg-orb orb-indigo clip" data-start="0" data-duration="38" data-track-index="11"></div>
+      <div id="orb-2" class="bg-orb orb-violet clip" data-start="0" data-duration="38" data-track-index="12"></div>
+      <div id="orb-3" class="bg-orb orb-magenta clip" data-start="0" data-duration="38" data-track-index="13"></div>
+
+      <!-- ===== SCENE 1 — COLD OPEN  (0 → 4.0) ===== -->
+      <div id="s1" class="scene clip" data-start="0" data-duration="4.0" data-track-index="1">
+        <div class="scene-content">
+          <div id="s1-tag" class="s1-tag">// every B2B deal — ever</div>
+          <div id="s1-line-1" class="s1-line">
+            <span class="word w1a">Two</span>
+            <span class="word w1b">business</span>
+            <span class="word w1c">owners.</span>
+          </div>
+          <div id="s1-line-2" class="s1-line">
+            <span class="word w2a">Half</span>
+            <span class="word w2b accent">a</span>
+            <span class="word w2c accent">million</span>
+            <span class="word w2d accent">dollars.</span>
+          </div>
+          <div id="s1-foot" class="s1-foot">→ no signed contract. yet.</div>
+        </div>
+      </div>
+
+      <!-- ===== SCENE 2 — PROBLEM  (3.6 → 8.0) ===== -->
+      <div id="s2" class="scene clip" data-start="3.6" data-duration="4.4" data-track-index="2">
+        <div class="scene-content">
+          <div id="s2-eyebrow" class="s2-eyebrow">the old way</div>
+          <div class="s2-row">
+            <div id="s2-pill-1" class="s2-pill">Lawyers</div>
+            <div id="s2-pill-2" class="s2-pill">Banks</div>
+            <div id="s2-pill-3" class="s2-pill">Weeks</div>
+          </div>
+          <div id="s2-strike" class="s2-strike">trust = $$$ + delay</div>
+        </div>
+      </div>
+
+      <!-- ===== SCENE 3 — LOGO REVEAL  (7.6 → 12.0) ===== -->
+      <div id="s3" class="scene clip" data-start="7.6" data-duration="4.4" data-track-index="1">
+        <div class="scene-content">
+          <div class="s3-stack">
+            <div id="s3-shock" class="s3-shock"></div>
+            <div id="s3-shock-2" class="s3-shock-2"></div>
+            <div id="s3-mark" class="s3-mark"><img src="sealed-mark-onbrand.svg" alt="Sealed mark"></div>
+            <div id="s3-logo" class="s3-logo">SEALED</div>
+            <div id="s3-tagline" class="s3-tagline">Seal the deal.</div>
+            <div id="s3-sub" class="s3-sub">AI agent + on-chain escrow. Built on Solana.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== SCENE 4 — CHAT  (11.6 → 17.0) ===== -->
+      <div id="s4" class="scene clip" data-start="11.6" data-duration="5.4" data-track-index="2">
+        <div class="scene-content">
+          <div id="s4-window" class="s4-window">
+            <div class="s4-bar">
+              <span class="s4-dot r"></span><span class="s4-dot y"></span><span class="s4-dot g"></span>
+              <span class="s4-title-bar">~/sealed/deal/draft</span>
+            </div>
+            <div id="s4-m1" class="s4-msg user">
+              <span class="label">Buyer</span>
+              Build me a website. $20k. 4 milestones.
+            </div>
+            <div id="s4-m2" class="s4-msg agent">
+              <span class="label">Sealed Agent</span>
+              On it. Drafting milestones, locking USDC, prepping seller's signature flow.
+            </div>
+            <div id="s4-typing" class="s4-msg agent" style="padding: 18px 26px;">
+              <span class="s4-typing">
+                <span class="s4-dot-1"></span><span class="s4-dot-2"></span><span class="s4-dot-3"></span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== SCENE 5 — MILESTONES  (16.6 → 22.0) ===== -->
+      <div id="s5" class="scene clip" data-start="16.6" data-duration="5.4" data-track-index="1">
+        <div class="scene-content">
+          <div id="s5-title" class="s5-title">4 milestones, structured in seconds.</div>
+          <div class="s5-grid">
+            <div id="s5-c1" class="s5-card">
+              <div class="s5-num">01</div>
+              <div class="s5-text">
+                <div class="s5-name">Wireframes</div>
+                <div class="s5-meta">due day 7</div>
+              </div>
+              <div class="s5-amount">5,000<span class="unit">USDC</span></div>
+              <div id="s5-ck-1" class="s5-check">✓</div>
+            </div>
+            <div id="s5-c2" class="s5-card">
+              <div class="s5-num">02</div>
+              <div class="s5-text">
+                <div class="s5-name">Design</div>
+                <div class="s5-meta">due day 14</div>
+              </div>
+              <div class="s5-amount">5,000<span class="unit">USDC</span></div>
+              <div id="s5-ck-2" class="s5-check">✓</div>
+            </div>
+            <div id="s5-c3" class="s5-card">
+              <div class="s5-num">03</div>
+              <div class="s5-text">
+                <div class="s5-name">Development</div>
+                <div class="s5-meta">due day 28</div>
+              </div>
+              <div class="s5-amount">5,000<span class="unit">USDC</span></div>
+              <div id="s5-ck-3" class="s5-check">✓</div>
+            </div>
+            <div id="s5-c4" class="s5-card">
+              <div class="s5-num">04</div>
+              <div class="s5-text">
+                <div class="s5-name">Launch</div>
+                <div class="s5-meta">due day 35</div>
+              </div>
+              <div class="s5-amount">5,000<span class="unit">USDC</span></div>
+              <div id="s5-ck-4" class="s5-check">✓</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== SCENE 6 — VAULT  (21.6 → 27.0) ===== -->
+      <div id="s6" class="scene clip" data-start="21.6" data-duration="5.4" data-track-index="2">
+        <div class="s6-stage">
+          <div id="s6-vault" class="s6-vault">
+            <div id="s6-shock" class="s6-shock"></div>
+            <div id="s6-coin-1" class="s6-coin" style="top: 50%; left: 50%; margin: -32px 0 0 -32px;">$</div>
+            <div id="s6-coin-2" class="s6-coin" style="top: 50%; left: 50%; margin: -32px 0 0 -32px;">$</div>
+            <div id="s6-coin-3" class="s6-coin" style="top: 50%; left: 50%; margin: -32px 0 0 -32px;">$</div>
+            <div id="s6-coin-4" class="s6-coin" style="top: 50%; left: 50%; margin: -32px 0 0 -32px;">$</div>
+            <div id="s6-coin-5" class="s6-coin" style="top: 50%; left: 50%; margin: -32px 0 0 -32px;">$</div>
+            <div id="s6-door-l" class="s6-vault-door-l"></div>
+            <div id="s6-door-r" class="s6-vault-door-r"></div>
+            <div id="s6-handle" class="s6-vault-handle"></div>
+          </div>
+          <div class="s6-caption">
+            <div id="s6-amount" class="s6-amount">$20,000<span class="unit">USDC</span></div>
+            <div id="s6-sub" class="s6-sub">locked on <span class="chain">Solana</span> — instant, programmable, auditable</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== SCENE 7 — DUAL SIGN  (26.6 → 31.0) ===== -->
+      <div id="s7" class="scene clip" data-start="26.6" data-duration="4.4" data-track-index="1">
+        <div class="scene-content">
+          <div id="s7-headline" class="s7-headline">Both sides sign. <span class="grad">Funds flow.</span></div>
+          <div class="s7-row">
+            <div id="s7-card-1" class="s7-card signed">
+              <div class="s7-role">Buyer</div>
+              <div class="s7-name">Confirms delivery</div>
+              <div id="s7-stamp-1" class="s7-stamp">✓</div>
+            </div>
+            <div id="s7-card-2" class="s7-card signed">
+              <div class="s7-role">Seller</div>
+              <div class="s7-name">Co-signs release</div>
+              <div id="s7-stamp-2" class="s7-stamp">✓</div>
+            </div>
+          </div>
+          <div id="s7-release" class="s7-release">→ released ✓</div>
+        </div>
+      </div>
+
+      <!-- ===== SCENE 8 — STATS  (30.6 → 34.0) ===== -->
+      <div id="s8" class="scene clip" data-start="30.6" data-duration="3.4" data-track-index="2">
+        <div class="scene-content">
+          <div id="s8-eyebrow" class="s8-eyebrow">// what's under the hood</div>
+          <div class="s8-row">
+            <div id="s8-tile-1" class="s8-tile t1">
+              <div class="s8-dot"></div>
+              <div class="s8-tag">AI agents</div>
+              <div class="s8-big indigo">3</div>
+              <div class="s8-desc">Structurer, Negotiator, Verifier — chat to signed milestones.</div>
+            </div>
+            <div id="s8-tile-2" class="s8-tile t2">
+              <div class="s8-dot"></div>
+              <div class="s8-tag">stablecoin</div>
+              <div class="s8-big gold">USDC</div>
+              <div class="s8-desc">Native escrow. No banks, no float, no chargebacks.</div>
+            </div>
+            <div id="s8-tile-3" class="s8-tile t3">
+              <div class="s8-dot"></div>
+              <div class="s8-tag">already shipping</div>
+              <div class="s8-big green">live</div>
+              <div class="s8-desc">Anchor program deployed on Solana devnet, signing deals today.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== SCENE 9 — CTA  (33.6 → 38.0) ===== -->
+      <div id="s9" class="scene clip" data-start="33.6" data-duration="4.4" data-track-index="1">
+        <div class="scene-content">
+          <div class="s9-stack">
+            <div id="s9-mark" class="s9-mark"><img src="sealed-mark-onbrand-2.svg" alt="Sealed mark"></div>
+            <div id="s9-name" class="s9-name">SEALED</div>
+            <div id="s9-tag" class="s9-tag">Seal the deal — on-chain.</div>
+            <div id="s9-url" class="s9-url">sealed-nine.vercel.app</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      /* ============================================================
+         AMBIENT — slow drift on background orbs across full duration
+         ============================================================ */
+      tl.to("#orb-1", { x: 120, y: 60, duration: 38, ease: "sine.inOut" }, 0);
+      tl.to("#orb-2", { x: -100, y: -80, duration: 38, ease: "sine.inOut" }, 0);
+      tl.to("#orb-3", { x: -80, y: 100, duration: 38, ease: "sine.inOut" }, 0);
+      tl.fromTo("#bg-grid", { opacity: 0.0 }, { opacity: 0.6, duration: 1.2, ease: "power2.out" }, 0);
+
+      /* ============================================================
+         SCENE 1 — COLD OPEN  (0 → 4.0)
+         ============================================================ */
+      tl.from("#s1", { opacity: 0, duration: 0.4, ease: "power2.out" }, 0);
+      tl.from("#s1-tag", { y: -30, opacity: 0, duration: 0.5, ease: "power3.out" }, 0.1);
+
+      // Line 1: stagger words
+      tl.from("#s1-line-1 .word", {
+        y: 80, opacity: 0, rotateX: -60,
+        duration: 0.55, stagger: 0.08, ease: "back.out(1.6)",
+        transformOrigin: "50% 100%"
+      }, 0.4);
+
+      // Line 2: stagger with more punch on the dollars
+      tl.from("#s1-line-2 .word", {
+        y: 90, opacity: 0, scale: 0.6,
+        duration: 0.5, stagger: 0.07, ease: "back.out(1.8)"
+      }, 1.4);
+
+      // Foot caption
+      tl.from("#s1-foot", { y: 20, opacity: 0, duration: 0.5, ease: "power2.out" }, 2.2);
+
+      /* ============================================================
+         SCENE 2 — PROBLEM  (3.6 → 8.0)
+         ============================================================ */
+      tl.from("#s2", { opacity: 0, duration: 0.4, ease: "power2.out" }, 3.6);
+      tl.from("#s2-eyebrow", { y: -20, opacity: 0, duration: 0.4, ease: "power2.out" }, 3.8);
+
+      // Pills slam in with stagger
+      tl.from("#s2-pill-1", { x: -200, opacity: 0, scale: 0.7, duration: 0.45, ease: "back.out(2)" }, 4.0);
+      tl.from("#s2-pill-2", { y: -120, opacity: 0, scale: 0.7, duration: 0.45, ease: "back.out(2)" }, 4.18);
+      tl.from("#s2-pill-3", { x: 200, opacity: 0, scale: 0.7, duration: 0.45, ease: "back.out(2)" }, 4.36);
+
+      // Strike-through line
+      tl.from("#s2-strike", { y: 30, opacity: 0, duration: 0.5, ease: "power3.out" }, 4.9);
+
+      // Pulse the red pills to drive home the friction
+      tl.to(["#s2-pill-1","#s2-pill-2","#s2-pill-3"], {
+        boxShadow: "0 0 120px rgba(248,113,113,0.4)",
+        duration: 0.6, yoyo: true, repeat: 1, ease: "sine.inOut"
+      }, 5.5);
+
+      /* ============================================================
+         SCENE 3 — LOGO REVEAL  (7.6 → 12.0)
+         ============================================================ */
+      tl.from("#s3", { opacity: 0, duration: 0.3, ease: "power2.out" }, 7.6);
+
+      // Mark scales in with bounce
+      tl.from("#s3-mark", {
+        scale: 0, opacity: 0, rotation: -90,
+        duration: 0.55, ease: "back.out(2)"
+      }, 7.85);
+
+      // Logo SLAM in
+      tl.from("#s3-logo", {
+        scale: 0.4, opacity: 0, y: 30,
+        duration: 0.5, ease: "back.out(1.8)"
+      }, 8.15);
+
+      // Shockwave ring 1
+      tl.fromTo("#s3-shock",
+        { scale: 0.2, opacity: 0.9 },
+        { scale: 8, opacity: 0, duration: 0.9, ease: "power2.out" },
+        8.15);
+
+      // Shockwave ring 2 (offset, magenta)
+      tl.fromTo("#s3-shock-2",
+        { scale: 0.2, opacity: 0.7 },
+        { scale: 10, opacity: 0, duration: 1.1, ease: "power2.out" },
+        8.3);
+
+      // Tagline
+      tl.from("#s3-tagline", { y: 30, opacity: 0, duration: 0.5, ease: "expo.out" }, 8.7);
+      tl.from("#s3-sub", { y: 20, opacity: 0, duration: 0.5, ease: "power2.out" }, 9.0);
+
+      // Subtle mark pulse
+      tl.to("#s3-mark", { scale: 1.06, duration: 0.6, yoyo: true, repeat: 1, ease: "sine.inOut" }, 9.5);
+
+      /* ============================================================
+         SCENE 4 — CHAT  (11.6 → 17.0)
+         ============================================================ */
+      tl.from("#s4", { opacity: 0, duration: 0.3, ease: "power2.out" }, 11.6);
+
+      // Window slides up with scale
+      tl.from("#s4-window", {
+        y: 60, opacity: 0, scale: 0.96,
+        duration: 0.55, ease: "power3.out"
+      }, 11.85);
+
+      // Hide messages then bring them in (set inside timeline since elements exist after data-start)
+      tl.set(["#s4-m1", "#s4-m2", "#s4-typing"], { opacity: 0, y: 30 }, 11.85);
+
+      // User message
+      tl.to("#s4-m1", { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, 12.5);
+
+      // Typing dots first
+      tl.to("#s4-typing", { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 13.1);
+
+      // Animate typing dots (3 reps to last about 0.9s)
+      tl.to("#s4-typing .s4-typing span", {
+        scale: 1.6, opacity: 1, duration: 0.25, stagger: 0.12,
+        yoyo: true, repeat: 3, ease: "sine.inOut"
+      }, 13.15);
+
+      // Hide typing, bring agent message
+      tl.to("#s4-typing", { opacity: 0, duration: 0.2, ease: "power2.in" }, 14.4);
+      tl.to("#s4-m2", { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 14.5);
+
+      // Subtle shimmer on window border to draw eye
+      tl.to("#s4-window", {
+        boxShadow: "0 30px 80px rgba(0,0,0,0.6), 0 0 80px rgba(94,106,210,0.45)",
+        duration: 0.6, yoyo: true, repeat: 1, ease: "sine.inOut"
+      }, 15.2);
+
+      /* ============================================================
+         SCENE 5 — MILESTONES  (16.6 → 22.0)
+         ============================================================ */
+      tl.from("#s5", { opacity: 0, duration: 0.3, ease: "power2.out" }, 16.6);
+
+      tl.from("#s5-title", { y: 30, opacity: 0, duration: 0.5, ease: "expo.out" }, 16.85);
+
+      // Cards stagger in from below with slight rotation
+      tl.from(["#s5-c1", "#s5-c2", "#s5-c3", "#s5-c4"], {
+        y: 80, opacity: 0, scale: 0.92, rotation: -2,
+        duration: 0.5, stagger: 0.12, ease: "back.out(1.4)"
+      }, 17.2);
+
+      // Checkmarks pop in stagger
+      tl.set(["#s5-ck-1", "#s5-ck-2", "#s5-ck-3", "#s5-ck-4"], { opacity: 0, scale: 0 }, 17.2);
+      tl.to(["#s5-ck-1", "#s5-ck-2", "#s5-ck-3", "#s5-ck-4"], {
+        opacity: 1, scale: 1,
+        duration: 0.35, stagger: 0.1, ease: "back.out(2.2)"
+      }, 19.4);
+
+      // Card pulse
+      tl.to(["#s5-c1", "#s5-c2", "#s5-c3", "#s5-c4"], {
+        scale: 1.025, duration: 0.4, stagger: 0.08, yoyo: true, repeat: 1, ease: "sine.inOut"
+      }, 20.3);
+
+      /* ============================================================
+         SCENE 6 — VAULT  (21.6 → 27.0)
+         ============================================================ */
+      tl.from("#s6", { opacity: 0, duration: 0.3, ease: "power2.out" }, 21.6);
+
+      tl.from("#s6-vault", {
+        scale: 0.6, opacity: 0,
+        duration: 0.55, ease: "back.out(1.6)"
+      }, 21.85);
+
+      // Doors start open
+      tl.set("#s6-door-l", { rotateY: -85, x: 0 }, 21.85);
+      tl.set("#s6-door-r", { rotateY: 85, x: 0 }, 21.85);
+
+      // Coins fly in from edges along arcs
+      const coinStarts = [
+        { x: -800, y: -300 }, { x: 800, y: -350 },
+        { x: -700, y: 300 },  { x: 750, y: 280 },
+        { x: 0, y: -500 }
+      ];
+      coinStarts.forEach((p, i) => {
+        const id = `#s6-coin-${i+1}`;
+        tl.set(id, { x: p.x, y: p.y, scale: 0.4, opacity: 0 }, 22.2);
+        tl.to(id, { opacity: 1, duration: 0.15, ease: "power2.out" }, 22.2 + i * 0.08);
+        tl.to(id, {
+          x: 0, y: 0, scale: 1, duration: 0.55,
+          ease: "power2.in"
+        }, 22.2 + i * 0.08);
+        tl.to(id, { scale: 0, opacity: 0, duration: 0.18, ease: "power2.in" }, 22.85 + i * 0.06);
+      });
+
+      // Doors slam shut
+      tl.to("#s6-door-l", { rotateY: 0, duration: 0.45, ease: "back.in(1.4)" }, 23.5);
+      tl.to("#s6-door-r", { rotateY: 0, duration: 0.45, ease: "back.in(1.4)" }, 23.5);
+
+      // Handle pops in spinning
+      tl.fromTo("#s6-handle",
+        { opacity: 0, rotation: -120, scale: 0.6 },
+        { opacity: 1, rotation: 0, scale: 1, duration: 0.55, ease: "back.out(2)" },
+        24.0);
+
+      // Vault locks: shockwave + glow
+      tl.fromTo("#s6-shock",
+        { scale: 0.4, opacity: 0.9 },
+        { scale: 6, opacity: 0, duration: 1.0, ease: "power2.out" },
+        24.0);
+
+      tl.to("#s6-vault", {
+        boxShadow: "inset 0 0 60px rgba(0,0,0,0.6), 0 30px 100px rgba(0,0,0,0.7), 0 0 120px rgba(94,106,210,0.55)",
+        duration: 0.5, ease: "power2.out"
+      }, 24.0);
+
+      // Caption reveals
+      tl.from("#s6-amount", { y: 30, opacity: 0, duration: 0.5, ease: "expo.out" }, 24.4);
+      tl.from("#s6-sub", { y: 20, opacity: 0, duration: 0.5, ease: "power2.out" }, 24.7);
+
+      // Settled gentle handle pulse
+      tl.to("#s6-handle", { scale: 1.08, duration: 0.5, yoyo: true, repeat: 1, ease: "sine.inOut" }, 25.5);
+
+      /* ============================================================
+         SCENE 7 — DUAL SIGN  (26.6 → 31.0)
+         ============================================================ */
+      tl.from("#s7", { opacity: 0, duration: 0.3, ease: "power2.out" }, 26.6);
+
+      tl.from("#s7-headline", { y: 40, opacity: 0, duration: 0.5, ease: "expo.out" }, 26.85);
+
+      // Cards slide in from sides
+      tl.from("#s7-card-1", { x: -120, opacity: 0, duration: 0.5, ease: "power3.out" }, 27.3);
+      tl.from("#s7-card-2", { x: 120, opacity: 0, duration: 0.5, ease: "power3.out" }, 27.3);
+
+      // Stamps pop with rotation
+      tl.fromTo("#s7-stamp-1",
+        { opacity: 0, scale: 0, rotation: -45 },
+        { opacity: 1, scale: 1, rotation: 0, duration: 0.45, ease: "back.out(2.4)" },
+        28.0);
+      tl.fromTo("#s7-stamp-2",
+        { opacity: 0, scale: 0, rotation: 45 },
+        { opacity: 1, scale: 1, rotation: 0, duration: 0.45, ease: "back.out(2.4)" },
+        28.3);
+
+      // Pulsing green glow on cards
+      tl.to(["#s7-card-1", "#s7-card-2"], {
+        boxShadow: "0 0 80px rgba(74,222,128,0.45)",
+        duration: 0.6, yoyo: true, repeat: 1, ease: "sine.inOut"
+      }, 28.7);
+
+      // Released text slams in
+      tl.fromTo("#s7-release",
+        { opacity: 0, scale: 0.5, y: 30 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.5, ease: "back.out(1.8)" },
+        29.2);
+
+      // Released subtle glow pulse
+      tl.to("#s7-release", { scale: 1.05, duration: 0.4, yoyo: true, repeat: 1, ease: "sine.inOut" }, 29.8);
+
+      /* ============================================================
+         SCENE 8 — STATS  (30.6 → 34.0)
+         ============================================================ */
+      tl.from("#s8", { opacity: 0, duration: 0.3, ease: "power2.out" }, 30.6);
+
+      tl.from("#s8-eyebrow", { y: -20, opacity: 0, duration: 0.4, ease: "power2.out" }, 30.85);
+
+      // Tiles slide in stagger (no rotation — keep text crisp)
+      tl.from("#s8-tile-1", { y: 80, opacity: 0, duration: 0.55, ease: "back.out(1.6)" }, 31.1);
+      tl.from("#s8-tile-2", { y: 80, opacity: 0, duration: 0.55, ease: "back.out(1.6)" }, 31.28);
+      tl.from("#s8-tile-3", { y: 80, opacity: 0, duration: 0.55, ease: "back.out(1.6)" }, 31.46);
+
+      // Number/word counts up in by scaling
+      tl.from("#s8-tile-1 .s8-big", { scale: 0.4, opacity: 0, duration: 0.45, ease: "back.out(2)" }, 31.55);
+      tl.from("#s8-tile-2 .s8-big", { scale: 0.4, opacity: 0, duration: 0.45, ease: "back.out(2)" }, 31.73);
+      tl.from("#s8-tile-3 .s8-big", { scale: 0.4, opacity: 0, duration: 0.45, ease: "back.out(2)" }, 31.91);
+
+      // Accent dot pulse on each tile
+      tl.fromTo("#s8-tile-1 .s8-dot", { scale: 0 }, { scale: 1.4, duration: 0.3, yoyo: true, repeat: 1, ease: "sine.inOut" }, 31.6);
+      tl.fromTo("#s8-tile-2 .s8-dot", { scale: 0 }, { scale: 1.4, duration: 0.3, yoyo: true, repeat: 1, ease: "sine.inOut" }, 31.78);
+      tl.fromTo("#s8-tile-3 .s8-dot", { scale: 0 }, { scale: 1.4, duration: 0.3, yoyo: true, repeat: 1, ease: "sine.inOut" }, 31.96);
+
+      // Hero pulse — accent dot ring stays glowing
+      tl.to("#s8-tile-1", { scale: 1.025, duration: 0.3, yoyo: true, repeat: 1, ease: "sine.inOut" }, 32.5);
+      tl.to("#s8-tile-2", { scale: 1.025, duration: 0.3, yoyo: true, repeat: 1, ease: "sine.inOut" }, 32.85);
+      tl.to("#s8-tile-3", { scale: 1.025, duration: 0.3, yoyo: true, repeat: 1, ease: "sine.inOut" }, 33.2);
+
+      /* ============================================================
+         SCENE 9 — CTA  (33.6 → 38.0)
+         ============================================================ */
+      tl.from("#s9", { opacity: 0, duration: 0.4, ease: "power2.out" }, 33.6);
+
+      tl.from("#s9-mark", { scale: 0, rotation: -90, opacity: 0, duration: 0.55, ease: "back.out(2)" }, 33.95);
+      tl.from("#s9-name", { scale: 0.5, opacity: 0, y: 30, duration: 0.6, ease: "back.out(1.6)" }, 34.25);
+      tl.from("#s9-tag", { y: 30, opacity: 0, duration: 0.5, ease: "expo.out" }, 34.85);
+      tl.from("#s9-url", { y: 20, opacity: 0, duration: 0.45, ease: "power3.out" }, 35.2);
+
+      // Final mark pulse + url glow
+      tl.to("#s9-mark", { scale: 1.08, duration: 0.5, yoyo: true, repeat: 1, ease: "sine.inOut" }, 35.8);
+      tl.to("#s9-url", {
+        boxShadow: "0 0 50px rgba(196,122,255,0.6)",
+        duration: 0.5, yoyo: true, repeat: 1, ease: "sine.inOut"
+      }, 35.9);
+
+      // Final fade-out (final scene only — allowed)
+      tl.to(["#s9-mark", "#s9-name", "#s9-tag", "#s9-url"], {
+        opacity: 0, y: -20, duration: 0.6, stagger: 0.05, ease: "power2.in"
+      }, 37.2);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

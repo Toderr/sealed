@@ -44,7 +44,7 @@ const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.
 export default function ChatInterface({
   onDealCreated,
 }: {
-  onDealCreated: (params: DealParams) => void;
+  onDealCreated: (params: DealParams) => Promise<void>;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -188,6 +188,7 @@ export default function ChatInterface({
                   onConfirm={() => onDealCreated(msg.dealParams!)}
                   disabled={!connected}
                 />
+
               </div>
             )}
           </div>
@@ -290,14 +291,17 @@ function DealPreview({
   disabled,
 }: {
   params: DealParams;
-  onConfirm: () => void;
+  onConfirm: () => Promise<void>;
   disabled: boolean;
 }) {
-  const [confirmed, setConfirmed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
-  function handleConfirm() {
-    setConfirmed(true);
-    onConfirm();
+  async function handleConfirm() {
+    setSaving(true);
+    await onConfirm();
+    setSaving(false);
+    setSaved(true);
   }
 
   return (
@@ -364,29 +368,31 @@ function DealPreview({
         </div>
       </div>
 
-      {confirmed ? (
-        <div
-          className="flex items-center gap-2 text-accent text-[13px] pt-1"
-          style={labelStyle}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            aria-hidden="true"
-          >
+      {saved ? (
+        <div className="flex items-center gap-2 text-accent text-[13px] pt-1" style={labelStyle}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0a8 8 0 110 16A8 8 0 018 0zm3.78 5.22a.75.75 0 00-1.06 0L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.06 0l4.25-4.25a.75.75 0 000-1.06z" />
           </svg>
-          Negotiation started, review terms
+          Opening negotiation room…
         </div>
       ) : (
         <button
           onClick={handleConfirm}
-          disabled={disabled}
-          className="btn-primary w-full rounded-lg py-2.5 text-[13px]"
+          disabled={disabled || saving}
+          className="btn-primary w-full rounded-lg py-2.5 text-[13px] flex items-center justify-center gap-2"
         >
-          {disabled ? "Connect wallet first" : "Start negotiation"}
+          {saving ? (
+            <>
+              <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round" />
+              </svg>
+              Saving draft…
+            </>
+          ) : disabled ? (
+            "Connect wallet first"
+          ) : (
+            "Open negotiation room"
+          )}
         </button>
       )}
     </div>

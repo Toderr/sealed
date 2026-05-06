@@ -6,38 +6,22 @@ import Header from "@/components/Header";
 import ChatInterface from "@/components/ChatInterface";
 import DealDashboard from "@/components/DealDashboard";
 import SettingsModal from "@/components/SettingsModal";
-import NegotiationView from "@/components/NegotiationView";
 import { useToast } from "@/components/Toast";
 import { useDealsStore } from "@/lib/deals-store";
-import { useBusinessMemory } from "@/memory/localstorage-store";
 import { useProfileStore } from "@/lib/profile-store";
-import {
-  DealParams,
-  DealStatus,
-  MilestoneStatus,
-  usdcToLamports,
-} from "@/lib/types";
+import { DealParams } from "@/lib/types";
 import type { Deal } from "@/lib/types";
-import { PublicKey } from "@solana/web3.js";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { buildCreateDealIx, sendTx } from "@/lib/escrow-client";
+import { useWallet } from "@solana/wallet-adapter-react";
 
-const ON_CHAIN_ENABLED = true;
-
-type View = "chat" | "deals" | "negotiation";
+type View = "chat" | "deals";
 
 export default function Home() {
   const [view, setView] = useState<View>("chat");
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [negotiatingParams, setNegotiatingParams] = useState<DealParams | null>(
-    null
-  );
 
-  const { publicKey, signTransaction } = useWallet();
-  const { connection } = useConnection();
-  const { deals, addDeal } = useDealsStore(publicKey ?? null);
-  const { memory } = useBusinessMemory(publicKey ?? null);
+  const { publicKey } = useWallet();
+  const { deals } = useDealsStore(publicKey ?? null);
   const { profile, loaded: profileLoaded } = useProfileStore(
     publicKey?.toBase58() ?? null
   );
@@ -51,130 +35,47 @@ export default function Home() {
     }
   }, [profileLoaded, publicKey, profile, router]);
 
-  // Enters negotiation stage rather than going straight on-chain. The final
-  // terms come back from NegotiationView after both agents reach agreement.
-  function handleDealDrafted(params: DealParams) {
+  // Save draft to Supabase and navigate to negotiation room
+  async function handleDealDrafted(params: DealParams): Promise<void> {
     if (!publicKey) {
       toast.show({
         variant: "info",
         title: "Connect wallet first",
-        description: "The Negotiator agent needs your identity to bargain.",
+        description: "Connect your wallet to create a deal.",
       });
       return;
     }
-    setNegotiatingParams(params);
-    setView("negotiation");
-  }
-
-  async function handleNegotiationAccepted(finalTerms: DealParams) {
-    setNegotiatingParams(null);
-    await pushDealOnChain(finalTerms);
-  }
-
-  async function pushDealOnChain(params: DealParams) {
-    const now = Math.floor(Date.now() / 1000);
-    const newDeal: Deal = {
-      dealId: params.dealId,
-      buyer: publicKey || PublicKey.default,
-      seller: new PublicKey(params.sellerWallet),
-      mint: PublicKey.default,
-      escrowTokenAccount: PublicKey.default,
-      totalAmount: usdcToLamports(params.totalAmount),
-      fundedAmount: 0,
-      releasedAmount: 0,
-      status: DealStatus.Created,
-      milestones: params.milestones.map((m) => ({
-        description: m.description,
-        amount: usdcToLamports(m.amount),
-        status: MilestoneStatus.Pending,
-        confirmedBy: null,
-        confirmedAt: null,
-      })),
-      createdAt: now,
-      updatedAt: now,
-      bump: 0,
-    };
-
-    addDeal(newDeal);
-    setView("deals");
-
-    if (!ON_CHAIN_ENABLED) {
-      toast.show({
-        variant: "info",
-        title: "Deal drafted",
-        description: `${params.dealId} saved locally.`,
-      });
-      return;
-    }
-
-    if (!publicKey || !signTransaction) {
-      toast.show({
-        variant: "info",
-        title: "Deal drafted (offline)",
-        description: "Connect your wallet to push this deal on-chain.",
-      });
-      return;
-    }
-
-    const pendingId = toast.show({
-      variant: "loading",
-      title: "Creating deal on-chain",
-      description: `Submitting ${params.dealId} to devnet...`,
-      duration: 0,
-    });
 
     try {
-      const ix = await buildCreateDealIx(publicKey, params);
-      const sig = await sendTx(connection, ix, signTransaction);
-
-      // Mirror deal to Supabase so it shows up in the dashboard cross-device
-      // and across reloads. Best-effort; on-chain remains source of truth.
-      try {
-        await fetch("/api/deals/mirror", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-wallet": publicKey.toBase58(),
-          },
-          body: JSON.stringify({
-            deal_id: params.dealId,
-            seller_wallet: params.sellerWallet,
-            title: params.dealId,
-            description: params.milestones.map((m) => m.description).join(" | "),
-            total_amount_usdc: params.totalAmount,
-            milestones: params.milestones.map((m) => ({
-              description: m.description,
-              amount: m.amount,
-              status: "Pending",
-            })),
-            tx_signature: sig,
-          }),
-        });
-      } catch (mirrorErr) {
-        console.warn("Deal mirror to Supabase failed (non-fatal):", mirrorErr);
-      }
-
-      toast.update(pendingId, {
-        variant: "success",
-        title: "Deal created on-chain",
-        description: `${params.dealId} confirmed on devnet.`,
-        actionHref: `https://solscan.io/tx/${sig}?cluster=devnet`,
-        actionLabel: "View on Solscan",
+      await fetch("/api/deals/mirror", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-wallet": publicKey.toBase58(),
+        },
+        body: JSON.stringify({
+          deal_id: params.dealId,
+          seller_wallet: params.sellerWallet,
+          title: params.dealId,
+          description: params.milestones.map((m) => m.description).join(" | "),
+          total_amount_usdc: params.totalAmount,
+          milestones: params.milestones.map((m) => ({
+            description: m.description,
+            amount: m.amount,
+            status: "Pending",
+          })),
+          status: "draft",
+        }),
       });
-    } catch (err) {
-      console.error("On-chain deal creation failed:", err);
-      toast.update(pendingId, {
-        variant: "error",
-        title: "On-chain submit failed",
-        description:
-          err instanceof Error ? err.message : "Unknown error. Saved locally.",
-      });
+    } catch {
+      // Non-fatal — proceed to room even if mirror fails
     }
+
+    router.push(`/negotiate/${params.dealId}`);
   }
 
   const onTabChange = (tab: "chat" | "deals") => {
     setView(tab);
-    if (tab === "chat") setNegotiatingParams(null);
   };
 
   const activeTab: "chat" | "deals" = view === "deals" ? "deals" : "chat";
@@ -187,18 +88,7 @@ export default function Home() {
         onOpenSettings={() => setSettingsOpen(true)}
       />
       <main className="flex-1 overflow-hidden">
-        {view === "negotiation" && negotiatingParams && publicKey && memory ? (
-          <NegotiationView
-            initialTerms={negotiatingParams}
-            buyerWallet={publicKey.toBase58()}
-            buyerBoundaries={memory.boundaries}
-            onAccept={handleNegotiationAccepted}
-            onCancel={() => {
-              setNegotiatingParams(null);
-              setView("chat");
-            }}
-          />
-        ) : view === "chat" ? (
+        {view === "chat" ? (
           <ChatInterface onDealCreated={handleDealDrafted} />
         ) : (
           <DealDashboard

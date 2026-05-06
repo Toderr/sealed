@@ -57,9 +57,8 @@ export default function InvitePage() {
   function handleAccept() {
     if (!publicKey) return;
     setAccepted(true);
-    // Redirect to /onboarding for new users, or /app with deal pre-filled
     setTimeout(() => {
-      router.push(`/app?joinDeal=${encodeURIComponent(payload!.dealId)}`);
+      router.push(`/negotiate/${payload!.dealId}`);
     }, 800);
   }
 

@@ -19,7 +19,7 @@ Rules:
 
 Respond in JSON format when you have enough information to create the deal.
 Ask clarifying questions if the deal terms are incomplete.
-Speak in both English and Bahasa Indonesia as appropriate for the user.`;
+Always respond in the same language the user writes in. If they write in English, reply in English only. If they write in Bahasa Indonesia, reply only in Bahasa Indonesia. Never mix languages in a single response.`;
 
 async function buildSystemPrompt(wallet: string | undefined): Promise<string> {
   if (!wallet) return BASE_SYSTEM_PROMPT;

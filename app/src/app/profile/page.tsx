@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import { SealedMark } from "@/components/SealedLogo";
-import { useProfileStore, encodeInvite } from "@/lib/profile-store";
+import { useProfileStore, encodeInvite, X402_MODELS, X402_TOP_UP_AMOUNTS } from "@/lib/profile-store";
 import { useDealsStore } from "@/lib/deals-store";
 import { DealStatus } from "@/lib/types";
 import type { Deal, AgentTemplate, NotificationPrefs } from "@/lib/types";
@@ -927,11 +927,15 @@ function SettingsTab({ wallet }: { wallet: string }) {
   const { profile, updateProfile } = useProfileStore(wallet);
 
   // AI provider state
+  const [llmMode, setLlmMode] = useState<"own-key" | "x402">("own-key");
   const [llmProvider, setLlmProvider] = useState<"openai" | "anthropic" | "groq" | "gemini" | "openrouter">("anthropic");
   const [llmModel, setLlmModel] = useState("claude-sonnet-4-6");
   const [llmKey, setLlmKey] = useState("");
   const [showLlmKey, setShowLlmKey] = useState(false);
   const [llmSaved, setLlmSaved] = useState(false);
+  const [x402Model, setX402Model] = useState(X402_MODELS[0].id);
+  const [x402TopUpAmount, setX402TopUpAmount] = useState(10);
+  const [topping, setTopping] = useState(false);
 
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
@@ -950,9 +954,13 @@ function SettingsTab({ wallet }: { wallet: string }) {
 
   useEffect(() => {
     if (profile?.llmConfig?.mode === "own-key") {
+      setLlmMode("own-key");
       setLlmProvider(profile.llmConfig.provider as typeof llmProvider);
       setLlmModel(profile.llmConfig.model);
       setLlmKey(profile.llmConfig.apiKey);
+    } else if (profile?.llmConfig?.mode === "x402") {
+      setLlmMode("x402");
+      setX402Model(profile.llmConfig.model);
     }
   }, [profile]);
 
@@ -973,11 +981,34 @@ function SettingsTab({ wallet }: { wallet: string }) {
   };
 
   function saveLlmConfig() {
+    const existingBalance = profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0;
     updateProfile({
-      llmConfig: { mode: "own-key", provider: llmProvider, model: llmModel, apiKey: llmKey.trim() },
+      llmConfig:
+        llmMode === "x402"
+          ? { mode: "x402", balance: existingBalance, model: x402Model }
+          : { mode: "own-key", provider: llmProvider, model: llmModel, apiKey: llmKey.trim() },
     });
     setLlmSaved(true);
     setTimeout(() => setLlmSaved(false), 2000);
+  }
+
+  async function handleX402TopUp() {
+    setTopping(true);
+    try {
+      const res = await fetch("/api/topup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet, usd: x402TopUpAmount }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newBalance = (profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0) + (data.credits ?? x402TopUpAmount * 100);
+        updateProfile({ llmConfig: { mode: "x402", balance: newBalance, model: x402Model } });
+      }
+    } catch {
+      // ignore
+    }
+    setTopping(false);
   }
 
   useEffect(() => {
@@ -1043,61 +1074,145 @@ function SettingsTab({ wallet }: { wallet: string }) {
           <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>AI Provider</p>
           <p className="text-[12px] text-muted mt-0.5">API key your Sealed agent uses for deal structuring, negotiation, and milestone verification.</p>
         </div>
-        <div className="space-y-1.5">
-          <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Provider</label>
-          <div className="grid grid-cols-3 gap-2">
-            {PROVIDERS.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => { setLlmProvider(p.id); setLlmModel(LLM_MODELS_MAP[p.id][0]); }}
-                className={`h-9 rounded-md text-[12px] border transition-colors ${
-                  llmProvider === p.id
-                    ? "border-accent bg-accent/10 text-accent"
-                    : "border-card-border bg-surface text-muted hover:text-primary"
-                }`}
-                style={{ fontWeight: 510 }}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Model</label>
-          <select
-            value={llmModel}
-            onChange={(e) => setLlmModel(e.target.value)}
-            className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
-          >
-            {LLM_MODELS_MAP[llmProvider].map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>API Key</label>
-          <div className="flex gap-2">
-            <input
-              type={showLlmKey ? "text" : "password"}
-              value={llmKey}
-              onChange={(e) => setLlmKey(e.target.value)}
-              placeholder={PROVIDERS.find((p) => p.id === llmProvider)?.hint ?? "sk-..."}
-              className="flex-1 h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors font-mono"
-            />
+
+        {/* Mode toggle */}
+        <div className="grid grid-cols-2 gap-2">
+          {(["own-key", "x402"] as const).map((m) => (
             <button
-              onClick={() => setShowLlmKey(!showLlmKey)}
-              className="btn-ghost h-10 px-3 rounded-md text-[12px]"
+              key={m}
+              onClick={() => setLlmMode(m)}
+              className={`h-9 rounded-md text-[12px] border transition-colors ${
+                llmMode === m
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-card-border bg-surface text-muted hover:text-primary"
+              }`}
+              style={{ fontWeight: 510 }}
             >
-              {showLlmKey ? "Hide" : "Show"}
+              {m === "own-key" ? "Own API Key" : "Buy via x402"}
             </button>
-          </div>
+          ))}
         </div>
+
+        {llmMode === "own-key" ? (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Provider</label>
+              <div className="grid grid-cols-3 gap-2">
+                {PROVIDERS.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => { setLlmProvider(p.id); setLlmModel(LLM_MODELS_MAP[p.id][0]); }}
+                    className={`h-9 rounded-md text-[12px] border transition-colors ${
+                      llmProvider === p.id
+                        ? "border-accent bg-accent/10 text-accent"
+                        : "border-card-border bg-surface text-muted hover:text-primary"
+                    }`}
+                    style={{ fontWeight: 510 }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Model</label>
+              <select
+                value={llmModel}
+                onChange={(e) => setLlmModel(e.target.value)}
+                className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
+              >
+                {LLM_MODELS_MAP[llmProvider].map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>API Key</label>
+              <div className="flex gap-2">
+                <input
+                  type={showLlmKey ? "text" : "password"}
+                  value={llmKey}
+                  onChange={(e) => setLlmKey(e.target.value)}
+                  placeholder={PROVIDERS.find((p) => p.id === llmProvider)?.hint ?? "sk-..."}
+                  className="flex-1 h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors font-mono"
+                />
+                <button
+                  onClick={() => setShowLlmKey(!showLlmKey)}
+                  className="btn-ghost h-10 px-3 rounded-md text-[12px]"
+                >
+                  {showLlmKey ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* x402 balance */}
+            <div className="flex items-center justify-between rounded-md bg-surface border border-card-border px-4 py-3">
+              <div>
+                <p className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Current balance</p>
+                <p className="text-[18px] text-primary tabular-nums" style={{ fontWeight: 590 }}>
+                  ${((profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0) / 100).toFixed(2)}
+                </p>
+              </div>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            </div>
+
+            {/* Model select */}
+            <div className="space-y-1.5">
+              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Model</label>
+              <select
+                value={x402Model}
+                onChange={(e) => setX402Model(e.target.value)}
+                className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
+              >
+                {X402_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label} — ${m.costPer1k.toFixed(2)}/1k tokens</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Top-up amounts */}
+            <div className="space-y-1.5">
+              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Top up</label>
+              <div className="grid grid-cols-4 gap-2">
+                {X402_TOP_UP_AMOUNTS.map((a) => (
+                  <button
+                    key={a.usd}
+                    onClick={() => setX402TopUpAmount(a.usd)}
+                    className={`h-9 rounded-md text-[12px] border relative transition-colors ${
+                      x402TopUpAmount === a.usd
+                        ? "border-accent bg-accent/10 text-accent"
+                        : "border-card-border bg-surface text-muted hover:text-primary"
+                    }`}
+                    style={{ fontWeight: 510 }}
+                  >
+                    {a.label}
+                    {"popular" in a && a.popular && (
+                      <span className="absolute -top-1.5 -right-1.5 text-[9px] bg-accent text-background rounded-full px-1" style={{ fontWeight: 590 }}>popular</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={handleX402TopUp}
+                disabled={topping}
+                className="btn-primary w-full h-9 rounded-md text-[12px] mt-2 disabled:opacity-40"
+              >
+                {topping ? "Processing…" : `Buy $${x402TopUpAmount} of tokens`}
+              </button>
+            </div>
+          </>
+        )}
+
         <button
           onClick={saveLlmConfig}
-          disabled={!llmKey.trim()}
+          disabled={llmMode === "own-key" && !llmKey.trim()}
           className="btn-primary h-9 px-5 rounded-md text-[13px] disabled:opacity-40"
         >
-          {llmSaved ? "Saved ✓" : "Save provider"}
+          {llmSaved ? "Saved ✓" : "Save"}
         </button>
       </div>
 

@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Sealed — Logo · Print</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0B1220;
+    --paper: #F4F1EA;
+    --muted: #6B7280;
+    --accent: #D97757;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #e9e6df; font-family: 'Inter Tight', system-ui, sans-serif; color: var(--ink); }
+
+  .page {
+    width: 27.7cm;
+    height: 19cm;
+    margin: 0.6cm auto;
+    background: var(--paper);
+    position: relative;
+    overflow: hidden;
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    padding: 1.2cm 1.4cm;
+    display: flex;
+    flex-direction: column;
+  }
+  .page:last-child { break-after: auto; page-break-after: auto; }
+
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9pt;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding-bottom: 0.4cm;
+    border-bottom: 1px solid rgba(11,18,32,0.08);
+  }
+  .page-title {
+    font-size: 22pt;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0.4cm 0 0.2cm;
+    color: var(--ink);
+  }
+  .page-sub {
+    font-size: 11pt;
+    color: var(--muted);
+    margin-bottom: 0.6cm;
+    max-width: 22cm;
+  }
+
+  .page-body { flex: 1; display: flex; min-height: 0; }
+
+  /* Cover */
+  .cover {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+  .cover .mark-big { margin-bottom: 0.8cm; }
+  .cover h1 {
+    font-size: 64pt;
+    font-weight: 600;
+    letter-spacing: -0.035em;
+    margin: 0;
+    line-height: 1;
+  }
+  .cover .tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10pt;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 0.4cm;
+  }
+  .cover .meta {
+    position: absolute;
+    bottom: 1.2cm; left: 1.4cm; right: 1.4cm;
+    display: flex; justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace; font-size: 9pt;
+    color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase;
+  }
+
+  /* Hero */
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    width: 100%;
+    gap: 0.8cm;
+  }
+  .hero-left {
+    display: flex; align-items: center; justify-content: center;
+    border-right: 1px solid rgba(11,18,32,0.08);
+  }
+  .hero-right { padding-left: 0.6cm; display: flex; flex-direction: column; justify-content: center; gap: 0.4cm; }
+  .hero-kicker {
+    font-family: 'JetBrains Mono', monospace; font-size: 9pt;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted);
+  }
+  .hero-headline {
+    font-size: 32pt; font-weight: 600; letter-spacing: -0.025em; line-height: 1.05; margin: 0;
+  }
+  .hero-body { font-size: 11pt; line-height: 1.55; color: #2A3140; max-width: 11cm; }
+  .hero-scale { display: flex; align-items: center; gap: 0.8cm; margin-top: 0.4cm; }
+
+  /* Construction */
+  .constr-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 0.8cm; width: 100%; }
+  .constr-left, .constr-right {
+    background: #fff;
+    border: 1px solid rgba(11,18,32,0.08);
+    display: flex; flex-direction: column;
+  }
+  .constr-left { align-items: center; justify-content: center; position: relative; }
+  .constr-right { padding: 0.8cm; font-family: 'JetBrains Mono', monospace; font-size: 9pt; line-height: 1.7; color: var(--ink); gap: 0.3cm; }
+  .token-row { display: flex; align-items: center; gap: 0.3cm; }
+  .sw { width: 10px; height: 10px; display: inline-block; border: 1px solid rgba(0,0,0,0.1); }
+  .section-label {
+    font-size: 8pt; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.2cm;
+  }
+  .divider { border-top: 1px solid rgba(0,0,0,0.08); padding-top: 0.3cm; margin-top: 0.2cm; }
+
+  /* Scale page */
+  .scale-strip {
+    width: 100%; background: #fff; border: 1px solid rgba(11,18,32,0.08);
+    display: flex; align-items: center; justify-content: space-around;
+    padding: 1.2cm 1cm;
+  }
+  .scale-labels {
+    display: flex; justify-content: space-around; width: 100%;
+    font-family: 'JetBrains Mono', monospace; font-size: 8pt; color: var(--muted);
+    margin-top: 0.3cm; letter-spacing: 0.08em;
+  }
+
+  /* Lockups */
+  .lockup-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 0.5cm; width: 100%;
+  }
+  .lockup-cell {
+    display: flex; align-items: center; justify-content: center;
+    background: var(--paper); border: 1px solid rgba(11,18,32,0.08);
+    position: relative;
+    min-height: 6.5cm;
+  }
+  .lockup-cell.dark { background: var(--ink); border: none; }
+  .lockup-cell.white { background: #fff; }
+  .lockup-cell .label {
+    position: absolute; top: 0.3cm; left: 0.4cm;
+    font-family: 'JetBrains Mono', monospace; font-size: 8pt;
+    color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .lockup-cell.dark .label { color: rgba(244,241,234,0.55); }
+
+  .h-lockup { display: flex; align-items: center; gap: 14px; }
+  .h-lockup .wm { font-family: 'Inter Tight'; font-weight: 600; font-size: 38px; letter-spacing: -0.02em; line-height: 1; color: var(--ink); }
+  .lockup-cell.dark .wm { color: var(--paper); }
+  .s-lockup { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .s-lockup .wm { font-family: 'Inter Tight'; font-weight: 600; font-size: 28px; letter-spacing: -0.02em; line-height: 1; color: var(--ink); }
+
+  /* Context page */
+  .context-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 0.5cm; width: 100%;
+  }
+  .ctx-cell {
+    background: #fff; border: 1px solid rgba(11,18,32,0.08);
+    position: relative; min-height: 6cm; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .ctx-cell .label {
+    position: absolute; top: 0.3cm; left: 0.4cm;
+    font-family: 'JetBrains Mono', monospace; font-size: 8pt;
+    color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase;
+    z-index: 2;
+  }
+
+  /* Browser mock */
+  .browser-tabs { height: 1.2cm; background: #D9D5CC; display: flex; align-items: flex-end; padding: 0 0.3cm; }
+  .browser-tab {
+    display: flex; align-items: center; gap: 6px; background: #fff;
+    padding: 5px 10px; border-top-left-radius: 6px; border-top-right-radius: 6px;
+    font-size: 10pt; font-family: 'Inter Tight';
+  }
+  .browser-body { flex: 1; background: #fff; padding: 0.5cm 0.6cm; display: flex; justify-content: space-between; align-items: center; }
+  .devnet-pill {
+    font-family: 'JetBrains Mono'; font-size: 8pt; color: var(--muted);
+    padding: 3px 7px; border: 1px solid var(--muted); border-radius: 3px;
+  }
+
+  /* App icon cells */
+  .app-icon-wrap { width: 100%; height: 100%; background: #E7E3DA; display: flex; align-items: center; justify-content: center; }
+  .app-icon {
+    width: 4cm; height: 4cm; border-radius: 0.9cm;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.1);
+  }
+
+  /* Business card */
+  .biz-card { flex: 1; background: var(--paper); padding: 0.7cm; display: flex; flex-direction: column; justify-content: space-between; }
+  .biz-meta { font-family: 'Inter Tight'; font-size: 10pt; line-height: 1.5; }
+  .biz-meta .nm { font-weight: 600; color: var(--ink); }
+  .biz-meta .sub { color: var(--muted); margin-top: 2px; }
+
+  /* Chat cell */
+  .chat-cell { padding: 0.8cm 0.7cm; gap: 0.3cm; }
+  .chat-row { display: flex; gap: 10px; align-items: flex-start; }
+  .chat-avatar {
+    width: 32px; height: 32px; border-radius: 50%; background: var(--ink);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .chat-bubble {
+    background: #F1EEE7; padding: 10px 14px; border-radius: 12px;
+    font-size: 10pt; color: var(--ink); line-height: 1.5; max-width: 80%;
+  }
+  .chat-time { font-family: 'JetBrains Mono'; font-size: 8pt; color: var(--muted); padding-left: 42px; }
+
+  /* Utility: center flex */
+  .center { display: flex; align-items: center; justify-content: center; }
+
+  /* Print rules */
+  @page {
+    size: A4 landscape;
+    margin: 0.5cm;
+  }
+  @media print {
+    html, body { background: #fff; }
+    .page {
+      margin: 0;
+      box-shadow: none;
+      width: 100%;
+      height: 100vh;
+    }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Reusable SVG defs — the mark itself -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="sealed-mark" viewBox="0 0 120 120">
+      <circle cx="60" cy="60" r="54" fill="none" stroke="currentColor" stroke-width="1.25" opacity="0.22"/>
+      <!-- right whiskers -->
+      <line x1="80" y1="48" x2="97" y2="45" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <line x1="80" y1="60" x2="97" y2="60" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <line x1="80" y1="72" x2="97" y2="75" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <!-- left whiskers -->
+      <line x1="40" y1="48" x2="23" y2="45" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <line x1="40" y1="60" x2="23" y2="60" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <line x1="40" y1="72" x2="23" y2="75" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <!-- dot -->
+      <circle cx="60" cy="60" r="13" fill="currentColor"/>
+    </symbol>
+
+    <symbol id="sealed-mark-noring" viewBox="0 0 120 120">
+      <line x1="80" y1="48" x2="97" y2="45" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <line x1="80" y1="60" x2="97" y2="60" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <line x1="80" y1="72" x2="97" y2="75" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <line x1="40" y1="48" x2="23" y2="45" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <line x1="40" y1="60" x2="23" y2="60" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <line x1="40" y1="72" x2="23" y2="75" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="60" cy="60" r="13" fill="currentColor"/>
+    </symbol>
+
+    <symbol id="sealed-mark-construct" viewBox="0 0 120 120">
+      <!-- guide grid -->
+      <circle cx="60" cy="60" r="54" fill="none" stroke="#D97757" stroke-width="0.3" stroke-dasharray="1 1"/>
+      <circle cx="60" cy="60" r="13" fill="none" stroke="#D97757" stroke-width="0.3" stroke-dasharray="1 1"/>
+      <line x1="0" y1="60" x2="120" y2="60" stroke="#D97757" stroke-width="0.3" stroke-dasharray="1 1"/>
+      <line x1="60" y1="0" x2="60" y2="120" stroke="#D97757" stroke-width="0.3" stroke-dasharray="1 1"/>
+      <!-- mark -->
+      <circle cx="60" cy="60" r="54" fill="none" stroke="#0B1220" stroke-width="1.25" opacity="0.22"/>
+      <line x1="80" y1="48" x2="97" y2="45" stroke="#0B1220" stroke-width="3" stroke-linecap="round"/>
+      <line x1="80" y1="60" x2="97" y2="60" stroke="#0B1220" stroke-width="3" stroke-linecap="round"/>
+      <line x1="80" y1="72" x2="97" y2="75" stroke="#0B1220" stroke-width="3" stroke-linecap="round"/>
+      <line x1="40" y1="48" x2="23" y2="45" stroke="#0B1220" stroke-width="3" stroke-linecap="round"/>
+      <line x1="40" y1="60" x2="23" y2="60" stroke="#0B1220" stroke-width="3" stroke-linecap="round"/>
+      <line x1="40" y1="72" x2="23" y2="75" stroke="#0B1220" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="60" cy="60" r="13" fill="#0B1220"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ─────────────────────────── PAGE 1 — COVER ─────────────────────────── -->
+<section class="page cover">
+  <div class="mark-big">
+    <svg width="260" height="260" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+  </div>
+  <h1>Sealed</h1>
+  <div class="tag">Brand mark · Primary · v1.0</div>
+  <div class="meta">
+    <span>Sealed — AI agent for B2B deals</span>
+    <span>2026 · Jakarta</span>
+  </div>
+</section>
+
+<!-- ─────────────────────────── PAGE 2 — HERO ─────────────────────────── -->
+<section class="page">
+  <div class="page-header">
+    <span>01 · Primary mark</span>
+    <span>Sealed / Brand / 2026</span>
+  </div>
+  <h2 class="page-title">A face. A signal. Sealed.</h2>
+  <div class="page-sub">Dense tapered whiskers on both sides of a solid dot, held inside a quiet ring. Reads at once as the seal's face and as a broadcast — the agent speaking and listening on your behalf.</div>
+
+  <div class="page-body">
+    <div class="hero-grid">
+      <div class="hero-left">
+        <svg width="380" height="380" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+      </div>
+      <div class="hero-right">
+        <div class="hero-kicker">Sealed · Primary mark · v1.0</div>
+        <p class="hero-headline">A face.<br/>A signal.<br/>Sealed.</p>
+        <p class="hero-body">One confident dot. Six tapered strokes. One quiet ring. That's the entire mark — built to feel both animate (a creature listening) and agentic (a node broadcasting).</p>
+        <div class="hero-scale">
+          <svg width="20" height="20" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+          <svg width="32" height="32" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+          <svg width="52" height="52" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+          <svg width="80" height="80" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── PAGE 3 — CONSTRUCTION ─────────────────────────── -->
+<section class="page">
+  <div class="page-header">
+    <span>02 · Construction & tokens</span>
+    <span>Sealed / Brand / 2026</span>
+  </div>
+  <h2 class="page-title">Construction & tokens</h2>
+  <div class="page-sub">Everything lives on a 120 grid. One ink, one paper, one accent.</div>
+
+  <div class="page-body">
+    <div class="constr-grid">
+      <div class="constr-left">
+        <svg width="380" height="380"><use href="#sealed-mark-construct"/></svg>
+      </div>
+      <div class="constr-right">
+        <div class="section-label">Tokens</div>
+        <div class="token-row">INK&nbsp; <span style="color: var(--muted)">#0B1220</span> <span class="sw" style="background:#0B1220"></span></div>
+        <div class="token-row">PAPER&nbsp; <span style="color: var(--muted)">#F4F1EA</span> <span class="sw" style="background:#F4F1EA"></span></div>
+        <div class="token-row">ACCENT&nbsp; <span style="color: var(--muted)">#D97757</span> <span class="sw" style="background:#D97757"></span></div>
+
+        <div class="divider">
+          <div class="section-label">Grid</div>
+          viewBox&nbsp; <span style="color: var(--muted)">120 × 120</span><br/>
+          dot&nbsp; <span style="color: var(--muted)">r = 13</span><br/>
+          ring&nbsp; <span style="color: var(--muted)">r = 54 · 1.25w · 22% op</span><br/>
+          whisker&nbsp; <span style="color: var(--muted)">3 strokes/side, tapered</span><br/>
+          stroke&nbsp; <span style="color: var(--muted)">3 · linecap round</span>
+        </div>
+
+        <div class="divider">
+          <div class="section-label">Type</div>
+          family&nbsp; <span style="color: var(--muted)">Inter Tight</span><br/>
+          weight&nbsp; <span style="color: var(--muted)">600</span><br/>
+          tracking&nbsp; <span style="color: var(--muted)">−0.02em</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── PAGE 4 — SCALE ─────────────────────────── -->
+<section class="page">
+  <div class="page-header">
+    <span>03 · Scale</span>
+    <span>Sealed / Brand / 2026</span>
+  </div>
+  <h2 class="page-title">Scale</h2>
+  <div class="page-sub">Holds from favicon to hero. Minimum size 14px; below that, drop the ring.</div>
+
+  <div class="page-body" style="flex-direction: column; gap: 0.6cm;">
+    <div class="scale-strip">
+      <svg width="14" height="14" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+      <svg width="20" height="20" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+      <svg width="32" height="32" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+      <svg width="56" height="56" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+      <svg width="96" height="96" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+      <svg width="160" height="160" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+    </div>
+    <div class="scale-labels">
+      <span>14 PX</span><span>20 PX</span><span>32 PX</span><span>56 PX</span><span>96 PX</span><span>160 PX</span>
+    </div>
+
+    <div class="scale-strip" style="background: var(--ink); color: var(--paper);">
+      <svg width="14" height="14" style="color: var(--paper)"><use href="#sealed-mark"/></svg>
+      <svg width="20" height="20" style="color: var(--paper)"><use href="#sealed-mark"/></svg>
+      <svg width="32" height="32" style="color: var(--paper)"><use href="#sealed-mark"/></svg>
+      <svg width="56" height="56" style="color: var(--paper)"><use href="#sealed-mark"/></svg>
+      <svg width="96" height="96" style="color: var(--paper)"><use href="#sealed-mark"/></svg>
+      <svg width="160" height="160" style="color: var(--paper)"><use href="#sealed-mark"/></svg>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── PAGE 5 — LOCKUPS ─────────────────────────── -->
+<section class="page">
+  <div class="page-header">
+    <span>04 · Lockups</span>
+    <span>Sealed / Brand / 2026</span>
+  </div>
+  <h2 class="page-title">Lockups</h2>
+  <div class="page-sub">Horizontal, stacked, inverted, and mark-only.</div>
+
+  <div class="page-body">
+    <div class="lockup-grid">
+      <div class="lockup-cell">
+        <div class="label">Horizontal · light</div>
+        <div class="h-lockup">
+          <svg width="60" height="60" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+          <div class="wm">Sealed</div>
+        </div>
+      </div>
+      <div class="lockup-cell dark">
+        <div class="label">Horizontal · dark</div>
+        <div class="h-lockup">
+          <svg width="60" height="60" style="color: var(--paper)"><use href="#sealed-mark"/></svg>
+          <div class="wm">Sealed</div>
+        </div>
+      </div>
+      <div class="lockup-cell">
+        <div class="label">Stacked</div>
+        <div class="s-lockup">
+          <svg width="110" height="110" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+          <div class="wm">Sealed</div>
+        </div>
+      </div>
+      <div class="lockup-cell white">
+        <div class="label">Mark only · ringless</div>
+        <svg width="140" height="140" style="color: var(--ink)"><use href="#sealed-mark-noring"/></svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── PAGE 6 — IN CONTEXT ─────────────────────────── -->
+<section class="page">
+  <div class="page-header">
+    <span>05 · In context</span>
+    <span>Sealed / Brand / 2026</span>
+  </div>
+  <h2 class="page-title">In context</h2>
+  <div class="page-sub">Browser, app icons, business card, chat avatar.</div>
+
+  <div class="page-body">
+    <div class="context-grid">
+      <!-- Browser -->
+      <div class="ctx-cell">
+        <div class="label">Browser · favicon + header</div>
+        <div class="browser-tabs">
+          <div class="browser-tab">
+            <svg width="14" height="14" style="color: var(--ink)"><use href="#sealed-mark-noring"/></svg>
+            <span>Sealed — Deals</span>
+            <span style="margin-left: 6px; color: var(--muted); font-size: 9pt;">×</span>
+          </div>
+        </div>
+        <div class="browser-body">
+          <div class="h-lockup" style="gap: 10px;">
+            <svg width="22" height="22" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+            <div class="wm" style="font-size: 16px;">Sealed</div>
+          </div>
+          <div class="devnet-pill">devnet</div>
+        </div>
+      </div>
+
+      <!-- App icon dark -->
+      <div class="ctx-cell">
+        <div class="label">App icon · dark</div>
+        <div class="app-icon-wrap">
+          <div class="app-icon" style="background: var(--ink);">
+            <svg width="120" height="120" style="color: var(--paper)"><use href="#sealed-mark"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- App icon light -->
+      <div class="ctx-cell">
+        <div class="label">App icon · light</div>
+        <div class="app-icon-wrap">
+          <div class="app-icon" style="background: var(--paper);">
+            <svg width="120" height="120" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Business card -->
+      <div class="ctx-cell">
+        <div class="label">Business card</div>
+        <div class="biz-card">
+          <div class="h-lockup" style="gap: 10px;">
+            <svg width="30" height="30" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+            <div class="wm" style="font-size: 20px;">Sealed</div>
+          </div>
+          <div class="biz-meta">
+            <div class="nm">hello@sealed.xyz</div>
+            <div class="sub">Jakarta · Solana devnet</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat -->
+      <div class="ctx-cell chat-cell" style="justify-content: center;">
+        <div class="label">Chat avatar</div>
+        <div class="chat-row">
+          <div class="chat-avatar">
+            <svg width="22" height="22" style="color: var(--paper)"><use href="#sealed-mark-noring"/></svg>
+          </div>
+          <div class="chat-bubble">I've structured the deal into 3 milestones. Review before funding?</div>
+        </div>
+        <div class="chat-time">Sealed · just now</div>
+      </div>
+
+      <!-- Wordmark large -->
+      <div class="ctx-cell" style="background: var(--paper);">
+        <div class="label">Wordmark</div>
+        <div class="h-lockup" style="gap: 18px;">
+          <svg width="80" height="80" style="color: var(--ink)"><use href="#sealed-mark"/></svg>
+          <div class="wm" style="font-size: 48px;">Sealed</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Wait for fonts + layout, then trigger print
+  (async () => {
+    try { await document.fonts.ready; } catch (e) {}
+    await new Promise(r => setTimeout(r, 500));
+    window.print();
+  })();
+</script>
+
+</body>
+</html>

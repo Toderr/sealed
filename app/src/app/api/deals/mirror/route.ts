@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
     total_amount_usdc,
     milestones,
     tx_signature,
+    status: bodyStatus,
   } = body as {
     deal_id?: string;
     seller_wallet?: string;
@@ -24,6 +25,7 @@ export async function POST(request: NextRequest) {
     total_amount_usdc?: number;
     milestones?: Array<{ description: string; amount: number; status?: string }>;
     tx_signature?: string;
+    status?: string;
   };
 
   if (
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
         description: description ?? null,
         total_amount_usdc,
         milestones,
-        status: "funded",
+        status: bodyStatus ?? "draft",
       },
       { onConflict: "deal_id" }
     )
