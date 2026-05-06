@@ -44,11 +44,13 @@ async function callOpenAiCompat(
   messages: LlmMessage[],
   maxTokens: number
 ): Promise<string> {
+  const key = apiKey.trim();
+  if (!key) throw new Error("API key is empty — please save your API key in Profile settings.");
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${key}`,
     },
     body: JSON.stringify({
       model,
@@ -71,6 +73,8 @@ async function callGemini(
   messages: LlmMessage[],
   maxTokens: number
 ): Promise<string> {
+  const key = apiKey.trim();
+  if (!key) throw new Error("API key is empty — please save your API key in Profile settings.");
   const contents = messages.map((m) => {
     if (typeof m.content === "string") {
       return { role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] };
@@ -90,7 +94,7 @@ async function callGemini(
   });
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

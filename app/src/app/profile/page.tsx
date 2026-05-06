@@ -974,7 +974,7 @@ function SettingsTab({ wallet }: { wallet: string }) {
 
   function saveLlmConfig() {
     updateProfile({
-      llmConfig: { mode: "own-key", provider: llmProvider, model: llmModel, apiKey: llmKey },
+      llmConfig: { mode: "own-key", provider: llmProvider, model: llmModel, apiKey: llmKey.trim() },
     });
     setLlmSaved(true);
     setTimeout(() => setLlmSaved(false), 2000);
