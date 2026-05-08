@@ -5,6 +5,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { ChatMessage, DealParams, formatUsdc } from "@/lib/types";
 import { SealedMark } from "@/components/SealedLogo";
 import { getLlmHeaders } from "@/lib/llm-headers";
+import { ContractWizard } from "@/components/ContractWizard";
 
 function tryParseDealParams(text: string): DealParams | undefined {
   // Look for JSON block in the response (```json...``` or raw JSON object)
@@ -49,6 +50,7 @@ export default function ChatInterface({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { connected, publicKey } = useWallet();
 
@@ -56,8 +58,13 @@ export default function ChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function sendMessage() {
-    const text = input.trim();
+  async function handleWizardComplete(prompt: string) {
+    setShowWizard(false);
+    await sendMessage(prompt);
+  }
+
+  async function sendMessage(overrideText?: string) {
+    const text = (overrideText ?? input).trim();
     if (!text || loading) return;
 
     const userMsg: ChatMessage = {
@@ -68,7 +75,7 @@ export default function ChatInterface({
     };
 
     setMessages((prev) => [...prev, userMsg]);
-    setInput("");
+    if (!overrideText) setInput("");
     setLoading(true);
 
     try {
@@ -131,36 +138,59 @@ export default function ChatInterface({
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-8 space-y-4">
         {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center gap-4">
-            <div className="text-primary/90">
-              <SealedMark size={56} />
+          showWizard ? (
+            <div className="flex items-center justify-center h-full py-8">
+              <ContractWizard
+                onComplete={handleWizardComplete}
+                onClose={() => setShowWizard(false)}
+              />
             </div>
-            <h2
-              className="text-[22px] text-primary"
-              style={{ ...headingStyle, letterSpacing: "-0.022em" }}
-            >
-              Start a new deal
-            </h2>
-            <p className="text-muted max-w-md text-[14px] leading-relaxed">
-              Describe your business deal in natural language. The agent will
-              structure it into an escrow-protected agreement with milestones.
-            </p>
-            <div className="flex flex-col sm:flex-row flex-wrap gap-2 justify-center mt-3 w-full max-w-xl">
-              {[
-                "I want to buy 100 units of product X for $5,000 USDC",
-                "Set up a service contract with 3 payment milestones",
-                "Create an escrow for a website development project",
-              ].map((suggestion) => (
-                <button
-                  key={suggestion}
-                  onClick={() => setInput(suggestion)}
-                  className="flex-1 min-w-0 px-3.5 py-2.5 text-[13px] text-muted surface-card-subtle rounded-lg hover:bg-[rgba(255,255,255,0.04)] hover:text-primary hover:border-[rgba(255,255,255,0.12)] transition-colors text-left"
-                >
-                  {suggestion}
-                </button>
-              ))}
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-center gap-4">
+              <div className="text-primary/90">
+                <SealedMark size={56} />
+              </div>
+              <h2
+                className="text-[22px] text-primary"
+                style={{ ...headingStyle, letterSpacing: "-0.022em" }}
+              >
+                Start a new deal
+              </h2>
+              <p className="text-muted max-w-md text-[14px] leading-relaxed">
+                Describe your business deal in natural language, or use the wizard
+                to fill in details step by step.
+              </p>
+              {/* Wizard trigger */}
+              <button
+                onClick={() => setShowWizard(true)}
+                disabled={!connected}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-accent/30 text-accent hover:bg-accent/5 hover:border-accent/60 transition-colors text-[13px] disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ fontWeight: 510 }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+                Buat dengan wizard
+              </button>
+              <div className="flex flex-col sm:flex-row flex-wrap gap-2 justify-center w-full max-w-xl">
+                {[
+                  "I want to buy 100 units of product X for $5,000 USDC",
+                  "Set up a service contract with 3 payment milestones",
+                  "Create an escrow for a website development project",
+                ].map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => setInput(suggestion)}
+                    className="flex-1 min-w-0 px-3.5 py-2.5 text-[13px] text-muted surface-card-subtle rounded-lg hover:bg-[rgba(255,255,255,0.04)] hover:text-primary hover:border-[rgba(255,255,255,0.12)] transition-colors text-left"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )
         )}
 
         {messages.map((msg) => (
@@ -221,6 +251,19 @@ export default function ChatInterface({
       {/* Input */}
       <div className="border-t border-card-border-subtle px-4 sm:px-6 py-4 bg-panel">
         <div className="flex gap-2 items-end">
+          {/* Wizard shortcut button */}
+          <button
+            onClick={() => { setShowWizard(true); setMessages([]); }}
+            disabled={!connected}
+            title="Buat dengan wizard"
+            className="shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border border-card-border text-subtle hover:text-accent hover:border-accent/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z" />
+              <path d="M2 17l10 5 10-5" />
+              <path d="M2 12l10 5 10-5" />
+            </svg>
+          </button>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -241,7 +284,7 @@ export default function ChatInterface({
             }}
           />
           <button
-            onClick={sendMessage}
+            onClick={() => sendMessage()}
             disabled={!input.trim() || loading || !connected}
             className="btn-primary rounded-lg px-4 h-10 text-[13px] shrink-0 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="Send message"
