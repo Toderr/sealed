@@ -1120,10 +1120,16 @@ function ManualNegotiationPanel({
     if (messages.length > 0 || loading || openingFired.current) return;
     openingFired.current = true;
     setLoading(true);
+    const dealContext = {
+      title: deal.title,
+      totalAmount: deal.total_amount_usdc,
+      milestones: (deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
+      buyerWallet: deal.buyer_wallet,
+    };
     fetch("/api/negotiate/manual", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-wallet": wallet },
-      body: JSON.stringify({ dealId: deal.deal_id, messages: [], isOpening: true, sellerWallet: wallet }),
+      body: JSON.stringify({ dealId: deal.deal_id, messages: [], isOpening: true, sellerWallet: wallet, dealContext }),
     })
       .then((r) => r.json())
       .then((data) => {
@@ -1150,10 +1156,16 @@ function ManualNegotiationPanel({
     setLoading(true);
 
     try {
+      const dealContext = {
+        title: deal.title,
+        totalAmount: deal.total_amount_usdc,
+        milestones: (deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
+        buyerWallet: deal.buyer_wallet,
+      };
       const res = await fetch("/api/negotiate/manual", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-wallet": wallet },
-        body: JSON.stringify({ dealId: deal.deal_id, messages: updated, sellerWallet: wallet }),
+        body: JSON.stringify({ dealId: deal.deal_id, messages: updated, sellerWallet: wallet, dealContext }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "API error");

@@ -40,20 +40,41 @@ export async function POST(request: NextRequest) {
     messages: Array<{ role: "user" | "assistant"; content: string }>;
     isOpening?: boolean;
     sellerWallet?: string;
+    // Client passes deal context directly so server doesn't need to re-fetch
+    // (deal may only be in sessionStorage, not yet in Supabase)
+    dealContext?: {
+      title: string;
+      totalAmount: number;
+      milestones: Array<{ description: string; amount: number }>;
+      buyerWallet: string;
+    };
   };
 
-  const { dealId, messages, isOpening, sellerWallet } = body;
+  const { dealId, messages, isOpening, sellerWallet, dealContext } = body;
 
   if (!dealId) {
     return NextResponse.json({ error: "dealId required" }, { status: 400 });
   }
 
-  const deal = await fetchDealContext(dealId);
+  // Prefer client-supplied context; fall back to Supabase fetch
+  let dealTitle: string;
+  let totalAmount: number;
+  let buyerWallet: string;
+  let milestoneList: Array<{ description: string; amount: number }>;
 
-  const dealTitle = deal?.title ?? dealId;
-  const totalAmount = deal?.total_amount_usdc ?? 0;
-  const buyerWallet = deal?.buyer_wallet ?? "";
-  const milestoneList: Array<{ description: string; amount: number }> = deal?.milestones ?? [];
+  if (dealContext && dealContext.title && dealContext.totalAmount > 0) {
+    dealTitle = dealContext.title;
+    totalAmount = dealContext.totalAmount;
+    buyerWallet = dealContext.buyerWallet ?? "";
+    milestoneList = dealContext.milestones ?? [];
+  } else {
+    const deal = await fetchDealContext(dealId);
+    dealTitle = deal?.title ?? dealId;
+    totalAmount = deal?.total_amount_usdc ?? 0;
+    buyerWallet = deal?.buyer_wallet ?? "";
+    milestoneList = deal?.milestones ?? [];
+  }
+
   const milestonesText = milestoneList
     .map((m, i) => `  ${i + 1}. ${m.description} — $${m.amount} USDC`)
     .join("\n");
