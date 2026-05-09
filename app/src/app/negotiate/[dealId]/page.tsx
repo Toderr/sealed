@@ -148,6 +148,21 @@ export default function NegotiateRoom() {
     };
   }, [dealId]);
 
+  // If Supabase returned the deal before the seller PATCH propagated, seller_wallet
+  // may still be empty. Check sessionStorage and patch local state so the seller
+  // gets the correct role (not "observer").
+  useEffect(() => {
+    if (!wallet || !deal || deal.seller_wallet) return;
+    try {
+      const raw = sessionStorage.getItem(`deal:${deal.deal_id}`);
+      if (!raw) return;
+      const local = JSON.parse(raw) as { seller_wallet?: string };
+      if (local.seller_wallet === wallet) {
+        setDeal((prev) => (prev ? { ...prev, seller_wallet: wallet } : prev));
+      }
+    } catch {}
+  }, [wallet, deal]);
+
   // Fetch counterparty public profile
   useEffect(() => {
     if (!deal || !wallet) return;
