@@ -1,75 +1,115 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase, table } from "@/lib/supabase";
-import { dispatchLlm, getLlmOptsFromEnv } from "@/lib/llm-dispatch";
+import { dispatchLlm } from "@/lib/llm-dispatch";
 
-export async function POST(request: NextRequest) {
-  const { dealId, messages } = await request.json() as {
-    dealId: string;
-    messages: Array<{ role: "user" | "assistant"; content: string }>;
-  };
-
-  if (!dealId || !Array.isArray(messages)) {
-    return NextResponse.json({ error: "dealId and messages required" }, { status: 400 });
+// Always use a reliable paid model for agent responses.
+// Ignores OPENROUTER_MODEL env var on purpose — free-tier models hit rate limits
+// during real-time negotiation conversations.
+function getServerLlm() {
+  if (process.env.ANTHROPIC_API_KEY) {
+    return { provider: "anthropic", model: "claude-haiku-4-5-20251001", apiKey: process.env.ANTHROPIC_API_KEY };
   }
+  if (process.env.OPENROUTER_API_KEY) {
+    return { provider: "openrouter", model: "anthropic/claude-haiku-4-5", apiKey: process.env.OPENROUTER_API_KEY };
+  }
+  return null;
+}
 
-  // Fetch deal context — try Supabase, continue without it if unavailable
-  let dealTitle = "this deal";
-  let totalAmount = 0;
-  let milestonesText = "";
-
+async function fetchDealContext(dealId: string) {
   try {
     const { data } = await supabase
       .from(table("deals"))
-      .select("title, total_amount_usdc, milestones")
+      .select("title, total_amount_usdc, milestones, buyer_wallet")
       .eq("deal_id", dealId)
       .single();
-
-    if (data) {
-      dealTitle = data.title ?? dealId;
-      totalAmount = data.total_amount_usdc ?? 0;
-      const milestones: Array<{ description: string; amount: number }> = data.milestones ?? [];
-      milestonesText = milestones
-        .map((m, i) => `  ${i + 1}. ${m.description} — $${m.amount} USDC`)
-        .join("\n");
-    }
+    return data ?? null;
   } catch {
-    // Non-fatal — proceed without deal context
+    return null;
+  }
+}
+
+async function saveMessage(dealId: string, role: string, content: string, wallet: string) {
+  try {
+    await supabase.from(table("messages")).insert({ deal_id: dealId, role, content, wallet });
+  } catch {}
+}
+
+export async function POST(request: NextRequest) {
+  const body = await request.json() as {
+    dealId: string;
+    messages: Array<{ role: "user" | "assistant"; content: string }>;
+    isOpening?: boolean;
+    sellerWallet?: string;
+  };
+
+  const { dealId, messages, isOpening, sellerWallet } = body;
+
+  if (!dealId) {
+    return NextResponse.json({ error: "dealId required" }, { status: 400 });
   }
 
-  const systemPrompt = `You are an AI negotiation agent representing the BUYER in a deal called "${dealTitle}".
+  const deal = await fetchDealContext(dealId);
 
-Current deal terms:
-- Total value: $${totalAmount} USDC
-${milestonesText ? `- Payment milestones:\n${milestonesText}` : ""}
+  const dealTitle = deal?.title ?? dealId;
+  const totalAmount = deal?.total_amount_usdc ?? 0;
+  const buyerWallet = deal?.buyer_wallet ?? "";
+  const milestoneList: Array<{ description: string; amount: number }> = deal?.milestones ?? [];
+  const milestonesText = milestoneList
+    .map((m, i) => `  ${i + 1}. ${m.description} — $${m.amount} USDC`)
+    .join("\n");
 
-The counterparty (seller) does not have their own AI agent, so they are negotiating with you directly.
+  const systemPrompt = `You are an AI negotiation agent representing the BUYER in a business deal.
 
-Your objectives:
-1. Explain the current deal terms clearly if asked.
-2. Consider the seller's counterproposals fairly and respond constructively.
-3. Accept small, reasonable modifications (e.g. minor timeline adjustments, small amount changes within 10%).
-4. Decline unreasonable changes that significantly hurt the buyer, and explain why.
-5. Work toward a mutual agreement efficiently.
+Deal: "${dealTitle}"
+Total value: $${totalAmount} USDC
+Payment milestones:
+${milestonesText || "  (no milestones defined yet)"}
 
-When both parties have reached full agreement on terms, end your response with exactly:
-[AGREED] — then summarize the final agreed terms in one sentence.
+You are speaking directly with the SELLER (counterparty) who is reviewing these terms.
 
-Be concise and professional. Always respond in the same language the seller uses.`;
+Your role:
+- Explain the deal clearly and professionally
+- Consider the seller's counterproposals fairly
+- Accept minor changes (timeline, ≤10% amount adjustments)
+- Decline unreasonable requests, explaining why
+- Work toward a mutual agreement
 
-  const llm = getLlmOptsFromEnv();
+When both parties have fully agreed, end your response with:
+[AGREED] — followed by one sentence summarizing the final terms.
+
+Be concise and professional. Respond in the same language the seller uses.`;
+
+  const llm = getServerLlm();
   if (!llm) {
     return NextResponse.json({ error: "No LLM provider configured on the server" }, { status: 500 });
   }
+
+  // Opening message: agent introduces itself and summarizes the contract
+  const callMessages = isOpening
+    ? [{ role: "user" as const, content: "Please introduce yourself and summarize the deal terms clearly so I can review them." }]
+    : messages;
 
   try {
     const response = await dispatchLlm({
       ...llm,
       system: systemPrompt,
-      messages,
-      maxTokens: 512,
+      messages: callMessages,
+      maxTokens: 600,
     });
 
     const agreed = response.includes("[AGREED]");
+
+    // Persist both sides to sealed_messages so buyer can see the conversation
+    if (isOpening) {
+      await saveMessage(dealId, "assistant", response, buyerWallet);
+    } else if (messages.length > 0) {
+      const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+      if (lastUserMsg) {
+        await saveMessage(dealId, "user", lastUserMsg.content, sellerWallet ?? "");
+      }
+      await saveMessage(dealId, "assistant", response, buyerWallet);
+    }
+
     return NextResponse.json({ response, agreed });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

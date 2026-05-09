@@ -525,8 +525,13 @@ export default function NegotiateRoom() {
               </div>
             </div>
 
-            {/* Invite counterparty (buyer only, draft status) */}
-            {role === "buyer" && deal.status === "draft" && inviteLink && (
+            {/* Shared conversation view — replaces invite section once seller joins */}
+            {!!deal.seller_wallet && (
+              <ConversationView dealId={deal.deal_id} buyerView={role === "buyer"} />
+            )}
+
+            {/* Invite counterparty (buyer only, no seller yet) */}
+            {role === "buyer" && !deal.seller_wallet && deal.status === "draft" && inviteLink && (
               <div className="surface-card rounded-xl p-5 space-y-4">
                 <div>
                   <p className="text-[13px] text-primary" style={labelStyle}>Invite counterparty</p>
@@ -685,26 +690,14 @@ export default function NegotiateRoom() {
                     </div>
                   )}
 
-                  {/* ── BUYER — no seller yet ── */}
+                  {/* ── BUYER — waiting for seller to join ── */}
                   {role === "buyer" && !deal.seller_wallet && (
-                    !memory ? (
-                      <div className="p-5 space-y-4">
-                        <p className="text-[13px] text-primary" style={labelStyle}>Start negotiation</p>
-                        <p className="text-[12px] text-warning">Configure your agent settings before negotiating.</p>
-                      </div>
-                    ) : (
-                      <div className="p-5 space-y-4">
-                        <div>
-                          <p className="text-[13px] text-primary" style={labelStyle}>Start negotiation</p>
-                          <p className="text-[12px] text-muted mt-0.5">
-                            Preview how your agent negotiates the terms before the counterparty joins.
-                          </p>
-                        </div>
-                        <button onClick={startNegotiation} className="btn-primary h-10 px-6 rounded-md text-[13px]">
-                          Start simulation
-                        </button>
-                      </div>
-                    )
+                    <div className="p-5 space-y-2">
+                      <p className="text-[13px] text-primary" style={labelStyle}>Waiting for counterparty</p>
+                      <p className="text-[12px] text-muted">
+                        Share the invite link above. Negotiation starts automatically once they join.
+                      </p>
+                    </div>
                   )}
 
                   {/* ── BUYER — seller joined, waiting for their mode choice ── */}
@@ -1016,6 +1009,73 @@ function NegotiationResult({
   );
 }
 
+/* ── Shared conversation view ───────────────────────────────────────────── */
+
+type DbMsg = { id: string; role: string; content: string; wallet: string; created_at: string };
+
+function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: boolean }) {
+  const [msgs, setMsgs] = useState<DbMsg[]>([]);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    function poll() {
+      fetch(`/api/messages?deal_id=${dealId}`)
+        .then((r) => r.json())
+        .then((data) => { if (!cancelled) setMsgs(data.messages ?? []); })
+        .catch(() => {});
+    }
+    poll();
+    const interval = setInterval(poll, 4000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [dealId]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [msgs]);
+
+  if (msgs.length === 0) return null;
+
+  return (
+    <div className="surface-card rounded-xl overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-card-border-subtle flex items-center justify-between">
+        <p className="text-[13px] text-primary" style={labelStyle}>
+          {buyerView ? "Your agent is negotiating" : "Negotiation chat"}
+        </p>
+        <span className="flex items-center gap-1.5 text-[11px] text-subtle">
+          <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+          Live
+        </span>
+      </div>
+      <div className="px-4 py-4 space-y-3 max-h-72 overflow-y-auto">
+        {msgs.map((m) => {
+          const isAgent = m.role === "assistant";
+          return (
+            <div key={m.id} className={`flex ${isAgent ? "justify-start" : "justify-end"}`}>
+              <div className={`max-w-[82%] rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
+                isAgent ? "surface-card text-foreground" : "bg-brand text-white"
+              }`}>
+                {!isAgent && (
+                  <p className="text-[10px] opacity-70 mb-1">
+                    {buyerView ? "Counterparty" : "You"}
+                  </p>
+                )}
+                {isAgent && (
+                  <p className="text-[10px] text-accent mb-1">
+                    {buyerView ? "Your agent" : "Buyer's agent"}
+                  </p>
+                )}
+                <div className="whitespace-pre-wrap">{m.content}</div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+    </div>
+  );
+}
+
 /* ── Manual negotiation panel (seller without agent) ───────────────────── */
 
 type ChatMsg = { role: "user" | "assistant"; content: string };
@@ -1036,6 +1096,45 @@ function ManualNegotiationPanel({
   const [loading, setLoading] = useState(false);
   const [agreedByAgent, setAgreedByAgent] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const openingFired = useRef(false);
+
+  // Load existing messages from Supabase on mount
+  useEffect(() => {
+    fetch(`/api/messages?deal_id=${deal.deal_id}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const dbMsgs: Array<{ role: string; content: string }> = data.messages ?? [];
+        if (dbMsgs.length > 0) {
+          setMessages(dbMsgs.map((m) => ({
+            role: m.role === "assistant" ? "assistant" : "user",
+            content: m.content,
+          })));
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deal.deal_id]);
+
+  // Auto-trigger buyer's agent opening message when conversation is empty
+  useEffect(() => {
+    if (messages.length > 0 || loading || openingFired.current) return;
+    openingFired.current = true;
+    setLoading(true);
+    fetch("/api/negotiate/manual", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-wallet": wallet },
+      body: JSON.stringify({ dealId: deal.deal_id, messages: [], isOpening: true, sellerWallet: wallet }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.response) {
+          setMessages([{ role: "assistant", content: data.response }]);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1054,7 +1153,7 @@ function ManualNegotiationPanel({
       const res = await fetch("/api/negotiate/manual", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-wallet": wallet },
-        body: JSON.stringify({ dealId: deal.deal_id, messages: updated }),
+        body: JSON.stringify({ dealId: deal.deal_id, messages: updated, sellerWallet: wallet }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "API error");
