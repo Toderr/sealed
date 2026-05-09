@@ -71,6 +71,27 @@ export default function NegotiateRoom() {
   const [copied, setCopied] = useState(false);
   const [deploying, setDeploying] = useState(false);
 
+  // Re-push a sessionStorage deal to Supabase so counterparties on other devices can load it
+  function retryMirrorSync(local: SupabaseDeal) {
+    if (!local.buyer_wallet) return;
+    fetch("/api/deals/mirror", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-wallet": local.buyer_wallet,
+      },
+      body: JSON.stringify({
+        deal_id: local.deal_id,
+        seller_wallet: local.seller_wallet ?? null,
+        title: local.title,
+        description: local.description ?? null,
+        total_amount_usdc: local.total_amount_usdc,
+        milestones: local.milestones ?? [],
+        status: local.status ?? "draft",
+      }),
+    }).catch(() => {}); // best-effort
+  }
+
   // Fetch deal — tries Supabase first, falls back to sessionStorage
   useEffect(() => {
     if (!dealId) return;
@@ -97,10 +118,14 @@ export default function NegotiateRoom() {
         clearTimeout(timer);
         if (cancelled) return;
         if (data.error) {
-          // Supabase returned an error — fall back to sessionStorage
           const local = trySessionStorage();
-          if (local) setDeal(local);
-          else setLoadError(data.error);
+          if (local) {
+            setDeal(local);
+            // Retry mirror sync so counterparties on other devices can find this deal
+            retryMirrorSync(local);
+          } else {
+            setLoadError(data.error);
+          }
         } else {
           setDeal(data.deal as SupabaseDeal);
         }
@@ -109,8 +134,12 @@ export default function NegotiateRoom() {
         clearTimeout(timer);
         if (cancelled) return;
         const local = trySessionStorage();
-        if (local) setDeal(local);
-        else setLoadError("Failed to load deal. Please check your connection.");
+        if (local) {
+          setDeal(local);
+          retryMirrorSync(local);
+        } else {
+          setLoadError("Failed to load deal. Please check your connection.");
+        }
       });
 
     return () => {

@@ -58,15 +58,61 @@ export default function InvitePage() {
     if (!publicKey || !payload) return;
     setAccepted(true);
 
-    // Register the counterparty's wallet on the deal (if not yet assigned)
+    const sellerWallet = publicKey.toBase58();
+
+    // 1. Fetch full deal from Supabase and save to this browser's sessionStorage
+    //    so the negotiate room can load it even before Supabase propagates the PATCH.
+    try {
+      const res = await fetch(`/api/deals/${payload.dealId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.deal) {
+          sessionStorage.setItem(`deal:${payload.dealId}`, JSON.stringify({
+            ...data.deal,
+            seller_wallet: sellerWallet,
+          }));
+        }
+      } else {
+        // Supabase doesn't have the deal yet — build a minimal record from the
+        // invite token so the negotiate room still loads for the counterparty.
+        const minimal = {
+          deal_id: payload.dealId,
+          buyer_wallet: payload.inviterWallet,
+          seller_wallet: sellerWallet,
+          title: payload.dealTitle,
+          description: payload.description ?? "",
+          total_amount_usdc: payload.amount,
+          milestones: [],
+          status: "draft",
+        };
+        sessionStorage.setItem(`deal:${payload.dealId}`, JSON.stringify(minimal));
+      }
+    } catch {
+      // Network error — still save minimal record
+      try {
+        const minimal = {
+          deal_id: payload.dealId,
+          buyer_wallet: payload.inviterWallet,
+          seller_wallet: sellerWallet,
+          title: payload.dealTitle,
+          description: payload.description ?? "",
+          total_amount_usdc: payload.amount,
+          milestones: [],
+          status: "draft",
+        };
+        sessionStorage.setItem(`deal:${payload.dealId}`, JSON.stringify(minimal));
+      } catch {}
+    }
+
+    // 2. Register this wallet as the seller on the deal
     try {
       await fetch(`/api/deals/${payload.dealId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-wallet": publicKey.toBase58(),
+          "x-wallet": sellerWallet,
         },
-        body: JSON.stringify({ seller_wallet: publicKey.toBase58() }),
+        body: JSON.stringify({ seller_wallet: sellerWallet }),
       });
     } catch {
       // non-fatal — navigate anyway
