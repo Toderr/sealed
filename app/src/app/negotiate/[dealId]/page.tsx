@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
@@ -466,26 +466,82 @@ export default function NegotiateRoom() {
             {/* Negotiation panel */}
             <div className="surface-card rounded-xl overflow-hidden">
               {negState.kind === "idle" && (
-                <div className="p-5 space-y-4">
-                  <div>
-                    <p className="text-[13px] text-primary" style={labelStyle}>Start negotiation</p>
-                    <p className="text-[12px] text-muted mt-0.5">
-                      Your agent and the counterparty&apos;s agent will negotiate terms on your behalf. Review the result before anything goes on-chain.
-                    </p>
-                  </div>
+                <>
                   {role === "observer" ? (
-                    <p className="text-[13px] text-muted">You are observing this deal.</p>
+                    <div className="p-5">
+                      <p className="text-[13px] text-muted">You are observing this deal.</p>
+                    </div>
+                  ) : role === "seller" && !memory ? (
+                    // Seller has no agent — negotiate manually with the buyer's agent
+                    <ManualNegotiationPanel
+                      deal={deal}
+                      wallet={wallet ?? ""}
+                      onAgree={() => {
+                        const now = Date.now();
+                        const terms: DealParams = {
+                          dealId: deal.deal_id,
+                          title: deal.title,
+                          sellerWallet: deal.seller_wallet ?? wallet ?? "",
+                          totalAmount: deal.total_amount_usdc,
+                          milestones: (deal.milestones ?? []).map((m) => ({
+                            description: m.description,
+                            amount: m.amount,
+                          })),
+                        };
+                        const proposal: Proposal = {
+                          id: `${deal.deal_id}-manual-${now}`,
+                          origin: "manual",
+                          buyerWallet: deal.buyer_wallet,
+                          sellerWallet: deal.seller_wallet ?? "",
+                          initialTerms: terms,
+                          revisions: [],
+                          status: "agreed",
+                          finalTerms: terms,
+                          summary: {
+                            pros: ["Both parties agreed on the deal terms"],
+                            cons: [],
+                            keyConcessions: [],
+                            riskFlags: [],
+                            confidenceScore: 1,
+                            recommendation: "accept",
+                            recommendationReasoning:
+                              "Terms accepted through direct negotiation with the buyer's agent.",
+                          },
+                          buyerBoundaries: defaultSellerBoundaries(),
+                          sellerBoundaries: defaultSellerBoundaries(),
+                          createdAt: now,
+                          updatedAt: now,
+                        };
+                        setNegState({ kind: "done", proposal });
+                      }}
+                    />
                   ) : !memory ? (
-                    <p className="text-[12px] text-warning">Configure your agent settings before negotiating.</p>
+                    <div className="p-5 space-y-4">
+                      <div>
+                        <p className="text-[13px] text-primary" style={labelStyle}>Start negotiation</p>
+                        <p className="text-[12px] text-muted mt-0.5">
+                          Configure your agent settings to start AI-powered negotiation.
+                        </p>
+                      </div>
+                      <p className="text-[12px] text-warning">Configure your agent settings before negotiating.</p>
+                    </div>
                   ) : (
-                    <button
-                      onClick={startNegotiation}
-                      className="btn-primary h-10 px-6 rounded-md text-[13px]"
-                    >
-                      Start negotiation
-                    </button>
+                    <div className="p-5 space-y-4">
+                      <div>
+                        <p className="text-[13px] text-primary" style={labelStyle}>Start negotiation</p>
+                        <p className="text-[12px] text-muted mt-0.5">
+                          Your agent and the counterparty&apos;s agent will negotiate terms on your behalf. Review the result before anything goes on-chain.
+                        </p>
+                      </div>
+                      <button
+                        onClick={startNegotiation}
+                        className="btn-primary h-10 px-6 rounded-md text-[13px]"
+                      >
+                        Start negotiation
+                      </button>
+                    </div>
                   )}
-                </div>
+                </>
               )}
 
               {negState.kind === "running" && (
@@ -767,6 +823,153 @@ function NegotiationResult({
       {!agreed && (
         <button onClick={onRenegotiate} className="btn-ghost h-9 px-4 rounded-md text-[13px]">
           Renegotiate
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ── Manual negotiation panel (seller without agent) ───────────────────── */
+
+type ChatMsg = { role: "user" | "assistant"; content: string };
+
+function ManualNegotiationPanel({
+  deal,
+  wallet,
+  onAgree,
+}: {
+  deal: SupabaseDeal;
+  wallet: string;
+  onAgree: () => void;
+}) {
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [agreedByAgent, setAgreedByAgent] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  async function send(text?: string) {
+    const content = (text ?? input).trim();
+    if (!content || loading) return;
+    if (!text) setInput("");
+
+    const updated: ChatMsg[] = [...messages, { role: "user", content }];
+    setMessages(updated);
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/negotiate/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-wallet": wallet },
+        body: JSON.stringify({ dealId: deal.deal_id, messages: updated }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "API error");
+      setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
+      if (data.agreed) setAgreedByAgent(true);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: err instanceof Error ? err.message : "Failed to respond. Try again." },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const suggestions = [
+    "What are the payment terms?",
+    "Can we adjust the milestone schedule?",
+    "I accept the current terms.",
+  ];
+
+  return (
+    <div className="p-5 space-y-4">
+      {/* Header */}
+      <div>
+        <p className="text-[13px] text-primary" style={headingStyle}>
+          Negotiate with buyer&apos;s agent
+        </p>
+        <p className="text-[12px] text-muted mt-0.5">
+          You don&apos;t have an AI agent set up, so you&apos;re negotiating directly with the buyer&apos;s agent. Propose changes or accept the current terms.
+        </p>
+      </div>
+
+      {/* Chat history */}
+      {messages.length === 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              onClick={() => send(s)}
+              className="px-3 py-1.5 rounded-lg border border-card-border text-[12px] text-muted hover:text-foreground hover:border-accent/30 transition-colors"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+          {messages.map((m, i) => (
+            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
+                  m.role === "user"
+                    ? "bg-brand text-white"
+                    : "surface-card text-foreground"
+                }`}
+              >
+                <div className="whitespace-pre-wrap">{m.content}</div>
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="flex justify-start">
+              <div className="surface-card rounded-xl px-3.5 py-2.5">
+                <div className="flex gap-1 items-center h-4">
+                  {[0, 150, 300].map((d) => (
+                    <span key={d} className="h-1.5 w-1.5 rounded-full bg-muted animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+      )}
+
+      {/* Input */}
+      {!agreedByAgent && (
+        <div className="flex gap-2">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            placeholder="Type your message or counteroffer…"
+            disabled={loading}
+            className="flex-1 h-9 rounded-md bg-surface border border-card-border px-3 text-[13px] text-foreground placeholder:text-subtle outline-none focus:border-accent/50 transition-colors disabled:opacity-50"
+          />
+          <button
+            onClick={() => send()}
+            disabled={!input.trim() || loading}
+            className="btn-primary h-9 px-4 rounded-md text-[13px] disabled:opacity-40"
+          >
+            Send
+          </button>
+        </div>
+      )}
+
+      {/* Accept button */}
+      {(agreedByAgent || messages.length > 0) && (
+        <button
+          onClick={onAgree}
+          className="btn-primary h-10 px-6 rounded-md text-[13px] w-full"
+        >
+          {agreedByAgent ? "Confirm agreement ✓" : "Accept current terms as-is"}
         </button>
       )}
     </div>
