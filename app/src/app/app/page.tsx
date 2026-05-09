@@ -7,21 +7,17 @@ import ChatInterface from "@/components/ChatInterface";
 import DealDashboard from "@/components/DealDashboard";
 import SettingsModal from "@/components/SettingsModal";
 import { useToast } from "@/components/Toast";
-import { useDealsStore } from "@/lib/deals-store";
 import { useProfileStore } from "@/lib/profile-store";
 import { DealParams } from "@/lib/types";
-import type { Deal } from "@/lib/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 
 type View = "chat" | "deals";
 
 export default function Home() {
   const [view, setView] = useState<View>("chat");
-  const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const { publicKey } = useWallet();
-  const { deals } = useDealsStore(publicKey ?? null);
   const { profile, loaded: profileLoaded } = useProfileStore(
     publicKey?.toBase58() ?? null
   );
@@ -114,11 +110,7 @@ export default function Home() {
         {view === "chat" ? (
           <ChatInterface onDealCreated={handleDealDrafted} />
         ) : (
-          <DealDashboard
-            deals={deals}
-            selectedDeal={selectedDeal}
-            onSelectDeal={setSelectedDeal}
-          />
+          <DealDashboard />
         )}
       </main>
       {settingsOpen && (
