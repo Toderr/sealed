@@ -156,37 +156,66 @@ async function callAnthropic(
   return block.type === "text" ? block.text : "";
 }
 
+async function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function is429(err: unknown): boolean {
+  return err instanceof Error && err.message.includes("429");
+}
+
 export async function dispatchLlm(opts: LlmCallOptions): Promise<string> {
   const maxTokens = opts.maxTokens ?? 1024;
-  switch (opts.provider) {
-    case "anthropic":
-      return callAnthropic(opts.apiKey, opts.model, opts.system, opts.messages, maxTokens);
-    case "openai":
-      return callOpenAiCompat("https://api.openai.com/v1", opts.apiKey, opts.model, opts.system, opts.messages, maxTokens);
-    case "groq":
-      return callOpenAiCompat("https://api.groq.com/openai/v1", opts.apiKey, opts.model, opts.system, opts.messages, maxTokens);
-    case "openrouter":
-      return callOpenAiCompat("https://openrouter.ai/api/v1", opts.apiKey, opts.model, opts.system, opts.messages, maxTokens);
-    case "gemini":
-      return callGemini(opts.apiKey, opts.model, opts.system, opts.messages, maxTokens);
-    default:
-      throw new Error(`Unknown LLM provider: ${opts.provider}`);
+
+  async function once(): Promise<string> {
+    switch (opts.provider) {
+      case "anthropic":
+        return callAnthropic(opts.apiKey, opts.model, opts.system, opts.messages, maxTokens);
+      case "openai":
+        return callOpenAiCompat("https://api.openai.com/v1", opts.apiKey, opts.model, opts.system, opts.messages, maxTokens);
+      case "groq":
+        return callOpenAiCompat("https://api.groq.com/openai/v1", opts.apiKey, opts.model, opts.system, opts.messages, maxTokens);
+      case "openrouter":
+        return callOpenAiCompat("https://openrouter.ai/api/v1", opts.apiKey, opts.model, opts.system, opts.messages, maxTokens);
+      case "gemini":
+        return callGemini(opts.apiKey, opts.model, opts.system, opts.messages, maxTokens);
+      default:
+        throw new Error(`Unknown LLM provider: ${opts.provider}`);
+    }
   }
+
+  // Retry up to 3 times on 429 with exponential backoff (2 s, 4 s)
+  const delays = [2000, 4000];
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      return await once();
+    } catch (err) {
+      lastErr = err;
+      if (is429(err) && attempt < delays.length) {
+        await sleep(delays[attempt]);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
 }
 
 export function getLlmOptsFromEnv(): { provider: string; model: string; apiKey: string } | null {
-  if (process.env.OPENROUTER_API_KEY) {
-    return {
-      provider: "openrouter",
-      model: process.env.OPENROUTER_MODEL ?? "anthropic/claude-sonnet-4",
-      apiKey: process.env.OPENROUTER_API_KEY,
-    };
-  }
   if (process.env.ANTHROPIC_API_KEY) {
     return {
       provider: "anthropic",
-      model: "claude-sonnet-4-20250514",
+      model: "claude-haiku-4-5-20251001",
       apiKey: process.env.ANTHROPIC_API_KEY,
+    };
+  }
+  if (process.env.OPENROUTER_API_KEY) {
+    // Prefer an explicit model env var; default to a paid model to avoid free-tier rate limits
+    return {
+      provider: "openrouter",
+      model: process.env.OPENROUTER_MODEL ?? "anthropic/claude-haiku-4-5",
+      apiKey: process.env.OPENROUTER_API_KEY,
     };
   }
   return null;
