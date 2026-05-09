@@ -46,29 +46,35 @@ export default function Home() {
       return;
     }
 
-    try {
-      await fetch("/api/deals/mirror", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-wallet": publicKey.toBase58(),
-        },
-        body: JSON.stringify({
-          deal_id: params.dealId,
-          seller_wallet: params.sellerWallet,
-          title: params.dealId,
-          description: params.milestones.map((m) => m.description).join(" | "),
-          total_amount_usdc: params.totalAmount,
-          milestones: params.milestones.map((m) => ({
-            description: m.description,
-            amount: m.amount,
-            status: "Pending",
-          })),
-          status: "draft",
-        }),
+    const res = await fetch("/api/deals/mirror", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-wallet": publicKey.toBase58(),
+      },
+      body: JSON.stringify({
+        deal_id: params.dealId,
+        seller_wallet: params.sellerWallet,
+        title: params.dealId,
+        description: params.milestones.map((m) => m.description).join(" | "),
+        total_amount_usdc: params.totalAmount,
+        milestones: params.milestones.map((m) => ({
+          description: m.description,
+          amount: m.amount,
+          status: "Pending",
+        })),
+        status: "draft",
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast.show({
+        variant: "error",
+        title: "Could not save deal",
+        description: (err as { error?: string }).error ?? "Please try again.",
       });
-    } catch {
-      // Non-fatal — proceed to room even if mirror fails
+      return;
     }
 
     router.push(`/negotiate/${params.dealId}`);

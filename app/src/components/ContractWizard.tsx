@@ -93,6 +93,13 @@ interface InputStepDef {
   optional?: boolean;
 }
 
+interface FriendPickerStepDef {
+  kind: "friend_picker";
+  id: string;
+  title: string;
+  subtitle?: string;
+}
+
 interface MilestonesStepDef {
   kind: "milestones";
   id: "milestones";
@@ -103,46 +110,43 @@ interface ReviewStepDef {
   id: "review";
 }
 
-type StepDef = SelectStepDef | InputStepDef | MilestonesStepDef | ReviewStepDef;
+type StepDef = SelectStepDef | InputStepDef | FriendPickerStepDef | MilestonesStepDef | ReviewStepDef;
 
 const CONTRACT_TYPE_STEP: SelectStepDef = {
   kind: "select",
   id: "contract_type",
-  title: "Jenis kontrak apa yang ingin dibuat?",
+  title: "What type of contract do you want to create?",
   options: [
-    { label: "Kontrak Jual Beli", description: "Pembelian barang dengan milestone pembayaran", value: "sale" },
-    { label: "Kontrak Jasa/Layanan", description: "Proyek berbasis deliverable dan milestone", value: "service" },
-    { label: "Kontrak Kerja Sama (MOU)", description: "Kolaborasi bisnis dengan pembagian hasil", value: "partnership" },
-    { label: "Kontrak Sewa", description: "Sewa aset/properti dengan deposit keamanan", value: "rental" },
-    { label: "Kontrak Kerahasiaan (NDA)", description: "Denda pelanggaran dikunci di escrow", value: "nda" },
-    { label: "Lainnya", description: "Deskripsi kontrak bebas", value: "other" },
+    { label: "Purchase Agreement", description: "Goods purchase with payment milestones", value: "sale" },
+    { label: "Service Contract", description: "Deliverable-based project with milestones", value: "service" },
+    { label: "Partnership Agreement (MOU)", description: "Business collaboration with profit sharing", value: "partnership" },
+    { label: "Rental Agreement", description: "Asset/property rental with security deposit", value: "rental" },
+    { label: "Confidentiality Agreement (NDA)", description: "Breach penalty locked in escrow", value: "nda" },
+    { label: "Other", description: "Free-form contract description", value: "other" },
   ],
 };
 
-const COMMON_PREFIX: InputStepDef[] = [
+const COMMON_PREFIX: StepDef[] = [
   {
     kind: "input",
     id: "title",
-    title: "Judul kontrak",
-    subtitle: "Nama singkat yang mudah dikenali untuk deal ini",
+    title: "Contract title",
+    subtitle: "A short, recognizable name for this deal",
     field: "title",
     inputType: "text",
-    placeholder: "e.g. Jasa desain logo PT Maju Bersama",
+    placeholder: "e.g. Logo design for Acme Corp",
   },
   {
-    kind: "input",
+    kind: "friend_picker",
     id: "counterparty",
-    title: "Wallet pihak lawan",
-    subtitle: "Alamat Solana wallet seller / mitra / penyewa",
-    field: "counterparty",
-    inputType: "text",
-    placeholder: "e.g. 7xKXtg2CW87d97TXJSDpbD5jBkheTqA...",
+    title: "Who is the counterparty?",
+    subtitle: "Select from your friends list or enter a wallet address manually",
   },
   {
     kind: "input",
     id: "total_amount",
-    title: "Nilai total deal (USDC)",
-    subtitle: "Jumlah yang akan dikunci di escrow",
+    title: "Total deal value (USDC)",
+    subtitle: "Amount to be locked in escrow",
     field: "totalAmount",
     inputType: "number",
     placeholder: "e.g. 5000",
@@ -151,34 +155,34 @@ const COMMON_PREFIX: InputStepDef[] = [
 
 const TYPE_STEPS: Record<ContractType, InputStepDef[]> = {
   sale: [
-    { kind: "input", id: "goods_name", title: "Barang apa yang dibeli?", field: "goodsName", inputType: "text", placeholder: "e.g. 100 unit laptop Dell Latitude 5540" },
-    { kind: "input", id: "delivery_date", title: "Kapan batas pengiriman?", field: "deliveryDate", inputType: "date", optional: true },
-    { kind: "input", id: "warranty_days", title: "Garansi berapa hari?", subtitle: "Opsional", field: "warrantyDays", inputType: "number", placeholder: "e.g. 30", optional: true },
+    { kind: "input", id: "goods_name", title: "What goods are being purchased?", field: "goodsName", inputType: "text", placeholder: "e.g. 100 units Dell Latitude 5540 laptop" },
+    { kind: "input", id: "delivery_date", title: "Delivery deadline", field: "deliveryDate", inputType: "date", optional: true },
+    { kind: "input", id: "warranty_days", title: "Warranty period (days)", subtitle: "Optional", field: "warrantyDays", inputType: "number", placeholder: "e.g. 30", optional: true },
   ],
   service: [
-    { kind: "input", id: "scope_of_work", title: "Deskripsi pekerjaan", subtitle: "Apa yang harus diselesaikan?", field: "scopeOfWork", inputType: "textarea", placeholder: "e.g. Desain UI/UX untuk 10 halaman aplikasi mobile..." },
-    { kind: "input", id: "service_deadline", title: "Deadline proyek", field: "serviceDeadline", inputType: "date" },
-    { kind: "input", id: "revisions", title: "Berapa kali revisi gratis?", subtitle: "Opsional", field: "revisions", inputType: "number", placeholder: "e.g. 3", optional: true },
+    { kind: "input", id: "scope_of_work", title: "Job description", subtitle: "What needs to be completed?", field: "scopeOfWork", inputType: "textarea", placeholder: "e.g. UI/UX design for 10 mobile app screens..." },
+    { kind: "input", id: "service_deadline", title: "Project deadline", field: "serviceDeadline", inputType: "date" },
+    { kind: "input", id: "revisions", title: "Number of free revisions", subtitle: "Optional", field: "revisions", inputType: "number", placeholder: "e.g. 3", optional: true },
   ],
   partnership: [
-    { kind: "input", id: "my_contribution", title: "Kontribusi Anda", subtitle: "Modal, aset, atau keahlian yang Anda bawa", field: "myContribution", inputType: "text", placeholder: "e.g. Modal kerja Rp 500 juta" },
-    { kind: "input", id: "their_contribution", title: "Kontribusi mitra", field: "theirContribution", inputType: "text", placeholder: "e.g. Jaringan distribusi nasional" },
-    { kind: "input", id: "profit_split", title: "Pembagian hasil (%)", subtitle: "Berapa persen bagian Anda?", field: "profitSplit", inputType: "number", placeholder: "e.g. 60 (Anda 60%, mitra 40%)" },
-    { kind: "input", id: "partnership_duration", title: "Durasi kerja sama (bulan)", field: "partnershipDuration", inputType: "number", placeholder: "e.g. 12" },
+    { kind: "input", id: "my_contribution", title: "Your contribution", subtitle: "Capital, assets, or skills you bring", field: "myContribution", inputType: "text", placeholder: "e.g. $500K working capital" },
+    { kind: "input", id: "their_contribution", title: "Partner's contribution", field: "theirContribution", inputType: "text", placeholder: "e.g. National distribution network" },
+    { kind: "input", id: "profit_split", title: "Profit split (%)", subtitle: "What percentage is your share?", field: "profitSplit", inputType: "number", placeholder: "e.g. 60 (You 60%, partner 40%)" },
+    { kind: "input", id: "partnership_duration", title: "Partnership duration (months)", field: "partnershipDuration", inputType: "number", placeholder: "e.g. 12" },
   ],
   rental: [
-    { kind: "input", id: "asset_description", title: "Aset yang disewakan", field: "assetDescription", inputType: "text", placeholder: "e.g. Gudang 500m² di Kawasan Industri Cikarang" },
-    { kind: "input", id: "rental_start", title: "Tanggal mulai sewa", field: "rentalStart", inputType: "date" },
-    { kind: "input", id: "rental_end", title: "Tanggal berakhir sewa", field: "rentalEnd", inputType: "date" },
-    { kind: "input", id: "security_deposit", title: "Jumlah deposit (USDC)", subtitle: "Opsional — dikembalikan jika tidak ada kerusakan", field: "securityDeposit", inputType: "number", placeholder: "e.g. 1000", optional: true },
+    { kind: "input", id: "asset_description", title: "Asset being rented", field: "assetDescription", inputType: "text", placeholder: "e.g. 500m² warehouse in Industrial Estate" },
+    { kind: "input", id: "rental_start", title: "Rental start date", field: "rentalStart", inputType: "date" },
+    { kind: "input", id: "rental_end", title: "Rental end date", field: "rentalEnd", inputType: "date" },
+    { kind: "input", id: "security_deposit", title: "Deposit amount (USDC)", subtitle: "Optional — returned if no damage", field: "securityDeposit", inputType: "number", placeholder: "e.g. 1000", optional: true },
   ],
   nda: [
-    { kind: "input", id: "protected_info", title: "Informasi yang dilindungi", subtitle: "Apa yang tidak boleh dibocorkan?", field: "protectedInfo", inputType: "textarea", placeholder: "e.g. Strategi pricing, data pelanggan, rencana produk..." },
-    { kind: "input", id: "nda_duration", title: "Durasi kerahasiaan (tahun)", field: "ndaDuration", inputType: "number", placeholder: "e.g. 3" },
-    { kind: "input", id: "breach_penalty", title: "Denda pelanggaran (USDC)", subtitle: "Dikunci di escrow, dilepas jika terbukti melanggar", field: "breachPenalty", inputType: "number", placeholder: "e.g. 10000" },
+    { kind: "input", id: "protected_info", title: "Protected information", subtitle: "What must not be disclosed?", field: "protectedInfo", inputType: "textarea", placeholder: "e.g. Pricing strategy, customer data, product roadmap..." },
+    { kind: "input", id: "nda_duration", title: "Confidentiality duration (years)", field: "ndaDuration", inputType: "number", placeholder: "e.g. 3" },
+    { kind: "input", id: "breach_penalty", title: "Breach penalty (USDC)", subtitle: "Locked in escrow, released if breach is proven", field: "breachPenalty", inputType: "number", placeholder: "e.g. 10000" },
   ],
   other: [
-    { kind: "input", id: "scope_of_work", title: "Deskripsi deal", subtitle: "Jelaskan kesepakatan yang ingin dibuat", field: "scopeOfWork", inputType: "textarea", placeholder: "Jelaskan detail deal Anda..." },
+    { kind: "input", id: "scope_of_work", title: "Deal description", subtitle: "Describe the agreement you want to create", field: "scopeOfWork", inputType: "textarea", placeholder: "Describe your deal in detail..." },
   ],
 };
 
@@ -208,35 +212,35 @@ function generateMilestones(data: WizardData): WizardMilestone[] {
     case "sale":
       return [
         { description: "Down payment (50%)", amount: String(half) },
-        { description: `Pengiriman ${data.goodsName || "barang"}`, amount: "0" },
-        { description: "Pelunasan setelah barang diterima (50%)", amount: String(half) },
+        { description: `Delivery of ${data.goodsName || "goods"}`, amount: "0" },
+        { description: "Final payment after goods received (50%)", amount: String(half) },
       ];
     case "service":
       return [
-        { description: "Kickoff / pembayaran awal (30%)", amount: String(third) },
-        { description: "Selesai setengah pekerjaan (40%)", amount: String(remainder) },
-        { description: "Deliverable final & acceptance (30%)", amount: String(third) },
+        { description: "Kickoff / initial payment (30%)", amount: String(third) },
+        { description: "Halfway completion (40%)", amount: String(remainder) },
+        { description: "Final deliverable & acceptance (30%)", amount: String(third) },
       ];
     case "partnership":
       return [
-        { description: "Setoran modal awal", amount: String(round2(total * 0.7)) },
-        { description: "Distribusi profit tahap pertama", amount: String(round2(total * 0.3)) },
+        { description: "Initial capital deposit", amount: String(round2(total * 0.7)) },
+        { description: "First profit distribution", amount: String(round2(total * 0.3)) },
       ];
     case "rental": {
       const deposit = parseFloat(data.securityDeposit) || round2(total * 0.2);
       return [
-        { description: "Deposit keamanan", amount: String(deposit) },
-        { description: "Biaya sewa periode pertama", amount: String(round2(total - deposit)) },
+        { description: "Security deposit", amount: String(deposit) },
+        { description: "First period rental fee", amount: String(round2(total - deposit)) },
       ];
     }
     case "nda":
       return [
-        { description: "Lock denda NDA (dikunci selama kontrak berlaku)", amount: String(total) },
+        { description: "NDA penalty locked (for duration of contract)", amount: String(total) },
       ];
     default:
       return [
-        { description: "Pembayaran pertama (50%)", amount: String(half) },
-        { description: "Pembayaran kedua (50%)", amount: String(half) },
+        { description: "First payment (50%)", amount: String(half) },
+        { description: "Second payment (50%)", amount: String(half) },
       ];
   }
 }
@@ -249,52 +253,52 @@ function round2(n: number): number {
 
 function getTypeName(type: ContractType | null): string {
   const map: Record<ContractType, string> = {
-    sale: "Kontrak Jual Beli",
-    service: "Kontrak Jasa/Layanan",
-    partnership: "Kontrak Kerja Sama (MOU)",
-    rental: "Kontrak Sewa",
-    nda: "Kontrak Kerahasiaan (NDA)",
-    other: "Kontrak",
+    sale: "Purchase Agreement",
+    service: "Service Contract",
+    partnership: "Partnership Agreement (MOU)",
+    rental: "Rental Agreement",
+    nda: "Confidentiality Agreement (NDA)",
+    other: "Contract",
   };
-  return type ? map[type] : "Kontrak";
+  return type ? map[type] : "Contract";
 }
 
 export function buildWizardPrompt(data: WizardData): string {
   const parts: string[] = [];
 
-  parts.push(`Buat ${getTypeName(data.contractType)} dengan judul "${data.title}".`);
-  parts.push(`Pihak lawan (seller/mitra) wallet: ${data.counterparty}.`);
-  parts.push(`Nilai total: ${data.totalAmount} USDC.`);
+  parts.push(`Create a ${getTypeName(data.contractType)} titled "${data.title}".`);
+  parts.push(`Counterparty (seller/partner) wallet: ${data.counterparty}.`);
+  parts.push(`Total value: ${data.totalAmount} USDC.`);
 
   if (data.contractType === "sale") {
-    if (data.goodsName) parts.push(`Barang: ${data.goodsName}.`);
-    if (data.deliveryDate) parts.push(`Deadline pengiriman: ${data.deliveryDate}.`);
-    if (data.warrantyDays) parts.push(`Garansi: ${data.warrantyDays} hari.`);
+    if (data.goodsName) parts.push(`Goods: ${data.goodsName}.`);
+    if (data.deliveryDate) parts.push(`Delivery deadline: ${data.deliveryDate}.`);
+    if (data.warrantyDays) parts.push(`Warranty: ${data.warrantyDays} days.`);
   } else if (data.contractType === "service") {
-    if (data.scopeOfWork) parts.push(`Scope kerja: ${data.scopeOfWork}.`);
+    if (data.scopeOfWork) parts.push(`Scope of work: ${data.scopeOfWork}.`);
     if (data.serviceDeadline) parts.push(`Deadline: ${data.serviceDeadline}.`);
-    if (data.revisions) parts.push(`Revisi gratis: ${data.revisions} kali.`);
+    if (data.revisions) parts.push(`Free revisions: ${data.revisions}.`);
   } else if (data.contractType === "partnership") {
-    if (data.myContribution) parts.push(`Kontribusi saya: ${data.myContribution}.`);
-    if (data.theirContribution) parts.push(`Kontribusi mitra: ${data.theirContribution}.`);
-    if (data.profitSplit) parts.push(`Bagi hasil: ${data.profitSplit}% untuk saya.`);
-    if (data.partnershipDuration) parts.push(`Durasi: ${data.partnershipDuration} bulan.`);
+    if (data.myContribution) parts.push(`My contribution: ${data.myContribution}.`);
+    if (data.theirContribution) parts.push(`Partner contribution: ${data.theirContribution}.`);
+    if (data.profitSplit) parts.push(`Profit split: ${data.profitSplit}% for me.`);
+    if (data.partnershipDuration) parts.push(`Duration: ${data.partnershipDuration} months.`);
   } else if (data.contractType === "rental") {
-    if (data.assetDescription) parts.push(`Aset: ${data.assetDescription}.`);
+    if (data.assetDescription) parts.push(`Asset: ${data.assetDescription}.`);
     if (data.rentalStart && data.rentalEnd)
-      parts.push(`Periode sewa: ${data.rentalStart} sampai ${data.rentalEnd}.`);
-    if (data.securityDeposit) parts.push(`Deposit: ${data.securityDeposit} USDC.`);
+      parts.push(`Rental period: ${data.rentalStart} to ${data.rentalEnd}.`);
+    if (data.securityDeposit) parts.push(`Security deposit: ${data.securityDeposit} USDC.`);
   } else if (data.contractType === "nda") {
-    if (data.protectedInfo) parts.push(`Informasi yang dilindungi: ${data.protectedInfo}.`);
-    if (data.ndaDuration) parts.push(`Durasi kerahasiaan: ${data.ndaDuration} tahun.`);
-    if (data.breachPenalty) parts.push(`Denda pelanggaran: ${data.breachPenalty} USDC dikunci di escrow.`);
+    if (data.protectedInfo) parts.push(`Protected information: ${data.protectedInfo}.`);
+    if (data.ndaDuration) parts.push(`Confidentiality duration: ${data.ndaDuration} years.`);
+    if (data.breachPenalty) parts.push(`Breach penalty: ${data.breachPenalty} USDC locked in escrow.`);
   } else if (data.scopeOfWork) {
-    parts.push(`Detail: ${data.scopeOfWork}.`);
+    parts.push(`Details: ${data.scopeOfWork}.`);
   }
 
   if (data.milestones.length > 0) {
     parts.push(
-      `\nMilestone:\n` +
+      `\nMilestones:\n` +
         data.milestones
           .map((m, i) => `${i + 1}. ${m.description}: ${m.amount} USDC`)
           .join("\n")
@@ -309,14 +313,29 @@ export function buildWizardPrompt(data: WizardData): string {
 const labelStyle: React.CSSProperties = { fontWeight: 510, letterSpacing: "-0.006em" };
 const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.014em" };
 
+// ── Friend types ───────────────────────────────────────────────────────────
+
+interface FriendProfile {
+  name?: string;
+  handle?: string;
+}
+
+interface FriendEntry {
+  id: string;
+  counterpartyWallet: string;
+  profile: FriendProfile | null;
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export function ContractWizard({
   onComplete,
   onClose,
+  wallet,
 }: {
   onComplete: (prompt: string) => void;
   onClose: () => void;
+  wallet?: string;
 }) {
   const [data, setData] = useState<WizardData>(DEFAULT_DATA);
   const [stepIndex, setStepIndex] = useState(0);
@@ -326,19 +345,16 @@ export function ContractWizard({
   const step = steps[stepIndex];
   const totalSteps = steps.length;
 
-  // Reset selected option when step changes
   useEffect(() => {
     setSelectedOption(0);
   }, [stepIndex]);
 
-  // Auto-generate milestones when entering milestone step
   useEffect(() => {
     if (step.kind === "milestones" && data.milestones.length === 0) {
       setData((prev) => ({ ...prev, milestones: generateMilestones(prev) }));
     }
   }, [step.kind, data.milestones.length]);
 
-  // Keyboard nav for select steps
   useEffect(() => {
     if (step.kind !== "select") return;
 
@@ -411,10 +427,17 @@ export function ContractWizard({
   const progress = Math.round(((stepIndex + 1) / totalSteps) * 100);
   const isLastStep = stepIndex === totalSteps - 1;
 
-  // Determine if Next is enabled for input steps
   const inputValue =
     step.kind === "input" ? String((data as unknown as Record<string, unknown>)[step.field] ?? "") : "";
-  const canAdvance = step.kind !== "input" || !!step.optional || !!inputValue.trim();
+
+  const canAdvance =
+    step.kind === "select"
+      ? false
+      : step.kind === "friend_picker"
+      ? !!data.counterparty.trim()
+      : step.kind === "input"
+      ? !!step.optional || !!inputValue.trim()
+      : true;
 
   return (
     <div className="w-full max-w-xl mx-auto">
@@ -425,7 +448,7 @@ export function ContractWizard({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-card-border">
           <span className="text-[13px] text-foreground" style={headingStyle}>
-            {step.id === "contract_type" ? "Buat kontrak baru" : getTypeName(data.contractType)}
+            {step.id === "contract_type" ? "Create new contract" : getTypeName(data.contractType)}
           </span>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-[11px] text-subtle">
@@ -476,6 +499,16 @@ export function ContractWizard({
               step={step}
               value={inputValue}
               onChange={(v) => setField(step.field, v as WizardData[typeof step.field])}
+              onSubmit={advance}
+            />
+          )}
+
+          {step.kind === "friend_picker" && (
+            <FriendPickerStep
+              key={step.id}
+              wallet={wallet}
+              value={data.counterparty}
+              onSelect={(addr) => setData((prev) => ({ ...prev, counterparty: addr }))}
               onSubmit={advance}
             />
           )}
@@ -556,6 +589,167 @@ export function ContractWizard({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Friend picker step ─────────────────────────────────────────────────────
+
+function FriendPickerStep({
+  wallet,
+  value,
+  onSelect,
+  onSubmit,
+}: {
+  wallet: string | undefined;
+  value: string;
+  onSelect: (addr: string) => void;
+  onSubmit: () => void;
+}) {
+  const [friends, setFriends] = useState<FriendEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showManual, setShowManual] = useState(false);
+  const [manualInput, setManualInput] = useState(value);
+
+  useEffect(() => {
+    if (!wallet) {
+      setLoading(false);
+      setShowManual(true);
+      return;
+    }
+    fetch("/api/friends", { headers: { "x-wallet": wallet } })
+      .then((r) => r.json())
+      .then((data) => {
+        const list: FriendEntry[] = data.friends ?? [];
+        setFriends(list);
+        if (list.length === 0) setShowManual(true);
+      })
+      .catch(() => setShowManual(true))
+      .finally(() => setLoading(false));
+  }, [wallet]);
+
+  function handleFriendClick(friendWallet: string) {
+    onSelect(friendWallet);
+    setTimeout(() => onSubmit(), 80);
+  }
+
+  return (
+    <div className="px-5 py-5 space-y-4">
+      <div>
+        <p className="text-[15px] text-primary" style={headingStyle}>
+          Who is the counterparty?
+        </p>
+        <p className="text-[13px] text-muted mt-0.5">
+          Select from your friends list or enter a wallet address manually
+        </p>
+      </div>
+
+      {loading && (
+        <div className="flex gap-1 items-center py-4 justify-center">
+          {[0, 150, 300].map((d) => (
+            <span
+              key={d}
+              className="h-1.5 w-1.5 rounded-full bg-muted animate-bounce"
+              style={{ animationDelay: `${d}ms` }}
+            />
+          ))}
+        </div>
+      )}
+
+      {!loading && friends.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={{ fontWeight: 510 }}>
+            Your friends
+          </p>
+          <div className="space-y-1">
+            {friends.map((f) => {
+              const displayName =
+                f.profile?.name ??
+                f.profile?.handle ??
+                `${f.counterpartyWallet.slice(0, 6)}…${f.counterpartyWallet.slice(-4)}`;
+              const isSelected = value === f.counterpartyWallet;
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => handleFriendClick(f.counterpartyWallet)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all border ${
+                    isSelected
+                      ? "bg-accent/10 border-accent/40"
+                      : "bg-[rgba(255,255,255,0.02)] border-card-border hover:border-accent/20 hover:bg-[rgba(255,255,255,0.03)]"
+                  }`}
+                >
+                  <div
+                    className="h-8 w-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-[12px] text-accent shrink-0"
+                    style={{ fontWeight: 590 }}
+                  >
+                    {displayName[0].toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] text-foreground truncate" style={labelStyle}>
+                      {displayName}
+                    </p>
+                    <p className="text-[11px] text-subtle font-mono">
+                      {f.counterpartyWallet.slice(0, 6)}…{f.counterpartyWallet.slice(-4)}
+                    </p>
+                  </div>
+                  {isSelected && (
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="text-accent shrink-0"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {!loading && !showManual && friends.length > 0 && (
+        <button
+          onClick={() => setShowManual(true)}
+          className="text-[12px] text-muted hover:text-accent transition-colors"
+        >
+          Enter wallet address manually →
+        </button>
+      )}
+
+      {!loading && showManual && (
+        <div className="space-y-2">
+          {friends.length > 0 && (
+            <p className="text-[12px] text-muted" style={{ fontWeight: 510 }}>
+              Or enter wallet manually:
+            </p>
+          )}
+          <input
+            type="text"
+            value={manualInput}
+            onChange={(e) => {
+              setManualInput(e.target.value);
+              onSelect(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && manualInput.trim()) {
+                e.preventDefault();
+                onSelect(manualInput.trim());
+                onSubmit();
+              }
+            }}
+            placeholder="Solana wallet address…"
+            className="w-full bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-3.5 py-2.5 text-[14px] text-foreground placeholder:text-subtle focus:outline-none focus:border-accent/50 transition-colors"
+            autoFocus={friends.length === 0}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -708,7 +902,7 @@ function InputStep({
 
       {step.optional && (
         <p className="text-[11px] text-subtle">
-          Opsional — tekan Skip untuk melanjutkan tanpa mengisi
+          Optional — press Skip to continue without filling this in
         </p>
       )}
     </div>
@@ -737,10 +931,10 @@ function MilestonesStep({
     <div className="px-5 py-5 space-y-4">
       <div>
         <p className="text-[15px] text-primary" style={headingStyle}>
-          Milestone pembayaran
+          Payment milestones
         </p>
         <p className="text-[13px] text-muted mt-0.5">
-          Edit atau sesuaikan. Total harus sama dengan {totalAmount || "0"} USDC.
+          Edit or adjust. Total must equal {totalAmount || "0"} USDC.
         </p>
       </div>
 
@@ -752,7 +946,7 @@ function MilestonesStep({
               type="text"
               value={m.description}
               onChange={(e) => onUpdate(i, "description", e.target.value)}
-              placeholder="Deskripsi milestone"
+              placeholder="Milestone description"
               className="flex-1 bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-3 py-2 text-[13px] text-foreground placeholder:text-subtle focus:outline-none focus:border-accent/50 transition-colors"
             />
             <input
@@ -766,7 +960,7 @@ function MilestonesStep({
               <button
                 onClick={() => onRemove(i)}
                 className="text-subtle hover:text-danger transition-colors shrink-0"
-                aria-label="Hapus milestone"
+                aria-label="Remove milestone"
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6">
                   <path d="M1 1l10 10M11 1L1 11" strokeLinecap="round" />
@@ -786,17 +980,17 @@ function MilestonesStep({
           <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M6 1v10M1 6h10" />
           </svg>
-          Tambah milestone
+          Add milestone
         </button>
         <span
           className={`text-[12px] transition-colors ${balanced ? "text-success" : "text-warning"}`}
           style={labelStyle}
         >
           {balanced
-            ? "✓ Total sesuai"
+            ? "✓ Total balanced"
             : remaining > 0
-            ? `Sisa ${remaining} USDC`
-            : `Kelebihan ${Math.abs(remaining)} USDC`}
+            ? `${remaining} USDC remaining`
+            : `${Math.abs(remaining)} USDC over budget`}
         </span>
       </div>
     </div>
@@ -805,10 +999,10 @@ function MilestonesStep({
 
 function ReviewStep({ data }: { data: WizardData }) {
   const rows: { label: string; value: string }[] = [
-    { label: "Jenis kontrak", value: getTypeName(data.contractType) },
-    { label: "Judul", value: data.title || "—" },
+    { label: "Contract type", value: getTypeName(data.contractType) },
+    { label: "Title", value: data.title || "—" },
     {
-      label: "Counterparty wallet",
+      label: "Counterparty",
       value: data.counterparty
         ? `${data.counterparty.slice(0, 8)}…${data.counterparty.slice(-4)}`
         : "—",
@@ -817,36 +1011,36 @@ function ReviewStep({ data }: { data: WizardData }) {
   ];
 
   if (data.contractType === "sale") {
-    if (data.goodsName) rows.push({ label: "Barang", value: data.goodsName });
-    if (data.deliveryDate) rows.push({ label: "Deadline kirim", value: data.deliveryDate });
-    if (data.warrantyDays) rows.push({ label: "Garansi", value: `${data.warrantyDays} hari` });
+    if (data.goodsName) rows.push({ label: "Goods", value: data.goodsName });
+    if (data.deliveryDate) rows.push({ label: "Delivery deadline", value: data.deliveryDate });
+    if (data.warrantyDays) rows.push({ label: "Warranty", value: `${data.warrantyDays} days` });
   } else if (data.contractType === "service") {
     if (data.scopeOfWork)
-      rows.push({ label: "Scope kerja", value: data.scopeOfWork.length > 80 ? data.scopeOfWork.slice(0, 80) + "…" : data.scopeOfWork });
+      rows.push({ label: "Scope of work", value: data.scopeOfWork.length > 80 ? data.scopeOfWork.slice(0, 80) + "…" : data.scopeOfWork });
     if (data.serviceDeadline) rows.push({ label: "Deadline", value: data.serviceDeadline });
-    if (data.revisions) rows.push({ label: "Revisi gratis", value: `${data.revisions}×` });
+    if (data.revisions) rows.push({ label: "Free revisions", value: `${data.revisions}×` });
   } else if (data.contractType === "partnership") {
     if (data.profitSplit)
-      rows.push({ label: "Bagi hasil", value: `${data.profitSplit}% / ${round2(100 - parseFloat(data.profitSplit))}%` });
-    if (data.partnershipDuration) rows.push({ label: "Durasi", value: `${data.partnershipDuration} bulan` });
+      rows.push({ label: "Profit split", value: `${data.profitSplit}% / ${round2(100 - parseFloat(data.profitSplit))}%` });
+    if (data.partnershipDuration) rows.push({ label: "Duration", value: `${data.partnershipDuration} months` });
   } else if (data.contractType === "rental") {
-    if (data.assetDescription) rows.push({ label: "Aset", value: data.assetDescription });
+    if (data.assetDescription) rows.push({ label: "Asset", value: data.assetDescription });
     if (data.rentalStart && data.rentalEnd)
-      rows.push({ label: "Periode", value: `${data.rentalStart} – ${data.rentalEnd}` });
+      rows.push({ label: "Period", value: `${data.rentalStart} – ${data.rentalEnd}` });
     if (data.securityDeposit) rows.push({ label: "Deposit", value: `${data.securityDeposit} USDC` });
   } else if (data.contractType === "nda") {
-    if (data.ndaDuration) rows.push({ label: "Durasi NDA", value: `${data.ndaDuration} tahun` });
-    if (data.breachPenalty) rows.push({ label: "Denda", value: `${data.breachPenalty} USDC` });
+    if (data.ndaDuration) rows.push({ label: "NDA duration", value: `${data.ndaDuration} years` });
+    if (data.breachPenalty) rows.push({ label: "Breach penalty", value: `${data.breachPenalty} USDC` });
   }
 
   return (
     <div className="px-5 py-5 space-y-4">
       <div>
         <p className="text-[15px] text-primary" style={headingStyle}>
-          Review kontrak
+          Review contract
         </p>
         <p className="text-[13px] text-muted mt-0.5">
-          Cek kembali sebelum dikirim ke AI agent untuk diproses.
+          Check everything before sending to the AI agent to process.
         </p>
       </div>
 
@@ -872,7 +1066,7 @@ function ReviewStep({ data }: { data: WizardData }) {
               >
                 <span className="truncate mr-3 text-foreground">
                   <span className="text-subtle mr-1.5">{i + 1}.</span>
-                  {m.description || <span className="text-subtle italic">Tanpa deskripsi</span>}
+                  {m.description || <span className="text-subtle italic">No description</span>}
                 </span>
                 <span className="shrink-0 font-mono text-muted">{m.amount} USDC</span>
               </div>

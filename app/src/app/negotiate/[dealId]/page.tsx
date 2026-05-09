@@ -342,31 +342,41 @@ export default function NegotiateRoom() {
               </div>
             </div>
 
-            {/* Invite link (buyer only, shown when deal is still draft) */}
+            {/* Invite counterparty (buyer only, draft status) */}
             {role === "buyer" && deal.status === "draft" && inviteLink && (
-              <div className="surface-card rounded-xl p-5 space-y-3">
+              <div className="surface-card rounded-xl p-5 space-y-4">
                 <div>
                   <p className="text-[13px] text-primary" style={labelStyle}>Invite counterparty</p>
                   <p className="text-[12px] text-muted mt-0.5">
-                    Share this link with the seller so they can join the negotiation room.
+                    Only you and the counterparty can participate in this negotiation room.
                   </p>
                 </div>
-                <div className="flex gap-2">
-                  <input
-                    readOnly
-                    value={inviteLink}
-                    className="flex-1 h-9 rounded-md bg-surface border border-card-border px-3 text-[12px] text-muted font-mono outline-none truncate"
-                  />
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(inviteLink);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    }}
-                    className="btn-ghost h-9 px-4 rounded-md text-[12px] shrink-0"
-                  >
-                    {copied ? "Copied ✓" : "Copy"}
-                  </button>
+
+                {/* Friend list invite */}
+                <FriendInviteSection wallet={wallet} inviteLink={inviteLink} />
+
+                {/* Direct link fallback */}
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={{ fontWeight: 510 }}>
+                    Or share direct link
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      readOnly
+                      value={inviteLink}
+                      className="flex-1 h-9 rounded-md bg-surface border border-card-border px-3 text-[12px] text-muted font-mono outline-none truncate"
+                    />
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(inviteLink);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      className="btn-ghost h-9 px-4 rounded-md text-[12px] shrink-0"
+                    >
+                      {copied ? "Copied ✓" : "Copy"}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -669,6 +679,89 @@ function NegotiationResult({
           Renegotiate
         </button>
       )}
+    </div>
+  );
+}
+
+/* ── Friend invite section ──────────────────────────────────────────────── */
+
+interface FriendInviteProfile {
+  name?: string;
+  handle?: string;
+}
+
+interface FriendInviteEntry {
+  id: string;
+  counterpartyWallet: string;
+  profile: FriendInviteProfile | null;
+}
+
+function FriendInviteSection({ wallet, inviteLink }: { wallet: string | null; inviteLink: string }) {
+  const [friends, setFriends] = useState<FriendInviteEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [copiedWallet, setCopiedWallet] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!wallet) { setLoading(false); return; }
+    fetch("/api/friends", { headers: { "x-wallet": wallet } })
+      .then((r) => r.json())
+      .then((data) => setFriends(data.friends ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [wallet]);
+
+  if (loading) return null;
+  if (friends.length === 0) return null;
+
+  function handleCopy(friendWallet: string) {
+    navigator.clipboard.writeText(inviteLink);
+    setCopiedWallet(friendWallet);
+    setTimeout(() => setCopiedWallet(null), 2000);
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={{ fontWeight: 510 }}>
+        Send to a friend
+      </p>
+      <div className="space-y-1">
+        {friends.map((f) => {
+          const displayName =
+            f.profile?.name ??
+            f.profile?.handle ??
+            `${f.counterpartyWallet.slice(0, 4)}…${f.counterpartyWallet.slice(-4)}`;
+          const isCopied = copiedWallet === f.counterpartyWallet;
+          return (
+            <div
+              key={f.id}
+              className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[rgba(255,255,255,0.02)] border border-card-border"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div
+                  className="h-7 w-7 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-[11px] text-accent shrink-0"
+                  style={{ fontWeight: 590 }}
+                >
+                  {displayName[0].toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[13px] text-foreground truncate" style={{ fontWeight: 510 }}>
+                    {displayName}
+                  </p>
+                  <p className="text-[11px] text-subtle font-mono">
+                    {f.counterpartyWallet.slice(0, 6)}…{f.counterpartyWallet.slice(-4)}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => handleCopy(f.counterpartyWallet)}
+                className="btn-ghost h-8 px-3 rounded-md text-[12px] shrink-0"
+              >
+                {isCopied ? "Copied ✓" : "Copy invite"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

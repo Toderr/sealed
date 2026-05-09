@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -23,10 +23,20 @@ const WalletMultiButton = dynamic(
 type Step = "profile" | "llm";
 
 export default function OnboardingPage() {
+  return (
+    <Suspense>
+      <OnboardingContent />
+    </Suspense>
+  );
+}
+
+function OnboardingContent() {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
   const { profile, loaded, updateProfile } = useProfileStore(wallet);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnUrl = searchParams.get("returnUrl") ?? "/profile";
   const [step, setStep] = useState<Step>("profile");
 
   // Profile fields
@@ -110,12 +120,12 @@ export default function OnboardingPage() {
         ? ({ mode: "x402", balance: existingX402Balance, model: x402Model } as const)
         : undefined;
     updateProfile({ llmConfig, onboardingComplete: true });
-    router.push("/profile");
+    router.push(returnUrl);
   }
 
   function handleSkipLLM() {
     updateProfile({ onboardingComplete: true });
-    router.push("/profile");
+    router.push(returnUrl);
   }
 
   if (!loaded) return null;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { ChatMessage, DealParams, formatUsdc } from "@/lib/types";
 import { SealedMark } from "@/components/SealedLogo";
@@ -53,6 +53,7 @@ export default function ChatInterface({
   const [showWizard, setShowWizard] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { connected, publicKey } = useWallet();
+  const wallet = publicKey?.toBase58() ?? undefined;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -113,6 +114,11 @@ export default function ChatInterface({
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
+
+      // Auto-show wizard when agent asks a clarifying question (no deal produced yet)
+      if (!dealParams) {
+        setShowWizard(true);
+      }
     } catch (err) {
       const errorMsg: ChatMessage = {
         id: crypto.randomUUID(),
@@ -143,6 +149,7 @@ export default function ChatInterface({
               <ContractWizard
                 onComplete={handleWizardComplete}
                 onClose={() => setShowWizard(false)}
+                wallet={wallet}
               />
             </div>
           ) : (
@@ -172,7 +179,7 @@ export default function ChatInterface({
                   <path d="M2 17l10 5 10-5" />
                   <path d="M2 12l10 5 10-5" />
                 </svg>
-                Buat dengan wizard
+                Use wizard
               </button>
               <div className="flex flex-col sm:flex-row flex-wrap gap-2 justify-center w-full max-w-xl">
                 {[
@@ -255,7 +262,7 @@ export default function ChatInterface({
           <button
             onClick={() => { setShowWizard(true); setMessages([]); }}
             disabled={!connected}
-            title="Buat dengan wizard"
+            title="Use wizard"
             className="shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border border-card-border text-subtle hover:text-accent hover:border-accent/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
