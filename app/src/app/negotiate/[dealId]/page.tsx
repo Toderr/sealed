@@ -338,6 +338,23 @@ export default function NegotiateRoom() {
           </span>
         </div>
 
+        {/* Profile setup nudge for counterparty who joined without onboarding */}
+        {role === "seller" && !profile?.onboardingComplete && (
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-warning/30 bg-warning/5 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-warning shrink-0">
+                <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <p className="text-[13px] text-warning">
+                Complete your profile to enable AI agent negotiation on your behalf.
+              </p>
+            </div>
+            <Link href={`/onboarding?returnUrl=${encodeURIComponent(`/negotiate/${deal.deal_id}`)}`} className="btn-ghost h-8 px-3 rounded-md text-[12px] shrink-0 text-warning border-warning/30">
+              Set up
+            </Link>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left: deal terms + invite */}
           <div className="lg:col-span-2 space-y-4">

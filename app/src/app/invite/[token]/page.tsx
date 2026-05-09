@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import { SealedMark } from "@/components/SealedLogo";
-import { decodeInvite, useProfileStore } from "@/lib/profile-store";
+import { decodeInvite } from "@/lib/profile-store";
 
 const WalletMultiButton = dynamic(
   () =>
@@ -21,20 +21,11 @@ export default function InvitePage() {
   const [accepted, setAccepted] = useState(false);
 
   const token = Array.isArray(params.token) ? params.token[0] : params.token;
-  const { profile, loaded: profileLoaded } = useProfileStore(publicKey?.toBase58() ?? null);
 
   const payload = useMemo(() => {
     if (!token) return null;
     return decodeInvite(decodeURIComponent(token));
   }, [token]);
-
-  // Redirect to onboarding if wallet connected but profile not set up
-  useEffect(() => {
-    if (!publicKey || !profileLoaded) return;
-    if (!profile?.onboardingComplete) {
-      router.push(`/onboarding?returnUrl=${encodeURIComponent(`/invite/${token}`)}`);
-    }
-  }, [publicKey, profileLoaded, profile, router, token]);
 
   if (!payload) {
     return (
