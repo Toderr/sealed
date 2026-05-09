@@ -316,21 +316,22 @@ Final palette rhythm: indigo dominant, green = achieved/live/settled, red = abse
 ## Slide 6 · Team
 
 **Eyebrow:** TEAM
-**Headline:** `Two founders. One advisor.`
+**Headline:** `Three co-founders. One advisor.`
 
 **Text (verbatim, team):**
 - `Efunderf` *(Founder):* 4+ years in digital marketing, ex Marketing Agency CCO. High proficiency in agentic AI. Knows the pain from both sides of every deal.
 - `Edkesuma` *(Co-founder):* AI Full Stack Engineer @ Covena. 3× Hackathon winner in Singapore. Builds production AI systems — ships fast, ships right.
-- `Friday7th` *(Advisor):* direct line to the target customer segment. 19-year track record in financial markets and marketplaces.
+- `Fierza` *(@fierzafajri, Co-founder):* Web3 community builder since 2021. EX DRiP Haus. Grew 150+ creator communities. Connects Sealed to the ecosystem it serves.
+- `Friday7th` *(Advisor):* Direct line to the target customer segment. Web3 Project Advisor. Founder SolHedge. Brought Jupiter and Meteora to Indonesia.
 
 **Visual:**
 - Bg: brand-indigo orb top-right at 10% + warmth magenta bottom-left at 8%. Grain 2%. Scanlines at 1.5%.
 - Ambient: "TEAM" at 140pt weight 200 in 3% white behind the card row.
-- **Three cards as hero row** (equal width, FOUNDER + CO-FOUNDER + ADVISOR labels):
-  - Each card ~30% of content width, vertically stacked elements: role tag at top, 84px circular avatar (2px brand-indigo ring + glow for founders, accent indigo for advisor), name weight 590 right of avatar, role muted small-caps below name, 2-3 line description.
-  - Past-work badge pill at the bottom of each card: `AI expert · marketing` (Efunderf), `AI engineer · developer` (Edkesuma), `financial market · marketplace` (Friday7th).
-  - Specialty icon badge top-right of card: `terminal` (Efunderf), `code` (Edkesuma), `trending-up` (Friday7th).
-  - Monogram background texture: large letter (`E`, `K`, `F`) at 3% opacity behind each card. Anchors the card, adds depth without photo dependency.
+- **Four cards as hero row** (equal width, FOUNDER + CO-FOUNDER + CO-FOUNDER + ADVISOR labels):
+  - Each card ~24% of content width, vertically stacked elements: role tag at top, 84px circular avatar (2px brand-indigo ring + glow for founders, accent indigo for advisor), name weight 590 right of avatar, role muted small-caps below name, 2-3 line description.
+  - Past-work badge pill at the bottom of each card: `AI expert · marketing` (Efunderf), `AI engineer · developer` (Edkesuma), `community · Web3` (Fierza), `builder & advisor · marketplace` (Friday7th).
+  - Specialty icon badge top-right of card: `terminal` (Efunderf), `code` (Edkesuma), `users` (Fierza), `trending-up` (Friday7th).
+  - Monogram background texture: large letter (`E`, `K`, `F`, `F`) at 3% opacity behind each card. Anchors the card, adds depth without photo dependency.
 - No stats bar, no checklist, no closing line. Contact info lives on Slide 8.
 
 **Tone:** Human. Three faces carry the whole slide.
@@ -419,7 +420,7 @@ Before exporting, check:
 - [ ] Contrast passes 7:1 (WCAG AAA).
 - [ ] Placeholders intact: `[deck link]`, screenshot frames removed (Product Demo slide deleted). (`[url]` removed: live demo URL is baked into Slide 8's contact rail as `sealed-nine.vercel.app`.)
 - [ ] No `$17B` crypto-scam stat anywhere in the brief.
-- [ ] Friday7th positioned as **Advisor** (not founder); 19-year credential, not 18.
+- [ ] Friday7th positioned as **Advisor** (not founder); Founder SolHedge, brought Jupiter and Meteora to Indonesia.
 - [ ] No `$250K` ask figure anywhere in the brief.
 - [ ] Slide counter `NN / 08` present bottom-left on all 8 slides.
 - [ ] Progress rail visible on right edge of every slide with current-slide dot glowing.

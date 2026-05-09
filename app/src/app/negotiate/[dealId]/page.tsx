@@ -71,16 +71,32 @@ export default function NegotiateRoom() {
   const [copied, setCopied] = useState(false);
   const [deploying, setDeploying] = useState(false);
 
-  // Fetch deal
+  // Fetch deal with timeout guard
   useEffect(() => {
     if (!dealId) return;
+    let cancelled = false;
+
+    const timer = setTimeout(() => {
+      if (!cancelled) setLoadError("Loading timed out — please refresh the page.");
+    }, 10000);
+
     fetch(`/api/deals/${dealId}`)
       .then((r) => r.json())
       .then((data) => {
+        clearTimeout(timer);
+        if (cancelled) return;
         if (data.error) setLoadError(data.error);
         else setDeal(data.deal as SupabaseDeal);
       })
-      .catch(() => setLoadError("Failed to load deal"));
+      .catch(() => {
+        clearTimeout(timer);
+        if (!cancelled) setLoadError("Failed to load deal. Please check your connection.");
+      });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [dealId]);
 
   // Fetch counterparty public profile
@@ -129,7 +145,7 @@ export default function NegotiateRoom() {
         dealId: deal.deal_id,
         sellerWallet: deal.seller_wallet,
         totalAmount: deal.total_amount_usdc,
-        milestones: deal.milestones.map((m) => ({
+        milestones: (deal.milestones ?? []).map((m) => ({
           description: m.description,
           amount: m.amount,
         })),
@@ -319,7 +335,7 @@ export default function NegotiateRoom() {
                 <div>
                   <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>Milestones</p>
                   <p className="text-[20px] text-primary tabular-nums mt-0.5" style={headingStyle}>
-                    {deal.milestones.length}
+                    {(deal.milestones ?? []).length}
                   </p>
                   <p className="text-[11px] text-subtle">payment stages</p>
                 </div>
@@ -329,13 +345,13 @@ export default function NegotiateRoom() {
                   Milestones
                 </p>
                 <div className="space-y-1">
-                  {deal.milestones.map((m, i) => (
+                  {(deal.milestones ?? []).map((m, i) => (
                     <div key={i} className="flex items-center justify-between text-[12px] bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded-md px-3 py-2">
                       <span className="truncate mr-2 text-foreground">
                         <span className="text-subtle mr-1.5">{i + 1}.</span>
                         {m.description}
                       </span>
-                      <span className="shrink-0 font-mono text-muted">${formatUsdc(m.amount)}</span>
+                      <span className="shrink-0 font-mono text-muted">${formatUsdc(m.amount ?? 0)}</span>
                     </div>
                   ))}
                 </div>
@@ -490,18 +506,16 @@ function PartyCard({
   handle: string | null;
 }) {
   const shortWallet = wallet ? `${wallet.slice(0, 4)}…${wallet.slice(-4)}` : "—";
-  const displayName = handle ?? shortWallet;
+  const displayName = wallet ? (handle ?? shortWallet) : "Not assigned yet";
+  const cardClass = "surface-card rounded-xl p-4 space-y-3 block hover:border-accent/30 transition-colors";
 
-  return (
-    <Link
-      href={`/profile/${wallet}`}
-      className="surface-card rounded-xl p-4 space-y-3 block hover:border-accent/30 transition-colors"
-    >
+  const content = (
+    <>
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={{ fontWeight: 510 }}>{label}</p>
           <p className="text-[14px] text-primary mt-0.5 truncate" style={labelStyle}>{displayName}</p>
-          <p className="text-[11px] text-subtle font-mono">{shortWallet}</p>
+          {wallet && <p className="text-[11px] text-subtle font-mono">{shortWallet}</p>}
         </div>
         {isYou && (
           <span className="pill-neutral text-accent text-[11px] flex-shrink-0">You</span>
@@ -529,15 +543,25 @@ function PartyCard({
         </div>
       )}
 
-      {!profile && !isYou && (
+      {!profile && !isYou && wallet && (
         <p className="text-[12px] text-subtle pt-1 border-t border-card-border-subtle">
           Not yet on Sealed
         </p>
       )}
 
-      {!isYou && (
+      {!isYou && wallet && (
         <p className="text-[11px] text-muted hover:text-accent transition-colors">View full profile →</p>
       )}
+    </>
+  );
+
+  if (!wallet) {
+    return <div className={cardClass}>{content}</div>;
+  }
+
+  return (
+    <Link href={`/profile/${wallet}`} className={cardClass}>
+      {content}
     </Link>
   );
 }

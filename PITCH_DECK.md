@@ -83,11 +83,12 @@ Universal pain · Live infrastructure · Warm distribution.
 
 ## Slide 6 · Team
 
-### Two founders. One advisor.
+### Three co-founders. One advisor.
 
 - **Efunderf** *(Founder):* 4+ years in digital marketing, ex Marketing Agency CCO. High proficiency in agentic AI. Knows the pain from both sides of every deal.
 - **Edkesuma** *(Co-founder):* AI Full Stack Engineer @ Covena. 3× Hackathon winner in Singapore. Builds production AI systems — ships fast, ships right.
-- **Friday7th** *(Advisor):* 19-year track record across financial markets and marketplaces. Direct line to the target customer segment.
+- **Fierza** *(@fierzafajri, Co-founder):* Web3 community builder since 2021. EX DRiP Haus Creator Ecosystem. Grew 150+ creator communities. Connects Sealed to the ecosystem it serves.
+- **Friday7th** *(Advisor):* Direct line to the target customer segment. Web3 Project Advisor. Founder SolHedge. Brought Jupiter and Meteora to Indonesia.
 
 ---
 
@@ -127,7 +128,7 @@ Universal pain · Live infrastructure · Warm distribution.
 [Screen recording: chat, deal preview, wallet sign, on-chain confirmation, milestone release]
 
 **2:15–2:45 · Why us**
-"The rails are built. Four hundred billion in stablecoin payments already moved in 2025. We don't need adoption. We just need to show up warm. Two co-founders shipping marketing and AI engineering, plus an advisor with nineteen years of direct lines into the exact customer segment we're targeting. Ready to open the first hundred deals with zero ad spend. The product is trust. The code just enforces it."
+"The rails are built. Four hundred billion in stablecoin payments already moved in 2025. We don't need adoption. We just need to show up warm. Three co-founders covering marketing, AI engineering, and Web3 community — plus an advisor with direct lines into the exact customer segment we're targeting. Ready to open the first hundred deals with zero ad spend. The product is trust. The code just enforces it."
 
 **2:45–3:00 · Close**
 "Don't trust promises. Seal the deal. Sealed Agent makes the deal table that enforces itself, for every business that still runs on handshakes."

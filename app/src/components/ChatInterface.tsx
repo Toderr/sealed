@@ -7,19 +7,31 @@ import { SealedMark } from "@/components/SealedLogo";
 import { getLlmHeaders } from "@/lib/llm-headers";
 import { ContractWizard } from "@/components/ContractWizard";
 
-function tryParseDealParams(text: string): DealParams | undefined {
-  // Look for JSON block in the response (```json...``` or raw JSON object)
-  const jsonMatch =
-    text.match(/```json\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*"milestones"[\s\S]*\})/);
-  if (!jsonMatch) return undefined;
+type ContractType = "sale" | "service" | "partnership" | "rental" | "nda" | "other";
 
+interface PartialDeal {
+  contract_type: ContractType | null;
+  title: string | null;
+  total_amount: number | null;
+  milestones: Array<{ description: string; amount: number }> | null;
+}
+
+function extractJsonBlock(text: string): string | null {
+  const m = text.match(/```json\s*([\s\S]*?)```/);
+  return m ? m[1].trim() : null;
+}
+
+function tryParseDealParams(text: string): DealParams | undefined {
+  const block = extractJsonBlock(text);
+  if (!block) return undefined;
   try {
-    const parsed = JSON.parse(jsonMatch[1]);
+    const parsed = JSON.parse(block);
     if (
       parsed.deal_id &&
       parsed.seller_wallet &&
       parsed.total_amount &&
-      Array.isArray(parsed.milestones)
+      Array.isArray(parsed.milestones) &&
+      parsed.status !== "partial"
     ) {
       return {
         dealId: parsed.deal_id,
@@ -39,6 +51,45 @@ function tryParseDealParams(text: string): DealParams | undefined {
   return undefined;
 }
 
+function tryParsePartialDeal(text: string): PartialDeal | null {
+  const block = extractJsonBlock(text);
+  if (!block) return null;
+  try {
+    const parsed = JSON.parse(block);
+    if (parsed.status === "partial") {
+      return {
+        contract_type: parsed.contract_type ?? null,
+        title: parsed.title ?? null,
+        total_amount: typeof parsed.total_amount === "number" ? parsed.total_amount : null,
+        milestones: Array.isArray(parsed.milestones) ? parsed.milestones : null,
+      };
+    }
+  } catch {
+    // not valid JSON
+  }
+  return null;
+}
+
+// Strip ```json ... ``` blocks from text shown to the user
+function stripJsonBlocks(text: string): string {
+  return text.replace(/```json[\s\S]*?```/g, "").trim();
+}
+
+// Given what the agent knows so far, return the wizard step id to start at
+function getWizardStartStep(partial: PartialDeal): string {
+  if (!partial.contract_type) return "contract_type";
+  if (!partial.title) return "title";
+  if (!partial.total_amount) return "total_amount";
+  return "counterparty"; // always collect counterparty via wizard
+}
+
+interface WizardPrefill {
+  contractType?: ContractType;
+  title?: string;
+  totalAmount?: string;
+  milestones?: Array<{ description: string; amount: string }>;
+}
+
 const labelStyle: React.CSSProperties = { fontWeight: 510, letterSpacing: "-0.006em" };
 const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.014em" };
 
@@ -51,6 +102,8 @@ export default function ChatInterface({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
+  const [wizardPrefill, setWizardPrefill] = useState<WizardPrefill | undefined>();
+  const [wizardStartStep, setWizardStartStep] = useState<string | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { connected, publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? undefined;
@@ -108,15 +161,34 @@ export default function ChatInterface({
       const assistantMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: data.response,
+        // Strip JSON blocks so the user only sees the conversational text
+        content: stripJsonBlocks(data.response),
         dealParams,
         timestamp: Date.now(),
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
 
-      // Auto-show wizard when agent asks a clarifying question (no deal produced yet)
+      // Auto-show targeted wizard when no complete deal was produced
       if (!dealParams) {
+        const partial = tryParsePartialDeal(data.response);
+        if (partial) {
+          const prefill: WizardPrefill = {};
+          if (partial.contract_type) prefill.contractType = partial.contract_type;
+          if (partial.title) prefill.title = partial.title;
+          if (partial.total_amount) prefill.totalAmount = String(partial.total_amount);
+          if (partial.milestones) {
+            prefill.milestones = partial.milestones.map((m) => ({
+              description: m.description,
+              amount: String(m.amount),
+            }));
+          }
+          setWizardPrefill(Object.keys(prefill).length > 0 ? prefill : undefined);
+          setWizardStartStep(getWizardStartStep(partial));
+        } else {
+          setWizardPrefill(undefined);
+          setWizardStartStep(undefined);
+        }
         setShowWizard(true);
       }
     } catch (err) {
@@ -150,6 +222,8 @@ export default function ChatInterface({
                 onComplete={handleWizardComplete}
                 onClose={() => setShowWizard(false)}
                 wallet={wallet}
+                initialData={wizardPrefill}
+                initialStepId={wizardStartStep}
               />
             </div>
           ) : (
@@ -169,7 +243,7 @@ export default function ChatInterface({
               </p>
               {/* Wizard trigger */}
               <button
-                onClick={() => setShowWizard(true)}
+                onClick={() => { setShowWizard(true); setWizardPrefill(undefined); setWizardStartStep(undefined); }}
                 disabled={!connected}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-accent/30 text-accent hover:bg-accent/5 hover:border-accent/60 transition-colors text-[13px] disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ fontWeight: 510 }}
@@ -260,7 +334,7 @@ export default function ChatInterface({
         <div className="flex gap-2 items-end">
           {/* Wizard shortcut button */}
           <button
-            onClick={() => { setShowWizard(true); setMessages([]); }}
+            onClick={() => { setShowWizard(true); setMessages([]); setWizardPrefill(undefined); setWizardStartStep(undefined); }}
             disabled={!connected}
             title="Use wizard"
             className="shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border border-card-border text-subtle hover:text-accent hover:border-accent/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"

@@ -326,19 +326,56 @@ interface FriendEntry {
   profile: FriendProfile | null;
 }
 
+// ── Prefill types (must match ChatInterface WizardPrefill) ─────────────────
+
+interface WizardInitialData {
+  contractType?: ContractType;
+  title?: string;
+  totalAmount?: string;
+  milestones?: WizardMilestone[];
+}
+
+// Find the first step index where required data is missing
+function computeStartStep(initial: WizardData, stepId?: string): number {
+  const steps = buildSteps(initial.contractType);
+  if (stepId) {
+    const idx = steps.findIndex((s) => s.id === stepId);
+    if (idx >= 0) return idx;
+  }
+  // Fall back: first empty required step
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    if (step.kind === "select" && !initial.contractType) return i;
+    if (step.kind === "friend_picker" && !initial.counterparty.trim()) return i;
+    if (step.kind === "input" && !step.optional) {
+      const val = String((initial as unknown as Record<string, unknown>)[step.field] ?? "").trim();
+      if (!val) return i;
+    }
+  }
+  return 0;
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export function ContractWizard({
   onComplete,
   onClose,
   wallet,
+  initialData,
+  initialStepId,
 }: {
   onComplete: (prompt: string) => void;
   onClose: () => void;
   wallet?: string;
+  initialData?: WizardInitialData;
+  initialStepId?: string;
 }) {
-  const [data, setData] = useState<WizardData>(DEFAULT_DATA);
-  const [stepIndex, setStepIndex] = useState(0);
+  const merged: WizardData = initialData
+    ? { ...DEFAULT_DATA, ...initialData }
+    : DEFAULT_DATA;
+
+  const [data, setData] = useState<WizardData>(merged);
+  const [stepIndex, setStepIndex] = useState(() => computeStartStep(merged, initialStepId));
   const [selectedOption, setSelectedOption] = useState(0);
 
   const steps = buildSteps(data.contractType);
