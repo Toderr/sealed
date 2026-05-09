@@ -174,12 +174,19 @@ export default function NegotiateRoom() {
       fetch(`/api/deals/${dealId}`)
         .then((r) => r.json())
         .then((data) => {
-          if (!data.deal) return;
+          if (!data.deal) {
+            // Supabase doesn't have the deal — retry syncing it so
+            // seller's PATCH can land and buyer gets notified
+            try {
+              const raw = sessionStorage.getItem(`deal:${dealId}`);
+              if (raw) retryMirrorSync(JSON.parse(raw) as SupabaseDeal);
+            } catch {}
+            return;
+          }
           const updated = data.deal as SupabaseDeal;
-          if (
-            updated.seller_wallet !== deal.seller_wallet ||
-            updated.status !== deal.status
-          ) {
+          const sellerChanged = (updated.seller_wallet ?? "") !== (deal.seller_wallet ?? "");
+          const statusChanged = updated.status !== deal.status;
+          if (sellerChanged || statusChanged) {
             setDeal(updated);
           }
         })

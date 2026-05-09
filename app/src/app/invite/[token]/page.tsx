@@ -111,7 +111,33 @@ export default function InvitePage() {
       } catch {}
     }
 
-    // 2. Register this wallet as the seller on the deal
+    // 2. Upsert the full deal into Supabase with seller_wallet already set.
+    //    This uses the buyer's wallet (from the invite token) as x-wallet so
+    //    mirror accepts it, and handles the case where the buyer's original
+    //    mirror call never reached Supabase.
+    const dealBody = {
+      deal_id: payload.dealId,
+      seller_wallet: sellerWallet,
+      title: payload.dealTitle,
+      description: payload.description ?? "",
+      total_amount_usdc: payload.amount,
+      milestones: (payload.milestones ?? []).map((m) => ({ ...m, status: "Pending" })),
+      status: "draft",
+    };
+    try {
+      await fetch("/api/deals/mirror", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-wallet": payload.inviterWallet, // buyer's wallet
+        },
+        body: JSON.stringify(dealBody),
+      });
+    } catch {
+      // non-fatal
+    }
+
+    // 3. Also PATCH seller_wallet (idempotent if mirror already set it)
     try {
       await fetch(`/api/deals/${payload.dealId}`, {
         method: "PATCH",
