@@ -60,6 +60,12 @@ export default function InvitePage() {
 
     const sellerWallet = publicKey.toBase58();
 
+    // Signal instantly to buyer's negotiate room tab via localStorage.
+    // Storage event fires in all other tabs of the same origin immediately.
+    try {
+      localStorage.setItem(`sealed:seller-joined:${payload.dealId}`, sellerWallet);
+    } catch {}
+
     // 1. Fetch full deal from Supabase and save to this browser's sessionStorage
     //    so the negotiate room can load it even before Supabase propagates the PATCH.
     try {

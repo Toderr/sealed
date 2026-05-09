@@ -172,24 +172,27 @@ export default function NegotiateRoom() {
     if (!dealId) return;
 
     const interval = setInterval(() => {
+      // Check localStorage signal first (same-device, instant)
+      try {
+        const joined = localStorage.getItem(`sealed:seller-joined:${dealId}`);
+        if (joined) {
+          setDeal((prev) => {
+            if (!prev || (prev.seller_wallet ?? "") === joined) return prev;
+            return { ...prev, seller_wallet: joined };
+          });
+        }
+      } catch {}
+
+      // Also poll Supabase for cross-device sync
       fetch(`/api/deals/${dealId}`)
         .then((r) => r.json())
         .then((data) => {
-          if (!data.deal) {
-            // Supabase doesn't have the deal yet — retry the mirror sync
-            // so seller's PATCH can land on the next poll cycle
-            try {
-              const raw = sessionStorage.getItem(`deal:${dealId}`);
-              if (raw) retryMirrorSync(JSON.parse(raw) as SupabaseDeal);
-            } catch {}
-            return;
-          }
+          if (!data.deal) return; // Don't retryMirrorSync here — it would overwrite seller_wallet
           const updated = data.deal as SupabaseDeal;
           setDeal((prev) => {
             if (!prev) return updated;
             const sellerChanged = (updated.seller_wallet ?? "") !== (prev.seller_wallet ?? "");
             const statusChanged = updated.status !== prev.status;
-            // Return same reference if nothing relevant changed (avoids re-renders)
             return sellerChanged || statusChanged ? updated : prev;
           });
         })
@@ -198,6 +201,21 @@ export default function NegotiateRoom() {
 
     return () => clearInterval(interval);
   }, [dealId]); // stable — never restarts
+
+  // Instant cross-tab seller join detection via localStorage storage event
+  useEffect(() => {
+    if (!dealId) return;
+    function handleStorage(e: StorageEvent) {
+      if (e.key === `sealed:seller-joined:${dealId}` && e.newValue) {
+        setDeal((prev) => {
+          if (!prev || (prev.seller_wallet ?? "") === e.newValue) return prev;
+          return { ...prev, seller_wallet: e.newValue! };
+        });
+      }
+    }
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [dealId]);
 
   // Fetch counterparty public profile
   useEffect(() => {
