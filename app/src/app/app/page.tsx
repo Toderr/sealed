@@ -35,7 +35,7 @@ export default function Home() {
     }
   }, [profileLoaded, publicKey, profile, router]);
 
-  // Save draft to Supabase and navigate to negotiation room
+  // Save draft and navigate to negotiation room
   async function handleDealDrafted(params: DealParams): Promise<void> {
     if (!publicKey) {
       toast.show({
@@ -46,7 +46,32 @@ export default function Home() {
       return;
     }
 
-    const res = await fetch("/api/deals/mirror", {
+    const dealTitle = params.title ?? params.dealId;
+
+    // Always save to sessionStorage first so the negotiate room can load it
+    // even if the Supabase sync fails
+    const draftDeal = {
+      deal_id: params.dealId,
+      buyer_wallet: publicKey.toBase58(),
+      seller_wallet: params.sellerWallet ?? "",
+      title: dealTitle,
+      description: params.milestones.map((m) => m.description).join(" | "),
+      total_amount_usdc: params.totalAmount,
+      milestones: params.milestones.map((m) => ({
+        description: m.description,
+        amount: m.amount,
+        status: "Pending",
+      })),
+      status: "draft",
+    };
+    try {
+      sessionStorage.setItem(`deal:${params.dealId}`, JSON.stringify(draftDeal));
+    } catch {
+      // sessionStorage unavailable (private mode etc.) — continue anyway
+    }
+
+    // Sync to Supabase in the background; non-fatal
+    fetch("/api/deals/mirror", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -54,8 +79,8 @@ export default function Home() {
       },
       body: JSON.stringify({
         deal_id: params.dealId,
-        seller_wallet: params.sellerWallet,
-        title: params.dealId,
+        seller_wallet: params.sellerWallet ?? null,
+        title: dealTitle,
         description: params.milestones.map((m) => m.description).join(" | "),
         total_amount_usdc: params.totalAmount,
         milestones: params.milestones.map((m) => ({
@@ -65,17 +90,9 @@ export default function Home() {
         })),
         status: "draft",
       }),
+    }).catch(() => {
+      // Supabase sync failed — deal is still accessible from sessionStorage
     });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      toast.show({
-        variant: "error",
-        title: "Could not save deal",
-        description: (err as { error?: string }).error ?? "Please try again.",
-      });
-      return;
-    }
 
     router.push(`/negotiate/${params.dealId}`);
   }

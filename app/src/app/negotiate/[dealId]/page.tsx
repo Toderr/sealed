@@ -71,13 +71,24 @@ export default function NegotiateRoom() {
   const [copied, setCopied] = useState(false);
   const [deploying, setDeploying] = useState(false);
 
-  // Fetch deal with timeout guard
+  // Fetch deal — tries Supabase first, falls back to sessionStorage
   useEffect(() => {
     if (!dealId) return;
     let cancelled = false;
 
+    function trySessionStorage() {
+      try {
+        const raw = sessionStorage.getItem(`deal:${dealId}`);
+        if (raw) return JSON.parse(raw) as SupabaseDeal;
+      } catch {}
+      return null;
+    }
+
     const timer = setTimeout(() => {
-      if (!cancelled) setLoadError("Loading timed out — please refresh the page.");
+      if (cancelled) return;
+      const local = trySessionStorage();
+      if (local) setDeal(local);
+      else setLoadError("Loading timed out — please refresh the page.");
     }, 10000);
 
     fetch(`/api/deals/${dealId}`)
@@ -85,12 +96,21 @@ export default function NegotiateRoom() {
       .then((data) => {
         clearTimeout(timer);
         if (cancelled) return;
-        if (data.error) setLoadError(data.error);
-        else setDeal(data.deal as SupabaseDeal);
+        if (data.error) {
+          // Supabase returned an error — fall back to sessionStorage
+          const local = trySessionStorage();
+          if (local) setDeal(local);
+          else setLoadError(data.error);
+        } else {
+          setDeal(data.deal as SupabaseDeal);
+        }
       })
       .catch(() => {
         clearTimeout(timer);
-        if (!cancelled) setLoadError("Failed to load deal. Please check your connection.");
+        if (cancelled) return;
+        const local = trySessionStorage();
+        if (local) setDeal(local);
+        else setLoadError("Failed to load deal. Please check your connection.");
       });
 
     return () => {

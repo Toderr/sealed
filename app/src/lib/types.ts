@@ -71,7 +71,8 @@ export interface MilestoneInput {
 
 export interface DealParams {
   dealId: string;
-  sellerWallet: string;
+  title?: string;
+  sellerWallet: string; // may be "" until counterparty accepts invite
   totalAmount: number; // USDC human readable
   milestones: MilestoneInput[];
 }

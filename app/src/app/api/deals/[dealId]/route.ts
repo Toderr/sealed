@@ -25,6 +25,19 @@ export async function PATCH(
   const { dealId } = await params;
   const body = await req.json();
 
+  // If setting seller_wallet, only allow it when the deal has no seller yet
+  if (body.seller_wallet) {
+    const { data: existing } = await supabase
+      .from(table("deals"))
+      .select("seller_wallet")
+      .eq("deal_id", dealId)
+      .single();
+
+    if (existing?.seller_wallet) {
+      return Response.json({ error: "Counterparty already assigned" }, { status: 409 });
+    }
+  }
+
   const { data, error } = await supabase
     .from(table("deals"))
     .update(body)

@@ -63,9 +63,24 @@ export default function InvitePage() {
     );
   }
 
-  function handleAccept() {
-    if (!publicKey) return;
+  async function handleAccept() {
+    if (!publicKey || !payload) return;
     setAccepted(true);
+
+    // Register the counterparty's wallet on the deal (if not yet assigned)
+    try {
+      await fetch(`/api/deals/${payload.dealId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-wallet": publicKey.toBase58(),
+        },
+        body: JSON.stringify({ seller_wallet: publicKey.toBase58() }),
+      });
+    } catch {
+      // non-fatal — navigate anyway
+    }
+
     setTimeout(() => {
       router.push(`/negotiate/${payload!.dealId}`);
     }, 800);

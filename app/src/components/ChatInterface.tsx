@@ -26,16 +26,18 @@ function tryParseDealParams(text: string): DealParams | undefined {
   if (!block) return undefined;
   try {
     const parsed = JSON.parse(block);
+    // Require deal_id, total_amount, and milestones. seller_wallet is optional.
     if (
       parsed.deal_id &&
-      parsed.seller_wallet &&
       parsed.total_amount &&
       Array.isArray(parsed.milestones) &&
+      parsed.milestones.length > 0 &&
       parsed.status !== "partial"
     ) {
       return {
         dealId: parsed.deal_id,
-        sellerWallet: parsed.seller_wallet,
+        title: parsed.title ?? parsed.deal_id,
+        sellerWallet: parsed.seller_wallet ?? "",
         totalAmount: parsed.total_amount,
         milestones: parsed.milestones.map(
           (m: { description: string; amount: number }) => ({
@@ -70,9 +72,11 @@ function tryParsePartialDeal(text: string): PartialDeal | null {
   return null;
 }
 
-// Strip ```json ... ``` blocks from text shown to the user
+// Strip ```json ... ``` blocks from text shown to the user.
+// If nothing remains after stripping, return a neutral fallback so the bubble is never empty.
 function stripJsonBlocks(text: string): string {
-  return text.replace(/```json[\s\S]*?```/g, "").trim();
+  const stripped = text.replace(/```json[\s\S]*?```/g, "").trim();
+  return stripped || "Got it — I've updated the deal summary.";
 }
 
 // Given what the agent knows so far, return the wizard step id to start at
@@ -80,7 +84,7 @@ function getWizardStartStep(partial: PartialDeal): string {
   if (!partial.contract_type) return "contract_type";
   if (!partial.title) return "title";
   if (!partial.total_amount) return "total_amount";
-  return "counterparty"; // always collect counterparty via wizard
+  return "milestones"; // all basic fields known, let user review/edit milestones
 }
 
 interface WizardPrefill {

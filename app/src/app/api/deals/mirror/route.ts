@@ -30,16 +30,12 @@ export async function POST(request: NextRequest) {
 
   if (
     !deal_id ||
-    !seller_wallet ||
     !title ||
     typeof total_amount_usdc !== "number" ||
     !Array.isArray(milestones)
   ) {
     return Response.json(
-      {
-        error:
-          "deal_id, seller_wallet, title, total_amount_usdc, milestones required",
-      },
+      { error: "deal_id, title, total_amount_usdc, milestones required" },
       { status: 400 }
     );
   }
@@ -50,7 +46,7 @@ export async function POST(request: NextRequest) {
       {
         deal_id,
         buyer_wallet: wallet,
-        seller_wallet,
+        seller_wallet: seller_wallet ?? null,
         title,
         description: description ?? null,
         total_amount_usdc,

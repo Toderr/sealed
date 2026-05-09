@@ -137,12 +137,6 @@ const COMMON_PREFIX: StepDef[] = [
     placeholder: "e.g. Logo design for Acme Corp",
   },
   {
-    kind: "friend_picker",
-    id: "counterparty",
-    title: "Who is the counterparty?",
-    subtitle: "Select from your friends list or enter a wallet address manually",
-  },
-  {
     kind: "input",
     id: "total_amount",
     title: "Total deal value (USDC)",
@@ -267,7 +261,6 @@ export function buildWizardPrompt(data: WizardData): string {
   const parts: string[] = [];
 
   parts.push(`Create a ${getTypeName(data.contractType)} titled "${data.title}".`);
-  parts.push(`Counterparty (seller/partner) wallet: ${data.counterparty}.`);
   parts.push(`Total value: ${data.totalAmount} USDC.`);
 
   if (data.contractType === "sale") {
@@ -346,11 +339,11 @@ function computeStartStep(initial: WizardData, stepId?: string): number {
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     if (step.kind === "select" && !initial.contractType) return i;
-    if (step.kind === "friend_picker" && !initial.counterparty.trim()) return i;
     if (step.kind === "input" && !step.optional) {
       const val = String((initial as unknown as Record<string, unknown>)[step.field] ?? "").trim();
       if (!val) return i;
     }
+    if (step.kind === "milestones") return i; // always let user review milestones
   }
   return 0;
 }
