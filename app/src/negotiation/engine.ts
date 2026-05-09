@@ -87,7 +87,8 @@ export async function runNegotiation(
     buyerBoundaries: NegotiationBoundaries;
     sellerBoundaries: NegotiationBoundaries;
   },
-  callLlm: LlmCaller
+  buyerCallLlm: LlmCaller,
+  sellerCallLlm?: LlmCaller  // falls back to buyerCallLlm if not provided
 ): Promise<Proposal> {
   const now = () => Math.floor(Date.now() / 1000);
   const maxRounds = Math.min(
@@ -125,9 +126,10 @@ export async function runNegotiation(
     const system = buildNegotiatorPrompt(currentSide, boundaries);
     const user = buildTurnPrompt(latestProposal, revisions);
 
+    const caller = currentSide === "buyer" ? buyerCallLlm : (sellerCallLlm ?? buyerCallLlm);
     let raw: string;
     try {
-      raw = await callLlm(system, user);
+      raw = await caller(system, user);
     } catch (err) {
       throw new Error(
         `Agent call failed on round ${round} (${currentSide}): ${
@@ -169,6 +171,10 @@ export async function runNegotiation(
 
     currentSide = currentSide === "seller" ? "buyer" : "seller";
     round += 1;
+
+    // Brief cooldown between rounds — prevents rapid sequential calls hitting
+    // rate limits when buyer and seller share the same provider/quota
+    await new Promise((r) => setTimeout(r, 2000));
   }
 
   const status =
@@ -178,7 +184,7 @@ export async function runNegotiation(
       ? "rejected"
       : "escalated";
 
-  const summary = await runSummarizer(revisions, latestProposal, callLlm);
+  const summary = await runSummarizer(revisions, latestProposal, buyerCallLlm);
 
   return {
     id: params.proposalId,

@@ -36,18 +36,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const llm = getLlmOpts(request);
-    if (!llm) {
+    // Buyer's agent uses their own LLM config (from client headers)
+    const buyerLlm = getLlmOpts(request);
+    if (!buyerLlm) {
       return NextResponse.json({ error: "No LLM provider configured" }, { status: 500 });
     }
 
-    const callLlm = (system: string, user: string) =>
-      dispatchLlm({
-        ...llm,
-        system,
-        messages: [{ role: "user", content: user }],
-        maxTokens: 1024,
-      });
+    // Seller's simulated agent always uses the server's LLM so it doesn't
+    // compete with the buyer's quota (avoids 429 on free-tier models)
+    const sellerLlm = getLlmOptsFromEnv() ?? buyerLlm;
+
+    const buyerCallLlm = (system: string, user: string) =>
+      dispatchLlm({ ...buyerLlm, system, messages: [{ role: "user", content: user }], maxTokens: 1024 });
+
+    const sellerCallLlm = (system: string, user: string) =>
+      dispatchLlm({ ...sellerLlm, system, messages: [{ role: "user", content: user }], maxTokens: 1024 });
 
     const proposal = await runNegotiation(
       {
@@ -58,7 +61,8 @@ export async function POST(request: NextRequest) {
         buyerBoundaries: body.buyerBoundaries,
         sellerBoundaries: body.sellerBoundaries ?? defaultSellerBoundaries(),
       },
-      callLlm
+      buyerCallLlm,
+      sellerCallLlm
     );
 
     return NextResponse.json({ proposal });

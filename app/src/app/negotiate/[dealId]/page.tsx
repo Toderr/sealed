@@ -163,6 +163,30 @@ export default function NegotiateRoom() {
     } catch {}
   }, [wallet, deal]);
 
+  // Poll deal every 6 s while it's in a mutable state so both parties stay in sync
+  useEffect(() => {
+    if (!dealId || !deal) return;
+    if (deal.status !== "draft" && deal.status !== "seller-agreed") return;
+
+    const interval = setInterval(() => {
+      fetch(`/api/deals/${dealId}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (!data.deal) return;
+          const updated = data.deal as SupabaseDeal;
+          if (
+            updated.seller_wallet !== deal.seller_wallet ||
+            updated.status !== deal.status
+          ) {
+            setDeal(updated);
+          }
+        })
+        .catch(() => {});
+    }, 6000);
+
+    return () => clearInterval(interval);
+  }, [dealId, deal?.seller_wallet, deal?.status]);
+
   // Fetch counterparty public profile
   useEffect(() => {
     if (!deal || !wallet) return;
@@ -187,6 +211,52 @@ export default function NegotiateRoom() {
 
   const counterpartyWallet =
     role === "buyer" ? deal?.seller_wallet : deal?.buyer_wallet;
+
+  // When seller agrees, surface NegotiationResult to the buyer automatically
+  useEffect(() => {
+    if (!deal || deal.status !== "seller-agreed") return;
+    if (role !== "buyer" || negState.kind !== "idle") return;
+
+    const now = Date.now();
+    const terms: DealParams = {
+      dealId: deal.deal_id,
+      title: deal.title,
+      sellerWallet: deal.seller_wallet ?? "",
+      totalAmount: deal.total_amount_usdc,
+      milestones: (deal.milestones ?? []).map((m) => ({
+        description: m.description,
+        amount: m.amount,
+      })),
+    };
+    setNegState({
+      kind: "done",
+      proposal: {
+        id: `${deal.deal_id}-seller-agreed`,
+        origin: "manual",
+        buyerWallet: deal.buyer_wallet,
+        sellerWallet: deal.seller_wallet ?? "",
+        initialTerms: terms,
+        revisions: [],
+        status: "agreed",
+        finalTerms: terms,
+        summary: {
+          pros: ["Seller reviewed and accepted the deal terms"],
+          cons: [],
+          keyConcessions: [],
+          riskFlags: [],
+          confidenceScore: 1,
+          recommendation: "accept",
+          recommendationReasoning:
+            "Seller accepted the terms through direct negotiation with your agent.",
+        },
+        buyerBoundaries: defaultSellerBoundaries(),
+        sellerBoundaries: defaultSellerBoundaries(),
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deal?.status, role]);
 
   // Generate invite link
   const inviteLink = (() => {
@@ -491,7 +561,23 @@ export default function NegotiateRoom() {
                     <ManualNegotiationPanel
                       deal={deal}
                       wallet={wallet ?? ""}
-                      onAgree={() => {
+                      onAgree={async () => {
+                        // Persist agreement to Supabase so buyer's polling picks it up
+                        try {
+                          await fetch(`/api/deals/${deal.deal_id}`, {
+                            method: "PATCH",
+                            headers: {
+                              "Content-Type": "application/json",
+                              "x-wallet": wallet ?? "",
+                            },
+                            body: JSON.stringify({ status: "seller-agreed" }),
+                          });
+                        } catch {}
+
+                        // Update local deal state immediately
+                        setDeal((prev) => prev ? { ...prev, status: "seller-agreed" } : prev);
+
+                        // Show result locally for the seller
                         const now = Date.now();
                         const terms: DealParams = {
                           dealId: deal.deal_id,
@@ -503,33 +589,49 @@ export default function NegotiateRoom() {
                             amount: m.amount,
                           })),
                         };
-                        const proposal: Proposal = {
-                          id: `${deal.deal_id}-manual-${now}`,
-                          origin: "manual",
-                          buyerWallet: deal.buyer_wallet,
-                          sellerWallet: deal.seller_wallet ?? "",
-                          initialTerms: terms,
-                          revisions: [],
-                          status: "agreed",
-                          finalTerms: terms,
-                          summary: {
-                            pros: ["Both parties agreed on the deal terms"],
-                            cons: [],
-                            keyConcessions: [],
-                            riskFlags: [],
-                            confidenceScore: 1,
-                            recommendation: "accept",
-                            recommendationReasoning:
-                              "Terms accepted through direct negotiation with the buyer's agent.",
+                        setNegState({
+                          kind: "done",
+                          proposal: {
+                            id: `${deal.deal_id}-manual-${now}`,
+                            origin: "manual",
+                            buyerWallet: deal.buyer_wallet,
+                            sellerWallet: deal.seller_wallet ?? "",
+                            initialTerms: terms,
+                            revisions: [],
+                            status: "agreed",
+                            finalTerms: terms,
+                            summary: {
+                              pros: ["You accepted the deal terms"],
+                              cons: [],
+                              keyConcessions: [],
+                              riskFlags: [],
+                              confidenceScore: 1,
+                              recommendation: "accept",
+                              recommendationReasoning:
+                                "You accepted the terms. Waiting for the buyer to deploy escrow.",
+                            },
+                            buyerBoundaries: defaultSellerBoundaries(),
+                            sellerBoundaries: defaultSellerBoundaries(),
+                            createdAt: now,
+                            updatedAt: now,
                           },
-                          buyerBoundaries: defaultSellerBoundaries(),
-                          sellerBoundaries: defaultSellerBoundaries(),
-                          createdAt: now,
-                          updatedAt: now,
-                        };
-                        setNegState({ kind: "done", proposal });
+                        });
                       }}
                     />
+                  ) : role === "buyer" && !!deal.seller_wallet ? (
+                    // Seller has joined — buyer waits for them to negotiate and agree
+                    <div className="p-5 space-y-3">
+                      <p className="text-[13px] text-primary" style={labelStyle}>
+                        Counterparty is reviewing
+                      </p>
+                      <p className="text-[12px] text-muted">
+                        The seller is negotiating with your agent. You&apos;ll see the result here automatically once they accept the terms.
+                      </p>
+                      <div className="flex items-center gap-2 text-[12px] text-subtle">
+                        <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+                        <span>Checking for updates every 6 seconds…</span>
+                      </div>
+                    </div>
                   ) : !memory ? (
                     <div className="p-5 space-y-4">
                       <div>
