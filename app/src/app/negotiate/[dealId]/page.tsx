@@ -70,6 +70,8 @@ export default function NegotiateRoom() {
   const [negState, setNegState] = useState<NegState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
   const [deploying, setDeploying] = useState(false);
+  // Seller's chosen negotiation mode ("choice" = not decided yet)
+  const [sellerView, setSellerView] = useState<"choice" | "manual" | "agent-waiting">("choice");
 
   // Re-push a sessionStorage deal to Supabase so counterparties on other devices can load it
   function retryMirrorSync(local: SupabaseDeal) {
@@ -211,6 +213,20 @@ export default function NegotiateRoom() {
 
   const counterpartyWallet =
     role === "buyer" ? deal?.seller_wallet : deal?.buyer_wallet;
+
+  // Initialize sellerView from deal status on load (handles page refresh)
+  useEffect(() => {
+    if (!deal || role !== "seller") return;
+    if (deal.status === "seller-ready") setSellerView("agent-waiting");
+  }, [deal?.status, role]);
+
+  // Buyer auto-starts AI negotiation when seller signals they're using their agent
+  useEffect(() => {
+    if (!deal || deal.status !== "seller-ready") return;
+    if (role !== "buyer" || negState.kind !== "idle" || !memory) return;
+    startNegotiation();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deal?.status, role, negState.kind]);
 
   // When seller agrees, surface NegotiationResult to the buyer automatically
   useEffect(() => {
@@ -552,110 +568,164 @@ export default function NegotiateRoom() {
             <div className="surface-card rounded-xl overflow-hidden">
               {negState.kind === "idle" && (
                 <>
-                  {role === "observer" ? (
+                  {/* ── OBSERVER ── */}
+                  {role === "observer" && (
                     <div className="p-5">
                       <p className="text-[13px] text-muted">You are observing this deal.</p>
                     </div>
-                  ) : role === "seller" && !memory ? (
-                    // Seller has no agent — negotiate manually with the buyer's agent
+                  )}
+
+                  {/* ── SELLER — choose negotiation mode ── */}
+                  {role === "seller" && sellerView === "choice" && (
+                    <div className="p-5 space-y-4">
+                      <div>
+                        <p className="text-[13px] text-primary" style={labelStyle}>
+                          How would you like to negotiate?
+                        </p>
+                        <p className="text-[12px] text-muted mt-0.5">
+                          Choose whether to chat directly or let your AI agent handle it.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <button
+                          onClick={() => setSellerView("manual")}
+                          className="w-full flex items-start gap-3 px-4 py-3 rounded-xl border border-card-border bg-surface hover:border-accent/40 transition-colors text-left"
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent mt-0.5 shrink-0">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                          </svg>
+                          <div>
+                            <p className="text-[13px] text-primary" style={labelStyle}>Chat directly</p>
+                            <p className="text-[12px] text-muted mt-0.5">
+                              You negotiate with the buyer&apos;s AI agent in real time
+                            </p>
+                          </div>
+                        </button>
+
+                        <button
+                          onClick={async () => {
+                            if (!memory) return;
+                            try {
+                              await fetch(`/api/deals/${deal.deal_id}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json", "x-wallet": wallet ?? "" },
+                                body: JSON.stringify({ status: "seller-ready" }),
+                              });
+                            } catch {}
+                            setDeal((prev) => prev ? { ...prev, status: "seller-ready" } : prev);
+                            setSellerView("agent-waiting");
+                          }}
+                          disabled={!memory}
+                          className="w-full flex items-start gap-3 px-4 py-3 rounded-xl border border-card-border bg-surface hover:border-accent/40 transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent mt-0.5 shrink-0">
+                            <circle cx="12" cy="12" r="3" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
+                          </svg>
+                          <div>
+                            <p className="text-[13px] text-primary" style={labelStyle}>
+                              Use my AI agent
+                              {!memory && <span className="text-warning ml-2 font-normal">(set up agent first)</span>}
+                            </p>
+                            <p className="text-[12px] text-muted mt-0.5">
+                              Your agent negotiates automatically — buyer&apos;s agent responds
+                            </p>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── SELLER — manual chat ── */}
+                  {role === "seller" && sellerView === "manual" && (
                     <ManualNegotiationPanel
                       deal={deal}
                       wallet={wallet ?? ""}
+                      onBack={() => setSellerView("choice")}
                       onAgree={async () => {
-                        // Persist agreement to Supabase so buyer's polling picks it up
                         try {
                           await fetch(`/api/deals/${deal.deal_id}`, {
                             method: "PATCH",
-                            headers: {
-                              "Content-Type": "application/json",
-                              "x-wallet": wallet ?? "",
-                            },
+                            headers: { "Content-Type": "application/json", "x-wallet": wallet ?? "" },
                             body: JSON.stringify({ status: "seller-agreed" }),
                           });
                         } catch {}
-
-                        // Update local deal state immediately
                         setDeal((prev) => prev ? { ...prev, status: "seller-agreed" } : prev);
-
-                        // Show result locally for the seller
                         const now = Date.now();
                         const terms: DealParams = {
                           dealId: deal.deal_id,
                           title: deal.title,
                           sellerWallet: deal.seller_wallet ?? wallet ?? "",
                           totalAmount: deal.total_amount_usdc,
-                          milestones: (deal.milestones ?? []).map((m) => ({
-                            description: m.description,
-                            amount: m.amount,
-                          })),
+                          milestones: (deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
                         };
-                        setNegState({
-                          kind: "done",
-                          proposal: {
-                            id: `${deal.deal_id}-manual-${now}`,
-                            origin: "manual",
-                            buyerWallet: deal.buyer_wallet,
-                            sellerWallet: deal.seller_wallet ?? "",
-                            initialTerms: terms,
-                            revisions: [],
-                            status: "agreed",
-                            finalTerms: terms,
-                            summary: {
-                              pros: ["You accepted the deal terms"],
-                              cons: [],
-                              keyConcessions: [],
-                              riskFlags: [],
-                              confidenceScore: 1,
-                              recommendation: "accept",
-                              recommendationReasoning:
-                                "You accepted the terms. Waiting for the buyer to deploy escrow.",
-                            },
-                            buyerBoundaries: defaultSellerBoundaries(),
-                            sellerBoundaries: defaultSellerBoundaries(),
-                            createdAt: now,
-                            updatedAt: now,
-                          },
-                        });
+                        setNegState({ kind: "done", proposal: {
+                          id: `${deal.deal_id}-manual-${now}`, origin: "manual",
+                          buyerWallet: deal.buyer_wallet, sellerWallet: deal.seller_wallet ?? "",
+                          initialTerms: terms, revisions: [], status: "agreed", finalTerms: terms,
+                          summary: { pros: ["You accepted the deal terms"], cons: [], keyConcessions: [], riskFlags: [], confidenceScore: 1, recommendation: "accept", recommendationReasoning: "You accepted the terms. Waiting for the buyer to deploy escrow." },
+                          buyerBoundaries: defaultSellerBoundaries(), sellerBoundaries: defaultSellerBoundaries(),
+                          createdAt: now, updatedAt: now,
+                        }});
                       }}
                     />
-                  ) : role === "buyer" && !!deal.seller_wallet ? (
-                    // Seller has joined — buyer waits for them to negotiate and agree
+                  )}
+
+                  {/* ── SELLER — waiting for buyer's agent (AI mode) ── */}
+                  {role === "seller" && sellerView === "agent-waiting" && (
+                    <div className="flex flex-col items-center justify-center py-14 gap-5 text-center px-6">
+                      <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-accent/10 text-accent">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="animate-pulse">
+                          <circle cx="12" cy="12" r="3" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
+                        </svg>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[18px] text-primary" style={headingStyle}>Agents negotiating</p>
+                        <p className="text-[13px] text-muted">Your agent and the buyer&apos;s agent are negotiating. You&apos;ll see the result shortly.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── BUYER — no seller yet ── */}
+                  {role === "buyer" && !deal.seller_wallet && (
+                    !memory ? (
+                      <div className="p-5 space-y-4">
+                        <p className="text-[13px] text-primary" style={labelStyle}>Start negotiation</p>
+                        <p className="text-[12px] text-warning">Configure your agent settings before negotiating.</p>
+                      </div>
+                    ) : (
+                      <div className="p-5 space-y-4">
+                        <div>
+                          <p className="text-[13px] text-primary" style={labelStyle}>Start negotiation</p>
+                          <p className="text-[12px] text-muted mt-0.5">
+                            Preview how your agent negotiates the terms before the counterparty joins.
+                          </p>
+                        </div>
+                        <button onClick={startNegotiation} className="btn-primary h-10 px-6 rounded-md text-[13px]">
+                          Start simulation
+                        </button>
+                      </div>
+                    )
+                  )}
+
+                  {/* ── BUYER — seller joined, waiting for their mode choice ── */}
+                  {role === "buyer" && !!deal.seller_wallet && deal.status === "draft" && (
                     <div className="p-5 space-y-3">
-                      <p className="text-[13px] text-primary" style={labelStyle}>
-                        Counterparty is reviewing
-                      </p>
+                      <p className="text-[13px] text-primary" style={labelStyle}>Waiting for counterparty</p>
                       <p className="text-[12px] text-muted">
-                        The seller is negotiating with your agent. You&apos;ll see the result here automatically once they accept the terms.
+                        The seller is choosing how they want to negotiate. You&apos;ll be notified automatically.
                       </p>
                       <div className="flex items-center gap-2 text-[12px] text-subtle">
                         <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
                         <span>Checking for updates every 6 seconds…</span>
                       </div>
                     </div>
-                  ) : !memory ? (
-                    <div className="p-5 space-y-4">
-                      <div>
-                        <p className="text-[13px] text-primary" style={labelStyle}>Start negotiation</p>
-                        <p className="text-[12px] text-muted mt-0.5">
-                          Configure your agent settings to start AI-powered negotiation.
-                        </p>
-                      </div>
-                      <p className="text-[12px] text-warning">Configure your agent settings before negotiating.</p>
-                    </div>
-                  ) : (
-                    <div className="p-5 space-y-4">
-                      <div>
-                        <p className="text-[13px] text-primary" style={labelStyle}>Start negotiation</p>
-                        <p className="text-[12px] text-muted mt-0.5">
-                          Your agent and the counterparty&apos;s agent will negotiate terms on your behalf. Review the result before anything goes on-chain.
-                        </p>
-                      </div>
-                      <button
-                        onClick={startNegotiation}
-                        className="btn-primary h-10 px-6 rounded-md text-[13px]"
-                      >
-                        Start negotiation
-                      </button>
+                  )}
+
+                  {/* ── BUYER — seller chose AI mode, negotiation starting ── */}
+                  {role === "buyer" && deal.status === "seller-ready" && (
+                    <div className="p-5 space-y-3">
+                      <p className="text-[13px] text-primary" style={labelStyle}>Starting negotiation…</p>
+                      <p className="text-[12px] text-muted">Seller is using their agent. Starting your agent now.</p>
                     </div>
                   )}
                 </>
@@ -953,10 +1023,12 @@ type ChatMsg = { role: "user" | "assistant"; content: string };
 function ManualNegotiationPanel({
   deal,
   wallet,
+  onBack,
   onAgree,
 }: {
   deal: SupabaseDeal;
   wallet: string;
+  onBack?: () => void;
   onAgree: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -1007,13 +1079,20 @@ function ManualNegotiationPanel({
   return (
     <div className="p-5 space-y-4">
       {/* Header */}
-      <div>
-        <p className="text-[13px] text-primary" style={headingStyle}>
-          Negotiate with buyer&apos;s agent
-        </p>
-        <p className="text-[12px] text-muted mt-0.5">
-          You don&apos;t have an AI agent set up, so you&apos;re negotiating directly with the buyer&apos;s agent. Propose changes or accept the current terms.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[13px] text-primary" style={headingStyle}>
+            Chat with buyer&apos;s agent
+          </p>
+          <p className="text-[12px] text-muted mt-0.5">
+            Propose changes or accept the current terms directly.
+          </p>
+        </div>
+        {onBack && (
+          <button onClick={onBack} className="text-[12px] text-subtle hover:text-muted transition-colors shrink-0 mt-0.5">
+            ← Back
+          </button>
+        )}
       </div>
 
       {/* Chat history */}
