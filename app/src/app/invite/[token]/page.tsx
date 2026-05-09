@@ -67,8 +67,15 @@ export default function InvitePage() {
       if (res.ok) {
         const data = await res.json();
         if (data.deal) {
+          const supabaseDeal = data.deal;
+          // If Supabase deal has no milestones, use the ones from the invite token
+          const milestones =
+            supabaseDeal.milestones?.length > 0
+              ? supabaseDeal.milestones
+              : (payload.milestones ?? []).map((m) => ({ ...m, status: "Pending" }));
           sessionStorage.setItem(`deal:${payload.dealId}`, JSON.stringify({
-            ...data.deal,
+            ...supabaseDeal,
+            milestones,
             seller_wallet: sellerWallet,
           }));
         }
@@ -82,7 +89,7 @@ export default function InvitePage() {
           title: payload.dealTitle,
           description: payload.description ?? "",
           total_amount_usdc: payload.amount,
-          milestones: [],
+          milestones: (payload.milestones ?? []).map((m) => ({ ...m, status: "Pending" })),
           status: "draft",
         };
         sessionStorage.setItem(`deal:${payload.dealId}`, JSON.stringify(minimal));
@@ -97,7 +104,7 @@ export default function InvitePage() {
           title: payload.dealTitle,
           description: payload.description ?? "",
           total_amount_usdc: payload.amount,
-          milestones: [],
+          milestones: (payload.milestones ?? []).map((m) => ({ ...m, status: "Pending" })),
           status: "draft",
         };
         sessionStorage.setItem(`deal:${payload.dealId}`, JSON.stringify(minimal));

@@ -284,7 +284,8 @@ export default function NegotiateRoom() {
       inviterWallet: wallet ?? "",
       amount: deal.total_amount_usdc,
       currency: "USDC",
-      milestoneCount: deal.milestones.length,
+      milestoneCount: (deal.milestones ?? []).length,
+      milestones: (deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
       description: profile.bio ?? "",
     };
     return `${window.location.origin}/invite/${encodeURIComponent(encodeInvite(payload))}`;

@@ -131,6 +131,7 @@ export type InvitePayload = {
   amount: number;
   currency: string;
   milestoneCount: number;
+  milestones: Array<{ description: string; amount: number }>;
   description: string;
 };
 

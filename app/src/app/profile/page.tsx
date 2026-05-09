@@ -367,6 +367,7 @@ function InviteCard({
       amount: deal.totalAmount / 1_000_000,
       currency: "USDC",
       milestoneCount: deal.milestones.length,
+      milestones: deal.milestones.map((m) => ({ description: m.description, amount: m.amount / 1_000_000 })),
       description: profile.bio,
     };
     const token = encodeInvite(payload);
@@ -521,6 +522,7 @@ function DealRow({
       amount: amountUsdc,
       currency: "USDC",
       milestoneCount: deal.milestones.length,
+      milestones: deal.milestones.map((m) => ({ description: m.description, amount: m.amount / 1_000_000 })),
       description: profile.bio,
     };
     const token = encodeInvite(payload);
