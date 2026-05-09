@@ -165,18 +165,19 @@ export default function NegotiateRoom() {
     } catch {}
   }, [wallet, deal]);
 
-  // Poll deal every 6 s while it's in a mutable state so both parties stay in sync
+  // Poll deal every 4 s — keeps both parties in sync.
+  // Uses setDeal(prev => ...) to avoid stale-closure comparison bugs.
+  // Depends only on dealId so the interval never restarts mid-poll.
   useEffect(() => {
-    if (!dealId || !deal) return;
-    if (deal.status !== "draft" && deal.status !== "seller-agreed") return;
+    if (!dealId) return;
 
     const interval = setInterval(() => {
       fetch(`/api/deals/${dealId}`)
         .then((r) => r.json())
         .then((data) => {
           if (!data.deal) {
-            // Supabase doesn't have the deal — retry syncing it so
-            // seller's PATCH can land and buyer gets notified
+            // Supabase doesn't have the deal yet — retry the mirror sync
+            // so seller's PATCH can land on the next poll cycle
             try {
               const raw = sessionStorage.getItem(`deal:${dealId}`);
               if (raw) retryMirrorSync(JSON.parse(raw) as SupabaseDeal);
@@ -184,17 +185,19 @@ export default function NegotiateRoom() {
             return;
           }
           const updated = data.deal as SupabaseDeal;
-          const sellerChanged = (updated.seller_wallet ?? "") !== (deal.seller_wallet ?? "");
-          const statusChanged = updated.status !== deal.status;
-          if (sellerChanged || statusChanged) {
-            setDeal(updated);
-          }
+          setDeal((prev) => {
+            if (!prev) return updated;
+            const sellerChanged = (updated.seller_wallet ?? "") !== (prev.seller_wallet ?? "");
+            const statusChanged = updated.status !== prev.status;
+            // Return same reference if nothing relevant changed (avoids re-renders)
+            return sellerChanged || statusChanged ? updated : prev;
+          });
         })
         .catch(() => {});
-    }, 6000);
+    }, 4000);
 
     return () => clearInterval(interval);
-  }, [dealId, deal?.seller_wallet, deal?.status]);
+  }, [dealId]); // stable — never restarts
 
   // Fetch counterparty public profile
   useEffect(() => {
@@ -1042,8 +1045,6 @@ function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: bo
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
-  if (msgs.length === 0) return null;
-
   return (
     <div className="surface-card rounded-xl overflow-hidden">
       <div className="px-5 py-3.5 border-b border-card-border-subtle flex items-center justify-between">
@@ -1055,6 +1056,22 @@ function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: bo
           Live
         </span>
       </div>
+
+      {msgs.length === 0 && (
+        <div className="px-5 py-8 text-center space-y-1">
+          <p className="text-[13px] text-muted">
+            {buyerView
+              ? "Counterparty has joined. Waiting for them to choose a negotiation mode…"
+              : "Waiting for the conversation to start…"}
+          </p>
+          <div className="flex gap-1 items-center justify-center pt-1">
+            {[0, 150, 300].map((d) => (
+              <span key={d} className="h-1.5 w-1.5 rounded-full bg-muted animate-bounce" style={{ animationDelay: `${d}ms` }} />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="px-4 py-4 space-y-3 max-h-72 overflow-y-auto">
         {msgs.map((m) => {
           const isAgent = m.role === "assistant";
