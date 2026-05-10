@@ -270,51 +270,6 @@ export default function NegotiateRoom() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal?.status, role, negState.kind]);
 
-  // When seller agrees, surface NegotiationResult to the buyer automatically
-  useEffect(() => {
-    if (!deal || deal.status !== "seller-agreed") return;
-    if (role !== "buyer" || negState.kind !== "idle") return;
-
-    const now = Date.now();
-    const terms: DealParams = {
-      dealId: deal.deal_id,
-      title: deal.title,
-      sellerWallet: deal.seller_wallet ?? "",
-      totalAmount: deal.total_amount_usdc,
-      milestones: (deal.milestones ?? []).map((m) => ({
-        description: m.description,
-        amount: m.amount,
-      })),
-    };
-    setNegState({
-      kind: "done",
-      proposal: {
-        id: `${deal.deal_id}-seller-agreed`,
-        origin: "manual",
-        buyerWallet: deal.buyer_wallet,
-        sellerWallet: deal.seller_wallet ?? "",
-        initialTerms: terms,
-        revisions: [],
-        status: "agreed",
-        finalTerms: terms,
-        summary: {
-          pros: ["Seller reviewed and accepted the deal terms"],
-          cons: [],
-          keyConcessions: [],
-          riskFlags: [],
-          confidenceScore: 1,
-          recommendation: "accept",
-          recommendationReasoning:
-            "Seller accepted the terms through direct negotiation with your agent.",
-        },
-        buyerBoundaries: defaultSellerBoundaries(),
-        sellerBoundaries: defaultSellerBoundaries(),
-        createdAt: now,
-        updatedAt: now,
-      },
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deal?.status, role]);
 
   // Generate invite link
   const inviteLink = (() => {
@@ -748,6 +703,40 @@ export default function NegotiateRoom() {
                         Share the invite link above. Negotiation starts automatically once they join.
                       </p>
                     </div>
+                  )}
+
+                  {/* ── BUYER — seller agreed (rendered directly, no useEffect lag) ── */}
+                  {role === "buyer" && deal.status === "seller-agreed" && (
+                    <NegotiationResult
+                      proposal={{
+                        id: `${deal.deal_id}-seller-agreed`,
+                        origin: "manual",
+                        buyerWallet: deal.buyer_wallet,
+                        sellerWallet: deal.seller_wallet ?? "",
+                        initialTerms: dealParams,
+                        revisions: [],
+                        status: "agreed",
+                        finalTerms: dealParams,
+                        summary: {
+                          pros: ["Seller reviewed and accepted the deal terms"],
+                          cons: [],
+                          keyConcessions: [],
+                          riskFlags: [],
+                          confidenceScore: 1,
+                          recommendation: "accept",
+                          recommendationReasoning:
+                            "Seller accepted the terms through direct negotiation with your agent.",
+                        },
+                        buyerBoundaries: defaultSellerBoundaries(),
+                        sellerBoundaries: defaultSellerBoundaries(),
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                      }}
+                      role={role}
+                      deploying={deploying}
+                      onAccept={handleAcceptAndDeploy}
+                      onRenegotiate={() => {}}
+                    />
                   )}
 
                   {/* ── BUYER — seller joined, waiting for their mode choice ── */}
