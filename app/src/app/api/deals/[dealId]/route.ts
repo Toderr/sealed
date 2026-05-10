@@ -1,7 +1,8 @@
+import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
 
 export async function GET(
-  _req: Request,
+  _req: NextRequest,
   { params }: { params: Promise<{ dealId: string }> }
 ) {
   const { dealId } = await params;
@@ -19,23 +20,42 @@ export async function GET(
 }
 
 export async function PATCH(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ dealId: string }> }
 ) {
+  const wallet = req.headers.get("x-wallet");
+  if (!wallet) {
+    return Response.json({ error: "Missing x-wallet header" }, { status: 401 });
+  }
+
   const { dealId } = await params;
+
+  const { data: existing } = await supabase
+    .from(table("deals"))
+    .select("buyer_wallet, seller_wallet")
+    .eq("deal_id", dealId)
+    .single();
+
+  if (!existing) {
+    return Response.json({ error: "Deal not found" }, { status: 404 });
+  }
+
   const body = await req.json();
 
-  // If setting seller_wallet, only allow it when the deal has no seller yet
-  if (body.seller_wallet) {
-    const { data: existing } = await supabase
-      .from(table("deals"))
-      .select("seller_wallet")
-      .eq("deal_id", dealId)
-      .single();
+  // seller_wallet can only be set once (when slot is empty)
+  if (body.seller_wallet && existing.seller_wallet) {
+    return Response.json({ error: "Counterparty already assigned" }, { status: 409 });
+  }
 
-    if (existing?.seller_wallet) {
-      return Response.json({ error: "Counterparty already assigned" }, { status: 409 });
-    }
+  // Allow a new wallet to join as seller when the slot is empty and they're
+  // setting their own wallet. All other updates require being a party to the deal.
+  const isJoiningAsSeller =
+    !existing.seller_wallet &&
+    body.seller_wallet === wallet &&
+    Object.keys(body).length === 1;
+
+  if (!isJoiningAsSeller && existing.buyer_wallet !== wallet && existing.seller_wallet !== wallet) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { data, error } = await supabase

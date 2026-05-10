@@ -22,29 +22,7 @@ export async function incrementDeal(
   wallet: string,
   outcome: "success" | "failure"
 ): Promise<void> {
-  const rep = await getReputation(wallet);
-  const base = rep ?? {
-    wallet,
-    deals_total: 0,
-    deals_successful: 0,
-    deals_failed: 0,
-    avg_rating: 0,
-  };
-
-  const updated = {
-    wallet,
-    deals_total: base.deals_total + 1,
-    deals_successful:
-      outcome === "success" ? base.deals_successful + 1 : base.deals_successful,
-    deals_failed:
-      outcome === "failure" ? base.deals_failed + 1 : base.deals_failed,
-    avg_rating: base.avg_rating,
-    updated_at: new Date().toISOString(),
-  };
-
-  await supabase
-    .from(table("reputation"))
-    .upsert(updated, { onConflict: "wallet" });
+  await supabase.rpc("increment_deal", { p_wallet: wallet, p_outcome: outcome });
 }
 
 export async function recalculateAvgRating(wallet: string): Promise<void> {

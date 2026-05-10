@@ -3,11 +3,20 @@ import { submitRating } from "@/lib/reputation";
 import { queueNotification } from "@/lib/notify";
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { deal_id, rater_wallet, ratee_wallet, stars, review_text } = body;
+  const rater_wallet = request.headers.get("x-wallet");
+  if (!rater_wallet) {
+    return Response.json({ error: "Missing x-wallet header" }, { status: 401 });
+  }
 
-  if (!deal_id || !rater_wallet || !ratee_wallet || !stars) {
+  const body = await request.json();
+  const { deal_id, ratee_wallet, stars, review_text } = body;
+
+  if (!deal_id || !ratee_wallet || !stars) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  if (rater_wallet === ratee_wallet) {
+    return Response.json({ error: "Cannot rate yourself" }, { status: 400 });
   }
 
   if (stars < 1 || stars > 5) {

@@ -40,6 +40,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // If deal already exists, verify the caller is the original buyer
+  const { data: existing } = await supabase
+    .from(table("deals"))
+    .select("buyer_wallet")
+    .eq("deal_id", deal_id)
+    .maybeSingle();
+
+  if (existing && existing.buyer_wallet !== wallet) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const { data, error } = await supabase
     .from(table("deals"))
     .upsert(

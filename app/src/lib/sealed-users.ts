@@ -1,3 +1,4 @@
+import { randomInt } from "crypto";
 import { supabase, table } from "@/lib/supabase";
 import type { SealedUser, NotificationPrefs, PublicProfile } from "@/lib/types";
 import { getReputation } from "@/lib/reputation";
@@ -81,7 +82,7 @@ export async function updateEmail(
   wallet: string,
   email: string
 ): Promise<string> {
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otp = randomInt(100000, 1000000).toString();
   await supabase
     .from(table("users"))
     .update({ email, email_verified: false, email_otp: otp })
