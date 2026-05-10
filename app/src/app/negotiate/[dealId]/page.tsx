@@ -258,6 +258,12 @@ export default function NegotiateRoom() {
     return () => window.removeEventListener("storage", handleStorage);
   }, [dealId]);
 
+  // Redirect both parties to active deal page when escrow is funded
+  useEffect(() => {
+    if (!deal || deal.status !== "funded") return;
+    router.push(`/deals/${deal.deal_id}`);
+  }, [deal?.status, deal?.deal_id, router]);
+
   // Fetch counterparty public profile
   useEffect(() => {
     if (!deal || !wallet) return;
