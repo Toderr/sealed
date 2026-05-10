@@ -258,10 +258,15 @@ export default function NegotiateRoom() {
     return () => window.removeEventListener("storage", handleStorage);
   }, [dealId]);
 
-  // Redirect both parties to active deal page when escrow is funded
+  // Redirect both parties once escrow is funded or deal is in any post-negotiate state.
+  // Covers the case where the mirror call failed silently and Supabase still has
+  // "seller-agreed" when the seller refreshes — they should never land back on negotiate.
   useEffect(() => {
-    if (!deal || deal.status !== "funded") return;
-    router.push(`/deals/${deal.deal_id}`);
+    if (!deal) return;
+    const postNeg = ["funded", "in_progress", "completed", "refunded", "disputed"];
+    if (postNeg.includes(deal.status)) {
+      router.push(`/deals/${deal.deal_id}`);
+    }
   }, [deal?.status, deal?.deal_id, router]);
 
   // Fetch counterparty public profile
@@ -293,7 +298,48 @@ export default function NegotiateRoom() {
   useEffect(() => {
     if (!deal || role !== "seller") return;
     if (deal.status === "seller-ready") setSellerView("agent-waiting");
+    if (deal.status === "seller-agreed") setSellerView("manual");
   }, [deal?.status, role]);
+
+  // Restore seller's accepted state when they refresh after agreeing.
+  // Without this, negState resets to "idle" and they see the choice screen again.
+  useEffect(() => {
+    if (!deal || role !== "seller" || deal.status !== "seller-agreed" || negState.kind !== "idle") return;
+    const now = Date.now();
+    const terms: DealParams = {
+      dealId: deal.deal_id,
+      title: deal.title,
+      sellerWallet: deal.seller_wallet ?? "",
+      totalAmount: deal.total_amount_usdc,
+      milestones: (deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
+    };
+    setNegState({
+      kind: "done",
+      proposal: {
+        id: `${deal.deal_id}-restored`,
+        origin: "manual",
+        buyerWallet: deal.buyer_wallet,
+        sellerWallet: deal.seller_wallet ?? "",
+        initialTerms: terms,
+        revisions: [],
+        status: "agreed",
+        finalTerms: terms,
+        summary: {
+          pros: ["You accepted the deal terms"],
+          cons: [],
+          keyConcessions: [],
+          riskFlags: [],
+          confidenceScore: 1,
+          recommendation: "accept",
+          recommendationReasoning: "You accepted the terms. Waiting for the buyer to deploy escrow.",
+        },
+        buyerBoundaries: defaultSellerBoundaries(),
+        sellerBoundaries: defaultSellerBoundaries(),
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+  }, [deal?.status, role, negState.kind]);
 
   // Buyer auto-starts AI negotiation when seller signals they're using their agent
   useEffect(() => {
