@@ -62,7 +62,9 @@ export default function ActiveDealPage() {
   const [uploading, setUploading] = useState<number | null>(null); // milestone index
   const [approvingIndex, setApprovingIndex] = useState<number | null>(null);
   const [sendingMsg, setSendingMsg] = useState(false);
-  const [openingProof, setOpeningProof] = useState<string | null>(null); // storage_key
+  const [openingProof, setOpeningProof] = useState<string | null>(null);
+  const [sealedModalShown, setSealedModalShown] = useState(false);
+  const [showSealedModal, setShowSealedModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRefs = useRef<{ [k: number]: HTMLInputElement | null }>({});
 
@@ -219,6 +221,14 @@ export default function ActiveDealPage() {
   const isComplete = milestones.length > 0 && milestones.every((m) => m.status === "Released");
   const currentInReview = currentMilestoneIndex >= 0 && milestones[currentMilestoneIndex]?.status === "In Review";
 
+  // Show "Project Sealed" popup once when all milestones are released
+  useEffect(() => {
+    if (isComplete && !sealedModalShown) {
+      setSealedModalShown(true);
+      setShowSealedModal(true);
+    }
+  }, [isComplete, sealedModalShown]);
+
   if (!wallet) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-6 text-center px-4">
@@ -251,6 +261,11 @@ export default function ActiveDealPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Project Sealed completion modal */}
+      {showSealedModal && (
+        <ProjectSealedModal onClose={() => setShowSealedModal(false)} />
+      )}
+
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
         {/* Back nav */}
         <Link href="/app" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors">
@@ -653,5 +668,97 @@ function FileIcon({ mime }: { mime: string }) {
     }`}>
       {isPdf ? "PDF" : isImg ? "IMG" : "DOC"}
     </div>
+  );
+}
+
+function ProjectSealedModal({ onClose }: { onClose: () => void }) {
+  return (
+    <>
+      <style>{`
+        @keyframes circle-draw {
+          from { stroke-dashoffset: 283; }
+          to   { stroke-dashoffset: 0; }
+        }
+        @keyframes check-draw {
+          from { stroke-dashoffset: 100; opacity: 0; }
+          to   { stroke-dashoffset: 0;   opacity: 1; }
+        }
+        @keyframes modal-in {
+          from { opacity: 0; transform: scale(0.88); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        @keyframes overlay-in {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes badge-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+          50%       { box-shadow: 0 0 0 16px rgba(34,197,94,0); }
+        }
+      `}</style>
+
+      {/* Overlay */}
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center px-4"
+        style={{ background: "rgba(0,0,0,0.72)", animation: "overlay-in 0.25s ease both" }}
+        onClick={onClose}
+      >
+        {/* Card */}
+        <div
+          className="relative bg-[#0D1117] border border-[rgba(255,255,255,0.08)] rounded-2xl px-10 py-10 flex flex-col items-center gap-5 max-w-sm w-full shadow-2xl"
+          style={{ animation: "modal-in 0.35s cubic-bezier(0.34,1.56,0.64,1) both" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Animated checkmark */}
+          <div style={{ animation: "badge-pulse 2s ease-in-out 0.8s infinite" }} className="rounded-full">
+            <svg width="88" height="88" viewBox="0 0 88 88" fill="none">
+              {/* Circle */}
+              <circle
+                cx="44" cy="44" r="40"
+                stroke="#22C55E" strokeWidth="3.5" fill="none"
+                strokeDasharray="251" strokeDashoffset="251"
+                strokeLinecap="round"
+                style={{ animation: "circle-draw 0.55s ease-out 0.1s both" }}
+              />
+              {/* Inner glow fill */}
+              <circle cx="44" cy="44" r="36" fill="rgba(34,197,94,0.08)" />
+              {/* Checkmark */}
+              <polyline
+                points="26,44 38,56 62,30"
+                stroke="#22C55E" strokeWidth="4" fill="none"
+                strokeLinecap="round" strokeLinejoin="round"
+                strokeDasharray="100" strokeDashoffset="100"
+                style={{ animation: "check-draw 0.4s ease-out 0.65s both" }}
+              />
+            </svg>
+          </div>
+
+          {/* Text */}
+          <div className="text-center space-y-1.5">
+            <h2
+              className="text-[22px] text-white"
+              style={{ fontWeight: 700, letterSpacing: "-0.022em" }}
+            >
+              Project Sealed
+            </h2>
+            <p className="text-[14px] text-[#8b949e] leading-relaxed">
+              All milestones completed. Funds have been released to the seller.
+            </p>
+          </div>
+
+          {/* Divider */}
+          <div className="w-full h-px bg-[rgba(255,255,255,0.06)]" />
+
+          {/* Close */}
+          <button
+            onClick={onClose}
+            className="w-full h-10 rounded-lg bg-[#22C55E] text-white text-[14px] hover:bg-[#16a34a] transition-colors"
+            style={{ fontWeight: 600 }}
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
