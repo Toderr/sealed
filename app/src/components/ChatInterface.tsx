@@ -6,6 +6,7 @@ import { ChatMessage, DealParams, formatUsdc } from "@/lib/types";
 import { SealedMark } from "@/components/SealedLogo";
 import { getLlmHeaders } from "@/lib/llm-headers";
 import { ContractWizard } from "@/components/ContractWizard";
+import { renderMarkdown } from "@/lib/render-markdown";
 
 type ContractType = "sale" | "service" | "partnership" | "rental" | "nda" | "other";
 
@@ -291,7 +292,7 @@ export default function ChatInterface({
                 }`}
                 style={msg.role === "user" ? { fontWeight: 510 } : undefined}
               >
-                <div className="whitespace-pre-wrap">{msg.content}</div>
+                <div className="whitespace-pre-wrap">{renderMarkdown(msg.content)}</div>
               </div>
             </div>
 

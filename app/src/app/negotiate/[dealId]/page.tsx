@@ -23,6 +23,7 @@ import type { Proposal } from "@/negotiation/types";
 import { defaultSellerBoundaries } from "@/negotiation/types";
 import { buildCreateDealIx, sendTx } from "@/lib/escrow-client";
 import { PublicKey } from "@solana/web3.js";
+import { renderMarkdown } from "@/lib/render-markdown";
 
 const WalletMultiButton = dynamic(
   () =>
@@ -172,13 +173,20 @@ export default function NegotiateRoom() {
     if (!dealId) return;
 
     const interval = setInterval(() => {
-      // Check localStorage signal first (same-device, instant)
+      // Check localStorage signals first (same-device, instant)
       try {
         const joined = localStorage.getItem(`sealed:seller-joined:${dealId}`);
         if (joined) {
           setDeal((prev) => {
             if (!prev || (prev.seller_wallet ?? "") === joined) return prev;
             return { ...prev, seller_wallet: joined };
+          });
+        }
+        const agreed = localStorage.getItem(`sealed:seller-agreed:${dealId}`);
+        if (agreed) {
+          setDeal((prev) => {
+            if (!prev || prev.status === "seller-agreed") return prev;
+            return { ...prev, status: "seller-agreed" };
           });
         }
       } catch {}
@@ -202,7 +210,7 @@ export default function NegotiateRoom() {
     return () => clearInterval(interval);
   }, [dealId]); // stable — never restarts
 
-  // Instant cross-tab seller join detection via localStorage storage event
+  // Instant cross-tab detection via localStorage storage event
   useEffect(() => {
     if (!dealId) return;
     function handleStorage(e: StorageEvent) {
@@ -210,6 +218,12 @@ export default function NegotiateRoom() {
         setDeal((prev) => {
           if (!prev || (prev.seller_wallet ?? "") === e.newValue) return prev;
           return { ...prev, seller_wallet: e.newValue! };
+        });
+      }
+      if (e.key === `sealed:seller-agreed:${dealId}` && e.newValue) {
+        setDeal((prev) => {
+          if (!prev || prev.status === "seller-agreed") return prev;
+          return { ...prev, status: "seller-agreed" };
         });
       }
     }
@@ -676,11 +690,18 @@ export default function NegotiateRoom() {
                       wallet={wallet ?? ""}
                       onBack={() => setSellerView("choice")}
                       onAgree={async () => {
+                        // Signal instantly to buyer's tab via localStorage
+                        try {
+                          localStorage.setItem(`sealed:seller-agreed:${deal.deal_id}`, "1");
+                        } catch {}
+                        // Combined PATCH: sets seller_wallet (idempotent if already set)
+                        // + status in one round-trip, so auth passes even if previous
+                        // seller_wallet sync failed.
                         try {
                           await fetch(`/api/deals/${deal.deal_id}`, {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json", "x-wallet": wallet ?? "" },
-                            body: JSON.stringify({ status: "seller-agreed" }),
+                            body: JSON.stringify({ seller_wallet: wallet ?? "", status: "seller-agreed" }),
                           });
                         } catch {}
                         setDeal((prev) => prev ? { ...prev, status: "seller-agreed" } : prev);
@@ -1108,7 +1129,7 @@ function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: bo
                     {buyerView ? "Your agent" : "Buyer's agent"}
                   </p>
                 )}
-                <div className="whitespace-pre-wrap">{m.content}</div>
+                <div className="whitespace-pre-wrap">{renderMarkdown(m.content)}</div>
               </div>
             </div>
           );
@@ -1273,7 +1294,7 @@ function ManualNegotiationPanel({
                     : "surface-card text-foreground"
                 }`}
               >
-                <div className="whitespace-pre-wrap">{m.content}</div>
+                <div className="whitespace-pre-wrap">{renderMarkdown(m.content)}</div>
               </div>
             </div>
           ))}

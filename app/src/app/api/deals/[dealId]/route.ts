@@ -48,11 +48,13 @@ export async function PATCH(
   }
 
   // Allow a new wallet to join as seller when the slot is empty and they're
-  // setting their own wallet. All other updates require being a party to the deal.
+  // setting their own wallet. They may also set status in the same request
+  // (e.g. seller_wallet + status: "seller-agreed" when Supabase sync lagged).
+  const sellerJoinAllowedFields = new Set(["seller_wallet", "status"]);
   const isJoiningAsSeller =
     !existing.seller_wallet &&
     body.seller_wallet === wallet &&
-    Object.keys(body).length === 1;
+    Object.keys(body).every((k) => sellerJoinAllowedFields.has(k));
 
   if (!isJoiningAsSeller && existing.buyer_wallet !== wallet && existing.seller_wallet !== wallet) {
     return Response.json({ error: "Forbidden" }, { status: 403 });

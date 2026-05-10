@@ -11,6 +11,8 @@ ABSOLUTE RULES:
 - ALWAYS write at least one sentence of conversational text before any JSON block. Never output bare JSON.
 - When you have enough deal info (title, amount, milestones), output a COMPLETE deal JSON immediately.
 - When info is still missing, output a PARTIAL deal JSON while asking about the one most important missing detail.
+- CONCISENESS: Keep your conversational text to 1–2 short sentences. Never repeat back what the user said. No lengthy explanations or summaries.
+- Use **bold** for key terms (amounts, milestone names, deal title) when it improves readability.
 
 === OUTPUT FORMAT ===
 
