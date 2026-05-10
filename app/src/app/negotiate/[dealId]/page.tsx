@@ -21,7 +21,7 @@ import {
 import type { Deal } from "@/lib/types";
 import type { Proposal } from "@/negotiation/types";
 import { defaultSellerBoundaries } from "@/negotiation/types";
-import { buildCreateDealIx, sendTx } from "@/lib/escrow-client";
+import { buildCreateDealIx, buildFundEscrowIx, buildEnsureAtaIx, getUsdcMint, sendTx } from "@/lib/escrow-client";
 import { PublicKey } from "@solana/web3.js";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -395,8 +395,11 @@ export default function NegotiateRoom() {
     addDeal(newDeal);
 
     try {
-      const ix = await buildCreateDealIx(publicKey, finalTerms);
-      const sig = await sendTx(connection, ix, signTransaction);
+      const mint = getUsdcMint();
+      const ensureAtaIx = await buildEnsureAtaIx(publicKey, publicKey, mint);
+      const createIx = await buildCreateDealIx(publicKey, finalTerms);
+      const fundIx = await buildFundEscrowIx(publicKey, finalTerms.dealId, finalTerms.totalAmount);
+      const sig = await sendTx(connection, [ensureAtaIx, createIx, fundIx], signTransaction);
 
       try {
         await fetch("/api/deals/mirror", {
@@ -424,7 +427,7 @@ export default function NegotiateRoom() {
         // non-fatal
       }
 
-      router.push(`/deals/${finalTerms.dealId}/review`);
+      router.push(`/deals/${finalTerms.dealId}`);
     } catch (err) {
       console.error("On-chain deploy failed:", err);
       setDeploying(false);
@@ -550,8 +553,8 @@ export default function NegotiateRoom() {
               </div>
             </div>
 
-            {/* Shared conversation view — replaces invite section once seller joins */}
-            {!!deal.seller_wallet && (
+            {/* Shared conversation view — buyer always, seller only in non-manual mode */}
+            {!!deal.seller_wallet && !(role === "seller" && sellerView === "manual") && (
               <ConversationView dealId={deal.deal_id} buyerView={role === "buyer"} />
             )}
 

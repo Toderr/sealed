@@ -22,6 +22,7 @@ function detectType(buf: Buffer): { mime: string; ext: string } | null {
 export async function POST(request: NextRequest) {
   const walletHeader = request.headers.get("x-wallet");
   const dealId = request.headers.get("x-deal-id") ?? "standalone";
+  const milestoneIndex = parseInt(request.headers.get("x-milestone-index") ?? "0", 10);
 
   if (!walletHeader) {
     return Response.json({ error: "Missing x-wallet header" }, { status: 401 });
@@ -101,7 +102,7 @@ export async function POST(request: NextRequest) {
     .from(table("deliverables"))
     .insert({
       deal_id: dealId,
-      milestone_index: 0,
+      milestone_index: milestoneIndex,
       submitter_wallet: walletHeader,
       storage_key: storagePath,
       filename: file.name,
