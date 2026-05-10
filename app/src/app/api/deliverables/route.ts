@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabase
     .from(table("deliverables"))
-    .select("id, filename, content_type, size_bytes, submitter_wallet, storage_key, created_at, scan_status")
+    .select("id, filename, content_type, size_bytes, submitter_wallet, storage_key, milestone_index, created_at, scan_status")
     .eq("deal_id", dealId)
     .order("created_at", { ascending: false });
 
