@@ -675,15 +675,31 @@ export default function NegotiateRoom() {
                         try {
                           localStorage.setItem(`sealed:seller-agreed:${deal.deal_id}`, "1");
                         } catch {}
-                        // Combined PATCH: sets seller_wallet (idempotent if already set)
-                        // + status in one round-trip, so auth passes even if previous
-                        // seller_wallet sync failed.
+                        // Update Supabase. PATCH first; if the deal row is missing
+                        // (404) fall back to mirror upsert which creates-or-updates
+                        // with the agreed status in one call so the buyer's poll
+                        // and Realtime subscription can detect the change.
                         try {
-                          await fetch(`/api/deals/${deal.deal_id}`, {
+                          const patchRes = await fetch(`/api/deals/${deal.deal_id}`, {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json", "x-wallet": wallet ?? "" },
                             body: JSON.stringify({ seller_wallet: wallet ?? "", status: "seller-agreed" }),
                           });
+                          if (!patchRes.ok) {
+                            await fetch("/api/deals/mirror", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json", "x-wallet": deal.buyer_wallet },
+                              body: JSON.stringify({
+                                deal_id: deal.deal_id,
+                                seller_wallet: wallet ?? "",
+                                title: deal.title,
+                                description: deal.description ?? "",
+                                total_amount_usdc: deal.total_amount_usdc,
+                                milestones: deal.milestones ?? [],
+                                status: "seller-agreed",
+                              }),
+                            });
+                          }
                         } catch {}
                         setDeal((prev) => prev ? { ...prev, status: "seller-agreed" } : prev);
                         const now = Date.now();
