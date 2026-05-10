@@ -30,6 +30,12 @@ Thumbs.db
 screenshot-tmp/*
 !screenshot-tmp/app-wide.png
 
+# Rendered video outputs
+*.mp4
+*.mov
+*.webm
+sealed-highlight/my-video/renders/
+
 # Keys (never commit)
 *.json
 !package.json

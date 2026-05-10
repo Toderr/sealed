@@ -11,11 +11,21 @@ CREATE TABLE IF NOT EXISTS sealed_deals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     deal_id TEXT NOT NULL UNIQUE,                   -- matches on-chain PDA seed
     buyer_wallet TEXT NOT NULL,
-    seller_wallet TEXT NOT NULL,
+    seller_wallet TEXT,                              -- NULL until counterparty accepts invite
     title TEXT NOT NULL,
     description TEXT,
     total_amount_usdc NUMERIC(20, 6) NOT NULL,
-    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'proposed', 'funded', 'in_progress', 'completed', 'refunded', 'disputed')),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft',
+        'seller-ready',      -- seller chose AI agent mode
+        'seller-agreed',     -- seller accepted terms manually
+        'proposed',
+        'funded',
+        'in_progress',
+        'completed',
+        'refunded',
+        'disputed'
+    )),
     milestones JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
