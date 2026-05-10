@@ -196,6 +196,7 @@ export default function NegotiateRoom() {
       fetch(`/api/deals/${dealId}`)
         .then((r) => r.json())
         .then((data) => {
+          console.log("[poll] status from Supabase:", data.deal?.status ?? "NOT FOUND");
           if (!data.deal) return; // Don't retryMirrorSync here — it would overwrite seller_wallet
           const updated = data.deal as SupabaseDeal;
           setDeal((prev) => {
@@ -205,7 +206,7 @@ export default function NegotiateRoom() {
             return sellerChanged || statusChanged ? updated : prev;
           });
         })
-        .catch(() => {});
+        .catch((e) => console.error("[poll] error:", e));
     }, 4000);
 
     return () => clearInterval(interval);
@@ -685,8 +686,10 @@ export default function NegotiateRoom() {
                             headers: { "Content-Type": "application/json", "x-wallet": wallet ?? "" },
                             body: JSON.stringify({ seller_wallet: wallet ?? "", status: "seller-agreed" }),
                           });
+                          console.log("[onAgree] PATCH status:", patchRes.status);
                           if (!patchRes.ok) {
-                            await fetch("/api/deals/mirror", {
+                            console.warn("[onAgree] PATCH failed, trying mirror fallback");
+                            const mirrorRes = await fetch("/api/deals/mirror", {
                               method: "POST",
                               headers: { "Content-Type": "application/json", "x-wallet": deal.buyer_wallet },
                               body: JSON.stringify({
@@ -699,8 +702,9 @@ export default function NegotiateRoom() {
                                 status: "seller-agreed",
                               }),
                             });
+                            console.log("[onAgree] mirror fallback status:", mirrorRes.status);
                           }
-                        } catch {}
+                        } catch (e) { console.error("[onAgree] error:", e); }
                         setDeal((prev) => prev ? { ...prev, status: "seller-agreed" } : prev);
                         const now = Date.now();
                         const terms: DealParams = {
