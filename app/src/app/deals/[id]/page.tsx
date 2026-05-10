@@ -34,6 +34,15 @@ type SupabaseDeal = {
   created_at: string;
 };
 type DbMsg = { id: string; role: string; content: string; wallet: string | null; created_at: string };
+type Deliverable = {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  storage_key: string;
+  milestone_index: number;
+  created_at: string;
+};
 
 const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.014em" };
 const labelStyle: React.CSSProperties = { fontWeight: 510, letterSpacing: "-0.006em" };
@@ -49,9 +58,11 @@ export default function ActiveDealPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [messages, setMessages] = useState<DbMsg[]>([]);
   const [chatInput, setChatInput] = useState("");
+  const [deliverables, setDeliverables] = useState<Deliverable[]>([]);
   const [uploading, setUploading] = useState<number | null>(null); // milestone index
   const [approvingIndex, setApprovingIndex] = useState<number | null>(null);
   const [sendingMsg, setSendingMsg] = useState(false);
+  const [openingProof, setOpeningProof] = useState<string | null>(null); // storage_key
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRefs = useRef<{ [k: number]: HTMLInputElement | null }>({});
 
@@ -79,6 +90,11 @@ export default function ActiveDealPage() {
       .then((r) => r.json())
       .then((d) => setMessages(d.messages ?? []))
       .catch(() => {});
+
+    fetch(`/api/deliverables?deal_id=${dealId}`)
+      .then((r) => r.json())
+      .then((d) => setDeliverables(d.deliverables ?? []))
+      .catch(() => {});
   }, [dealId]);
 
   // Poll every 4s
@@ -87,6 +103,7 @@ export default function ActiveDealPage() {
     const iv = setInterval(() => {
       fetch(`/api/deals/${dealId}`).then((r) => r.json()).then((d) => { if (d.deal) setDeal(d.deal); }).catch(() => {});
       fetch(`/api/messages?deal_id=${dealId}`).then((r) => r.json()).then((d) => setMessages(d.messages ?? [])).catch(() => {});
+      fetch(`/api/deliverables?deal_id=${dealId}`).then((r) => r.json()).then((d) => setDeliverables(d.deliverables ?? [])).catch(() => {});
     }, 4000);
     return () => clearInterval(iv);
   }, [dealId]);
@@ -94,12 +111,26 @@ export default function ActiveDealPage() {
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   async function refreshAll() {
-    const [d, m] = await Promise.all([
+    const [d, m, del] = await Promise.all([
       fetch(`/api/deals/${dealId}`).then((r) => r.json()),
       fetch(`/api/messages?deal_id=${dealId}`).then((r) => r.json()),
+      fetch(`/api/deliverables?deal_id=${dealId}`).then((r) => r.json()),
     ]);
     if (d.deal) setDeal(d.deal);
     setMessages(m.messages ?? []);
+    setDeliverables(del.deliverables ?? []);
+  }
+
+  async function openProof(storageKey: string) {
+    setOpeningProof(storageKey);
+    try {
+      const res = await fetch(`/api/upload/signed?key=${encodeURIComponent(storageKey)}`);
+      const data = await res.json() as { url?: string; error?: string };
+      if (data.url) window.open(data.url, "_blank", "noopener,noreferrer");
+      else alert("Could not open file. Please try again.");
+    } finally {
+      setOpeningProof(null);
+    }
   }
 
   async function patchMilestones(updated: Milestone[]) {
@@ -347,7 +378,7 @@ export default function ActiveDealPage() {
                       )}
                       {/* Re-upload option if in review */}
                       {role === "seller" && inReview && (
-                        <div className="ml-[28px] mb-3 mt-1">
+                        <div className="ml-[28px] mb-2 mt-1">
                           <input
                             type="file"
                             accept=".pdf,.png,.jpg,.jpeg,.docx"
@@ -369,6 +400,37 @@ export default function ActiveDealPage() {
                           </button>
                         </div>
                       )}
+                      {/* Proof files — visible to buyer for review, and seller to confirm */}
+                      {(inReview || done) && (() => {
+                        const proofs = deliverables.filter((d) => d.milestone_index === i);
+                        if (proofs.length === 0) return null;
+                        return (
+                          <div className="ml-[28px] mb-3 mt-1 space-y-1.5">
+                            <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>
+                              Submitted proof
+                            </p>
+                            {proofs.map((proof) => (
+                              <button
+                                key={proof.id}
+                                onClick={() => openProof(proof.storage_key)}
+                                disabled={openingProof === proof.storage_key}
+                                className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-card-border bg-surface hover:border-accent/40 hover:bg-accent/5 transition-colors text-left disabled:opacity-50"
+                              >
+                                <FileIcon mime={proof.content_type} />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[12px] text-foreground truncate" style={labelStyle}>{proof.filename}</p>
+                                  <p className="text-[10px] text-subtle">{(proof.size_bytes / 1024).toFixed(1)} KB</p>
+                                </div>
+                                {openingProof === proof.storage_key ? (
+                                  <svg className="animate-spin shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round"/></svg>
+                                ) : (
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-muted shrink-0"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -430,26 +492,57 @@ export default function ActiveDealPage() {
                   );
                 })}
 
-                {/* Buyer approve button */}
-                {role === "buyer" && currentInReview && (
-                  <div className="flex justify-end">
-                    <button
-                      onClick={() => handleApprove(currentMilestoneIndex)}
-                      disabled={approvingIndex !== null}
-                      className="flex items-center gap-2 bg-success/10 border border-success/30 text-success rounded-xl px-4 py-2.5 text-[13px] hover:bg-success/20 transition-colors disabled:opacity-50"
-                      style={labelStyle}
-                    >
-                      {approvingIndex === currentMilestoneIndex ? (
-                        <>
-                          <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round"/></svg>
-                          Releasing…
-                        </>
-                      ) : (
-                        <>Looks good. Approved! ✓</>
+                {/* Buyer: proof review + approve */}
+                {role === "buyer" && currentInReview && (() => {
+                  const proofs = deliverables.filter((d) => d.milestone_index === currentMilestoneIndex);
+                  return (
+                    <div className="space-y-2">
+                      {proofs.length > 0 && (
+                        <div className="surface-card rounded-xl p-3 space-y-2">
+                          <p className="text-[11px] text-accent uppercase tracking-[0.06em]" style={labelStyle}>
+                            Review proof — Milestone {currentMilestoneIndex + 1}
+                          </p>
+                          {proofs.map((proof) => (
+                            <button
+                              key={proof.id}
+                              onClick={() => openProof(proof.storage_key)}
+                              disabled={openingProof === proof.storage_key}
+                              className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-card-border bg-surface hover:border-accent/40 hover:bg-accent/5 transition-colors text-left disabled:opacity-50"
+                            >
+                              <FileIcon mime={proof.content_type} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[12px] text-foreground truncate" style={labelStyle}>{proof.filename}</p>
+                                <p className="text-[10px] text-subtle">{(proof.size_bytes / 1024).toFixed(1)} KB</p>
+                              </div>
+                              {openingProof === proof.storage_key ? (
+                                <svg className="animate-spin shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round"/></svg>
+                              ) : (
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-muted shrink-0"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                              )}
+                            </button>
+                          ))}
+                        </div>
                       )}
-                    </button>
-                  </div>
-                )}
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => handleApprove(currentMilestoneIndex)}
+                          disabled={approvingIndex !== null}
+                          className="flex items-center gap-2 bg-success/10 border border-success/30 text-success rounded-xl px-4 py-2.5 text-[13px] hover:bg-success/20 transition-colors disabled:opacity-50"
+                          style={labelStyle}
+                        >
+                          {approvingIndex === currentMilestoneIndex ? (
+                            <>
+                              <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round"/></svg>
+                              Releasing…
+                            </>
+                          ) : (
+                            <>Looks good. Approved! ✓</>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div ref={messagesEndRef} />
               </div>
@@ -547,6 +640,18 @@ function TimelineRow({
         </div>
         <p className={`text-[11px] mt-0.5 ${subColor}`}>{sub}</p>
       </div>
+    </div>
+  );
+}
+
+function FileIcon({ mime }: { mime: string }) {
+  const isPdf = mime === "application/pdf";
+  const isImg = mime.startsWith("image/");
+  return (
+    <div className={`h-7 w-7 rounded-md flex items-center justify-center shrink-0 text-[9px] font-mono font-bold ${
+      isPdf ? "bg-danger/10 text-danger" : isImg ? "bg-accent/10 text-accent" : "bg-surface border border-card-border text-muted"
+    }`}>
+      {isPdf ? "PDF" : isImg ? "IMG" : "DOC"}
     </div>
   );
 }
