@@ -1,0 +1,24 @@
+{
+  "name": "sealed-demo-video",
+  "version": "1.0.0",
+  "description": "Sealed Agent — 2.5-min demo video",
+  "scripts": {
+    "start": "npx remotion studio",
+    "build": "npx remotion render SealedDemo out/sealed-demo.mp4 --codec h264 --crf 18 --color-space bt709",
+    "render:draft": "npx remotion render SealedDemo out/sealed-demo-draft.mp4 --codec h264 --crf 26 --scale 0.5"
+  },
+  "dependencies": {
+    "@remotion/google-fonts": "^4.0.290",
+    "remotion": "^4.0.290",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@remotion/cli": "^4.0.290",
+    "@types/react": "^18.2.0",
+    "typescript": "^5.3.3"
+  },
+  "remotion": {
+    "entryPoint": "./src/index.ts"
+  }
+}

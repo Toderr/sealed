@@ -42,8 +42,9 @@ export async function PATCH(
 
   const body = await req.json();
 
-  // seller_wallet can only be set once (when slot is empty)
-  if (body.seller_wallet && existing.seller_wallet) {
+  // Block changing seller_wallet to a DIFFERENT wallet, but allow idempotent re-set
+  // (same wallet) so onAgree can send { seller_wallet, status } without a 409.
+  if (body.seller_wallet && existing.seller_wallet && body.seller_wallet !== existing.seller_wallet) {
     return Response.json({ error: "Counterparty already assigned" }, { status: 409 });
   }
 

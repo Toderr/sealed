@@ -24,6 +24,7 @@ import { defaultSellerBoundaries } from "@/negotiation/types";
 import { buildCreateDealIx, sendTx } from "@/lib/escrow-client";
 import { PublicKey } from "@solana/web3.js";
 import { renderMarkdown } from "@/lib/render-markdown";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 const WalletMultiButton = dynamic(
   () =>
@@ -209,6 +210,31 @@ export default function NegotiateRoom() {
 
     return () => clearInterval(interval);
   }, [dealId]); // stable — never restarts
+
+  // Supabase Realtime — instant cross-device updates (fallback: 4s poll above)
+  useEffect(() => {
+    if (!dealId) return;
+
+    const channel = supabaseBrowser
+      .channel(`deal:${dealId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "sealed_deals", filter: `deal_id=eq.${dealId}` },
+        (payload) => {
+          const updated = payload.new as SupabaseDeal;
+          setDeal((prev) => {
+            if (!prev) return updated;
+            const changed =
+              updated.status !== prev.status ||
+              (updated.seller_wallet ?? "") !== (prev.seller_wallet ?? "");
+            return changed ? updated : prev;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => { supabaseBrowser.removeChannel(channel); };
+  }, [dealId]);
 
   // Instant cross-tab detection via localStorage storage event
   useEffect(() => {
