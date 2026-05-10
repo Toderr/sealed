@@ -424,7 +424,7 @@ export default function NegotiateRoom() {
         // non-fatal
       }
 
-      router.push(`/deals/${finalTerms.dealId}`);
+      router.push(`/deals/${finalTerms.dealId}/review`);
     } catch (err) {
       console.error("On-chain deploy failed:", err);
       setDeploying(false);
