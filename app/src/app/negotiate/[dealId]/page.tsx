@@ -1156,6 +1156,7 @@ type DbMsg = { id: string; role: string; content: string; wallet: string; create
 function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: boolean }) {
   const [msgs, setMsgs] = useState<DbMsg[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const prevMsgCount = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -1171,7 +1172,10 @@ function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: bo
   }, [dealId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (msgs.length > prevMsgCount.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    prevMsgCount.current = msgs.length;
   }, [msgs]);
 
   return (
@@ -1251,6 +1255,7 @@ function ManualNegotiationPanel({
   const [agreedByAgent, setAgreedByAgent] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const openingFired = useRef(false);
+  const prevManualMsgCount = useRef(0);
 
   // Load existing messages from Supabase on mount
   useEffect(() => {
@@ -1297,7 +1302,10 @@ function ManualNegotiationPanel({
   }, [messages.length]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length > prevManualMsgCount.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    prevManualMsgCount.current = messages.length;
   }, [messages]);
 
   async function send(text?: string) {

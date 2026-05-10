@@ -66,6 +66,7 @@ export default function ActiveDealPage() {
   const [sealedModalShown, setSealedModalShown] = useState(false);
   const [showSealedModal, setShowSealedModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevMsgCount = useRef(0);
   const fileInputRefs = useRef<{ [k: number]: HTMLInputElement | null }>({});
 
   const role: "buyer" | "seller" | "observer" = !wallet
@@ -110,7 +111,12 @@ export default function ActiveDealPage() {
     return () => clearInterval(iv);
   }, [dealId]);
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => {
+    if (messages.length > prevMsgCount.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    prevMsgCount.current = messages.length;
+  }, [messages]);
 
   async function refreshAll() {
     const [d, m, del] = await Promise.all([
