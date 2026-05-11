@@ -736,11 +736,18 @@ export default function NegotiateRoom() {
                         // (404) fall back to mirror upsert which creates-or-updates
                         // with the agreed status in one call so the buyer's poll
                         // and Realtime subscription can detect the change.
+                        const finalAmount = negotiatedTerms?.totalAmount ?? deal.total_amount_usdc;
+                        const finalMilestones = negotiatedTerms?.milestones ?? deal.milestones ?? [];
                         try {
                           const patchRes = await fetch(`/api/deals/${deal.deal_id}`, {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json", "x-wallet": wallet ?? "" },
-                            body: JSON.stringify({ seller_wallet: wallet ?? "", status: "seller-agreed" }),
+                            body: JSON.stringify({
+                              seller_wallet: wallet ?? "",
+                              status: "seller-agreed",
+                              total_amount_usdc: finalAmount,
+                              milestones: finalMilestones,
+                            }),
                           });
                           console.log("[onAgree] PATCH status:", patchRes.status);
                           if (!patchRes.ok) {
@@ -753,15 +760,20 @@ export default function NegotiateRoom() {
                                 seller_wallet: wallet ?? "",
                                 title: deal.title,
                                 description: deal.description ?? "",
-                                total_amount_usdc: deal.total_amount_usdc,
-                                milestones: deal.milestones ?? [],
+                                total_amount_usdc: finalAmount,
+                                milestones: finalMilestones,
                                 status: "seller-agreed",
                               }),
                             });
                             console.log("[onAgree] mirror fallback status:", mirrorRes.status);
                           }
                         } catch (e) { console.error("[onAgree] error:", e); }
-                        setDeal((prev) => prev ? { ...prev, status: "seller-agreed" } : prev);
+                        setDeal((prev) => prev ? {
+                          ...prev,
+                          status: "seller-agreed",
+                          total_amount_usdc: finalAmount,
+                          milestones: finalMilestones,
+                        } : prev);
                         const now = Date.now();
                         const terms: DealParams = {
                           dealId: deal.deal_id,
