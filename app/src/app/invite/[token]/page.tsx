@@ -1,12 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import { SealedMark } from "@/components/SealedLogo";
 import { decodeInvite } from "@/lib/profile-store";
+
+type InviterStats = {
+  deals_total: number;
+  deals_successful: number;
+  avg_rating: number;
+  is_verified: boolean;
+  handle: string | null;
+};
 
 const WalletMultiButton = dynamic(
   () =>
@@ -21,11 +29,20 @@ export default function InvitePage() {
   const [accepted, setAccepted] = useState(false);
 
   const token = Array.isArray(params.token) ? params.token[0] : params.token;
+  const [inviterStats, setInviterStats] = useState<InviterStats | null>(null);
 
   const payload = useMemo(() => {
     if (!token) return null;
     return decodeInvite(decodeURIComponent(token));
   }, [token]);
+
+  useEffect(() => {
+    if (!payload?.inviterWallet) return;
+    fetch(`/api/users/${payload.inviterWallet}/public`)
+      .then((r) => r.json())
+      .then((data) => setInviterStats(data))
+      .catch(() => {});
+  }, [payload?.inviterWallet]);
 
   if (!payload) {
     return (
@@ -220,17 +237,75 @@ export default function InvitePage() {
             </div>
           </div>
 
-          {/* Description */}
-          {payload.description && (
-            <div className="px-5 py-4 border-t border-card-border-subtle">
-              <p className="text-[11px] text-muted mb-1.5" style={{ fontWeight: 510 }}>
+          {/* About the inviter */}
+          <div className="px-5 py-4 border-t border-card-border-subtle space-y-3">
+            <div className="flex items-center gap-2">
+              <p className="text-[11px] text-muted" style={{ fontWeight: 510 }}>
                 About the inviter
               </p>
-              <p className="text-[13px] text-foreground leading-relaxed">
-                {payload.description}
-              </p>
+              {inviterStats?.is_verified && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-accent/10 border border-accent/20 text-[10px] text-accent" style={{ fontWeight: 510 }}>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Verified
+                </span>
+              )}
             </div>
-          )}
+
+            {inviterStats ? (
+              <div className="grid grid-cols-3 gap-3">
+                {/* Total deals */}
+                <div className="rounded-lg bg-surface border border-card-border px-3 py-2.5 text-center">
+                  <p className="text-[18px] text-primary tabular-nums" style={{ fontWeight: 700 }}>
+                    {inviterStats.deals_total}
+                  </p>
+                  <p className="text-[11px] text-muted mt-0.5">Total deals</p>
+                </div>
+
+                {/* Completion rate */}
+                <div className="rounded-lg bg-surface border border-card-border px-3 py-2.5 text-center">
+                  <p className="text-[18px] tabular-nums" style={{
+                    fontWeight: 700,
+                    color: inviterStats.deals_total === 0 ? "var(--muted)" :
+                      (inviterStats.deals_successful / inviterStats.deals_total) >= 0.8 ? "#22c55e" :
+                      (inviterStats.deals_successful / inviterStats.deals_total) >= 0.5 ? "#f59e0b" : "#ef4444"
+                  }}>
+                    {inviterStats.deals_total === 0
+                      ? "—"
+                      : `${Math.round((inviterStats.deals_successful / inviterStats.deals_total) * 100)}%`}
+                  </p>
+                  <p className="text-[11px] text-muted mt-0.5">Completion</p>
+                </div>
+
+                {/* Rating */}
+                <div className="rounded-lg bg-surface border border-card-border px-3 py-2.5 text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <p className="text-[18px] text-primary tabular-nums" style={{ fontWeight: 700 }}>
+                      {inviterStats.avg_rating > 0 ? inviterStats.avg_rating.toFixed(1) : "—"}
+                    </p>
+                    {inviterStats.avg_rating > 0 && (
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="#f59e0b" stroke="none">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                      </svg>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted mt-0.5">Avg rating</p>
+                </div>
+              </div>
+            ) : (
+              /* Skeleton while loading */
+              <div className="grid grid-cols-3 gap-3">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="rounded-lg bg-surface border border-card-border px-3 py-2.5 h-14 animate-pulse" />
+                ))}
+              </div>
+            )}
+
+            {payload.description && (
+              <p className="text-[12px] text-muted leading-relaxed">{payload.description}</p>
+            )}
+          </div>
         </div>
 
         {/* How it works */}
