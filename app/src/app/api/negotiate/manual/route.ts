@@ -94,9 +94,13 @@ Your role:
 - Accept minor changes (timeline, ≤10% amount adjustments)
 - Decline unreasonable requests, explaining why
 - Work toward a mutual agreement
+- When the seller proposes a change you accept, ALWAYS restate the updated terms clearly
 
-When both parties have fully agreed, end your response with:
-[AGREED] — followed by one sentence summarizing the final terms.
+When both parties have fully agreed on all terms (original or modified), end your response with EXACTLY this format — no extra lines between them:
+[AGREED] — one sentence summarizing the final agreed terms.
+<agreed_terms>{"totalAmount": <total USDC as number>, "milestones": [{"description": "<description>", "amount": <USDC as number>}]}</agreed_terms>
+
+The <agreed_terms> JSON must reflect the FINAL negotiated values, not the original ones.
 
 Be concise and professional. Respond in the same language the seller uses.`;
 
@@ -120,18 +124,29 @@ Be concise and professional. Respond in the same language the seller uses.`;
 
     const agreed = response.includes("[AGREED]");
 
+    // Extract and strip the <agreed_terms> block so it doesn't appear in the chat UI
+    let agreedTerms: { totalAmount: number; milestones: Array<{ description: string; amount: number }> } | null = null;
+    let cleanResponse = response;
+    if (agreed) {
+      const match = response.match(/<agreed_terms>([\s\S]*?)<\/agreed_terms>/);
+      if (match) {
+        try { agreedTerms = JSON.parse(match[1].trim()); } catch {}
+        cleanResponse = response.replace(/<agreed_terms>[\s\S]*?<\/agreed_terms>/, "").trim();
+      }
+    }
+
     // Persist both sides to sealed_messages so buyer can see the conversation
     if (isOpening) {
-      await saveMessage(dealId, "assistant", response, buyerWallet);
+      await saveMessage(dealId, "assistant", cleanResponse, buyerWallet);
     } else if (messages.length > 0) {
       const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
       if (lastUserMsg) {
         await saveMessage(dealId, "user", lastUserMsg.content, sellerWallet ?? "");
       }
-      await saveMessage(dealId, "assistant", response, buyerWallet);
+      await saveMessage(dealId, "assistant", cleanResponse, buyerWallet);
     }
 
-    return NextResponse.json({ response, agreed });
+    return NextResponse.json({ response: cleanResponse, agreed, agreedTerms });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });

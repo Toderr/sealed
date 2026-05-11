@@ -72,6 +72,7 @@ export default function NegotiateRoom() {
   const [negState, setNegState] = useState<NegState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
   const [deploying, setDeploying] = useState(false);
+  const [dealSealedId, setDealSealedId] = useState<string | null>(null);
   // Seller's chosen negotiation mode ("choice" = not decided yet)
   const [sellerView, setSellerView] = useState<"choice" | "manual" | "agent-waiting">("choice");
 
@@ -479,7 +480,7 @@ export default function NegotiateRoom() {
         // non-fatal
       }
 
-      router.push(`/deals/${finalTerms.dealId}`);
+      setDealSealedId(finalTerms.dealId);
     } catch (err) {
       console.error("On-chain deploy failed:", err);
       setDeploying(false);
@@ -726,7 +727,7 @@ export default function NegotiateRoom() {
                       deal={deal}
                       wallet={wallet ?? ""}
                       onBack={() => setSellerView("choice")}
-                      onAgree={async () => {
+                      onAgree={async (negotiatedTerms?: { totalAmount: number; milestones: Array<{ description: string; amount: number }> }) => {
                         // Signal instantly to buyer's tab via localStorage
                         try {
                           localStorage.setItem(`sealed:seller-agreed:${deal.deal_id}`, "1");
@@ -766,14 +767,14 @@ export default function NegotiateRoom() {
                           dealId: deal.deal_id,
                           title: deal.title,
                           sellerWallet: deal.seller_wallet ?? wallet ?? "",
-                          totalAmount: deal.total_amount_usdc,
-                          milestones: (deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
+                          totalAmount: negotiatedTerms?.totalAmount ?? deal.total_amount_usdc,
+                          milestones: (negotiatedTerms?.milestones ?? deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
                         };
                         setNegState({ kind: "done", proposal: {
                           id: `${deal.deal_id}-manual-${now}`, origin: "manual",
                           buyerWallet: deal.buyer_wallet, sellerWallet: deal.seller_wallet ?? "",
                           initialTerms: terms, revisions: [], status: "agreed", finalTerms: terms,
-                          summary: { pros: ["You accepted the deal terms"], cons: [], keyConcessions: [], riskFlags: [], confidenceScore: 1, recommendation: "accept", recommendationReasoning: "You accepted the terms. Waiting for the buyer to deploy escrow." },
+                          summary: { pros: ["Seller accepted the negotiated terms"], cons: [], keyConcessions: [], riskFlags: [], confidenceScore: 1, recommendation: "accept", recommendationReasoning: negotiatedTerms ? "Terms were updated during negotiation. Review the final values before deploying escrow." : "You accepted the original terms. Waiting for the buyer to deploy escrow." },
                           buyerBoundaries: defaultSellerBoundaries(), sellerBoundaries: defaultSellerBoundaries(),
                           createdAt: now, updatedAt: now,
                         }});
@@ -928,7 +929,93 @@ export default function NegotiateRoom() {
           </div>
         </div>
       </div>
+
+      {dealSealedId && (
+        <DealSealedModal onClose={() => router.push(`/deals/${dealSealedId}`)} />
+      )}
     </Shell>
+  );
+}
+
+/* ── Deal Sealed popup (shown after buyer accepts & deploys escrow) ─────── */
+
+function DealSealedModal({ onClose }: { onClose: () => void }) {
+  return (
+    <>
+      <style>{`
+        @keyframes ds-circle-draw {
+          from { stroke-dashoffset: 283; }
+          to   { stroke-dashoffset: 0; }
+        }
+        @keyframes ds-check-draw {
+          from { stroke-dashoffset: 100; opacity: 0; }
+          to   { stroke-dashoffset: 0;   opacity: 1; }
+        }
+        @keyframes ds-modal-in {
+          from { opacity: 0; transform: scale(0.88); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        @keyframes ds-overlay-in {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes ds-badge-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+          50%       { box-shadow: 0 0 0 16px rgba(34,197,94,0); }
+        }
+      `}</style>
+
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center px-4"
+        style={{ background: "rgba(0,0,0,0.72)", animation: "ds-overlay-in 0.25s ease both" }}
+        onClick={onClose}
+      >
+        <div
+          className="relative bg-[#0D1117] border border-[rgba(255,255,255,0.08)] rounded-2xl px-10 py-10 flex flex-col items-center gap-5 max-w-sm w-full shadow-2xl"
+          style={{ animation: "ds-modal-in 0.35s cubic-bezier(0.34,1.56,0.64,1) both" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ animation: "ds-badge-pulse 2s ease-in-out 0.8s infinite" }} className="rounded-full">
+            <svg width="88" height="88" viewBox="0 0 88 88" fill="none">
+              <circle
+                cx="44" cy="44" r="40"
+                stroke="#22C55E" strokeWidth="3.5" fill="none"
+                strokeDasharray="251" strokeDashoffset="251"
+                strokeLinecap="round"
+                style={{ animation: "ds-circle-draw 0.55s ease-out 0.1s both" }}
+              />
+              <circle cx="44" cy="44" r="36" fill="rgba(34,197,94,0.08)" />
+              <polyline
+                points="26,44 38,56 62,30"
+                stroke="#22C55E" strokeWidth="4" fill="none"
+                strokeLinecap="round" strokeLinejoin="round"
+                strokeDasharray="100" strokeDashoffset="100"
+                style={{ animation: "ds-check-draw 0.4s ease-out 0.65s both" }}
+              />
+            </svg>
+          </div>
+
+          <div className="text-center space-y-1.5">
+            <h2 className="text-[22px] text-white" style={{ fontWeight: 700, letterSpacing: "-0.022em" }}>
+              Deal Sealed
+            </h2>
+            <p className="text-[14px] text-[#8b949e] leading-relaxed">
+              Escrow deployed. Funds are locked and protected until milestones are confirmed.
+            </p>
+          </div>
+
+          <div className="w-full h-px bg-[rgba(255,255,255,0.06)]" />
+
+          <button
+            onClick={onClose}
+            className="w-full h-10 rounded-lg bg-[#22C55E] text-white text-[14px] hover:bg-[#16a34a] transition-colors"
+            style={{ fontWeight: 600 }}
+          >
+            View Deal
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -1238,6 +1325,8 @@ function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: bo
 
 type ChatMsg = { role: "user" | "assistant"; content: string };
 
+type NegotiatedTerms = { totalAmount: number; milestones: Array<{ description: string; amount: number }> };
+
 function ManualNegotiationPanel({
   deal,
   wallet,
@@ -1247,12 +1336,13 @@ function ManualNegotiationPanel({
   deal: SupabaseDeal;
   wallet: string;
   onBack?: () => void;
-  onAgree: () => void;
+  onAgree: (negotiatedTerms?: NegotiatedTerms) => void;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [agreedByAgent, setAgreedByAgent] = useState(false);
+  const [agreedTerms, setAgreedTerms] = useState<NegotiatedTerms | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const openingFired = useRef(false);
   const prevManualMsgCount = useRef(0);
@@ -1332,7 +1422,10 @@ function ManualNegotiationPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "API error");
       setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
-      if (data.agreed) setAgreedByAgent(true);
+      if (data.agreed) {
+        setAgreedByAgent(true);
+        if (data.agreedTerms) setAgreedTerms(data.agreedTerms);
+      }
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -1435,7 +1528,7 @@ function ManualNegotiationPanel({
       {/* Accept button */}
       {(agreedByAgent || messages.length > 0) && (
         <button
-          onClick={onAgree}
+          onClick={() => onAgree(agreedTerms ?? undefined)}
           className="btn-primary h-10 px-6 rounded-md text-[13px] w-full"
         >
           {agreedByAgent ? "Confirm agreement ✓" : "Accept current terms as-is"}
