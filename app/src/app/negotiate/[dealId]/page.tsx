@@ -952,6 +952,11 @@ export default function NegotiateRoom() {
 /* ── Deal Sealed popup (shown after buyer accepts & deploys escrow) ─────── */
 
 function DealSealedModal({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 3000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+
   return (
     <>
       <style>{`
