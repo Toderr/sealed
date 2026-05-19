@@ -165,6 +165,16 @@ export interface SealedUser {
   kyc_status: "none" | "pending" | "approved" | "rejected";
   verified_at: string | null;
   member_since: string;
+  display_name: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+  website: string | null;
+  twitter_handle: string | null;
+  linkedin_url: string | null;
+  instagram_handle: string | null;
+  telegram_handle: string | null;
+  company_file_url: string | null;
+  company_file_name: string | null;
 }
 
 export interface PublicProfile {
@@ -174,6 +184,16 @@ export interface PublicProfile {
   avg_rating: number;
   is_verified: boolean;
   member_since: string;
+  display_name: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+  website: string | null;
+  twitter_handle: string | null;
+  linkedin_url: string | null;
+  instagram_handle: string | null;
+  telegram_handle: string | null;
+  company_file_url: string | null;
+  company_file_name: string | null;
 }
 
 export interface DealCardData {

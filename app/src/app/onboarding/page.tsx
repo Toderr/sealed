@@ -94,9 +94,10 @@ function OnboardingContent() {
 
   function handleProfileContinue() {
     if (!name.trim() || !username.trim()) return;
+    const handle = username.trim().replace(/^@/, "");
     updateProfile({
       name: name.trim(),
-      username: username.trim().replace(/^@/, ""),
+      username: handle,
       bio: bio.trim(),
       socials: {
         twitter: twitter.trim(),
@@ -107,6 +108,23 @@ function OnboardingContent() {
       },
       companyFileName,
     });
+    if (wallet) {
+      fetch(`/api/users/${wallet}/profile`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-wallet": wallet },
+        body: JSON.stringify({
+          handle,
+          display_name: name.trim(),
+          bio: bio.trim(),
+          website: website.trim() || undefined,
+          twitter_handle: twitter.trim() || undefined,
+          linkedin_url: linkedin.trim() || undefined,
+          instagram_handle: instagram.trim() || undefined,
+          telegram_handle: telegram.trim() || undefined,
+          company_file_name: companyFileName || undefined,
+        }),
+      }).catch(() => {});
+    }
     setStep("llm");
   }
 

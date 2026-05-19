@@ -65,7 +65,54 @@ export async function getPublicProfile(
     avg_rating: rep?.avg_rating ?? 0,
     is_verified: !!user.verified_at,
     member_since: user.member_since,
+    display_name: user.display_name ?? null,
+    bio: user.bio ?? null,
+    avatar_url: user.avatar_url ?? null,
+    website: user.website ?? null,
+    twitter_handle: user.twitter_handle ?? null,
+    linkedin_url: user.linkedin_url ?? null,
+    instagram_handle: user.instagram_handle ?? null,
+    telegram_handle: user.telegram_handle ?? null,
+    company_file_url: user.company_file_url ?? null,
+    company_file_name: user.company_file_name ?? null,
   };
+}
+
+export async function updateUserProfile(
+  wallet: string,
+  fields: {
+    handle: string;
+    display_name?: string;
+    bio?: string;
+    avatar_url?: string;
+    website?: string;
+    twitter_handle?: string;
+    linkedin_url?: string;
+    instagram_handle?: string;
+    telegram_handle?: string;
+    company_file_url?: string;
+    company_file_name?: string;
+  }
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase
+    .from(table("users"))
+    .upsert(
+      { wallet, ...fields },
+      { onConflict: "wallet", ignoreDuplicates: false }
+    );
+
+  if (error) {
+    if (error.message?.includes("unique") || error.code === "23505") {
+      return { ok: false, error: "Handle already taken" };
+    }
+    return { ok: false, error: error.message };
+  }
+
+  await supabase
+    .from(table("reputation"))
+    .upsert({ wallet }, { onConflict: "wallet", ignoreDuplicates: true });
+
+  return { ok: true };
 }
 
 export async function updateNotifications(

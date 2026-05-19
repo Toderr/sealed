@@ -177,6 +177,8 @@ export async function dispatchLlm(opts: LlmCallOptions): Promise<string> {
         return callOpenAiCompat("https://api.groq.com/openai/v1", opts.apiKey, opts.model, opts.system, opts.messages, maxTokens);
       case "openrouter":
         return callOpenAiCompat("https://openrouter.ai/api/v1", opts.apiKey, opts.model, opts.system, opts.messages, maxTokens);
+      case "deepseek":
+        return callOpenAiCompat("https://api.deepseek.com/v1", opts.apiKey, opts.model, opts.system, opts.messages, maxTokens);
       case "gemini":
         return callGemini(opts.apiKey, opts.model, opts.system, opts.messages, maxTokens);
       default:

@@ -70,6 +70,18 @@ Jangan hapus entry lama. Tambahkan saja.
 - Constraint: Field yang boleh ditulis dari hasil negotiate terbatas (amount, milestones, deadline). Jangan terima field arbitrary dari LLM output.
 - Tanggal: 2026-05-10
 
+### Avatar stored as base64 data URL in DB
+- Keputusan: Avatar disimpan sebagai base64 JPEG data URL langsung di kolom `avatar_url` di `sealed_users`, bukan di Supabase Storage.
+- Alasan: Menghindari signed URL complexity (expiry, proxy route). Sharp resize ke 256×256 JPEG quality 80 → ~10–20KB base64. Aman di JSON response.
+- Constraint: Max upload 5MB. Strip metadata via Sharp. Jangan simpan raw upload — selalu resize dulu.
+- Tanggal: 2026-05-19
+
+### Profile fields di Supabase sealed_users
+- Keputusan: display_name, bio, avatar_url, website, twitter_handle, linkedin_url, instagram_handle, telegram_handle, company_file_url, company_file_name ditambahkan ke `sealed_users`.
+- Alasan: Profile harus tersedia di server untuk ditampilkan ke counterparty di invite page. localStorage saja tidak cukup.
+- Constraint: Sync ke Supabase dilakukan saat `handleProfileContinue` onboarding (fire-and-forget). Source of truth untuk display tetap Supabase.
+- Tanggal: 2026-05-19
+
 ### Auth refinement untuk Deal PATCH
 - Keputusan: Deal PATCH require caller authorization tapi izinkan seller join flow (seller_wallet nullable di awal, isi saat join).
 - Alasan: Awal: seller belum tahu deal. Tetap perlu authorization setelah seller terikat.

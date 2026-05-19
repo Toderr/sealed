@@ -103,8 +103,32 @@ CREATE TABLE IF NOT EXISTS sealed_users (
     kyc_submitted_at  TIMESTAMPTZ,
     verified_at       TIMESTAMPTZ,
     verified_payment_tx TEXT,
-    member_since      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    member_since      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    display_name      TEXT,
+    bio               TEXT,
+    avatar_url        TEXT,
+    website           TEXT,
+    twitter_handle    TEXT,
+    linkedin_url      TEXT,
+    instagram_handle  TEXT,
+    telegram_handle   TEXT,
+    company_file_url  TEXT,
+    company_file_name TEXT
 );
+
+-- Migration: add profile columns to existing sealed_users table
+-- Run this if the table already exists:
+-- ALTER TABLE sealed_users
+--   ADD COLUMN IF NOT EXISTS display_name TEXT,
+--   ADD COLUMN IF NOT EXISTS bio TEXT,
+--   ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+--   ADD COLUMN IF NOT EXISTS website TEXT,
+--   ADD COLUMN IF NOT EXISTS twitter_handle TEXT,
+--   ADD COLUMN IF NOT EXISTS linkedin_url TEXT,
+--   ADD COLUMN IF NOT EXISTS instagram_handle TEXT,
+--   ADD COLUMN IF NOT EXISTS telegram_handle TEXT,
+--   ADD COLUMN IF NOT EXISTS company_file_url TEXT,
+--   ADD COLUMN IF NOT EXISTS company_file_name TEXT;
 
 -- Agent Templates
 CREATE TABLE IF NOT EXISTS sealed_agent_templates (

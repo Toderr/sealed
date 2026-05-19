@@ -20,7 +20,8 @@ const WalletMultiButton = dynamic(
 export default function ProfilePage() {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
-  const { profile, loaded } = useProfileStore(wallet);
+  const { profile, loaded, updateProfile } = useProfileStore(wallet);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const { deals } = useDealsStore(publicKey ?? null);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"overview" | "agent" | "friends" | "settings">("overview");
@@ -78,6 +79,28 @@ export default function ProfilePage() {
     .join("")
     .toUpperCase();
 
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !wallet) return;
+    setAvatarUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/profile/avatar", {
+        method: "POST",
+        headers: { "x-wallet": wallet },
+        body: fd,
+      });
+      const data = await res.json();
+      if (res.ok && data.avatarUrl) {
+        updateProfile({ avatarUrl: data.avatarUrl });
+      }
+    } finally {
+      setAvatarUploading(false);
+      e.target.value = "";
+    }
+  }
+
   const activeLLM =
     profile.llmConfig?.mode === "own-key"
       ? profile.llmConfig.model
@@ -98,9 +121,34 @@ export default function ProfilePage() {
               <div className="surface-card rounded-xl p-5 space-y-4">
                 {/* Avatar + name */}
                 <div className="flex flex-col items-center text-center gap-3">
-                  <div className="w-16 h-16 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-[22px] text-brand" style={{ fontWeight: 590 }}>
-                    {initials}
-                  </div>
+                  <label className="relative cursor-pointer group" title="Upload photo">
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      className="sr-only"
+                      onChange={handleAvatarUpload}
+                      disabled={avatarUploading}
+                    />
+                    <div className="w-16 h-16 rounded-full overflow-hidden bg-brand/20 border border-brand/30 flex items-center justify-center text-[22px] text-brand" style={{ fontWeight: 590 }}>
+                      {profile.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={profile.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+                      ) : avatarUploading ? (
+                        <svg className="animate-spin w-6 h-6 text-brand" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                        </svg>
+                      ) : (
+                        initials
+                      )}
+                    </div>
+                    <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                      </svg>
+                    </div>
+                  </label>
                   <div>
                     <p className="text-[16px] text-primary" style={{ fontWeight: 590 }}>
                       {profile.name}
@@ -933,7 +981,7 @@ function SettingsTab({ wallet }: { wallet: string }) {
 
   // AI provider state
   const [llmMode, setLlmMode] = useState<"own-key" | "x402">("own-key");
-  const [llmProvider, setLlmProvider] = useState<"openai" | "anthropic" | "groq" | "gemini" | "openrouter">("anthropic");
+  const [llmProvider, setLlmProvider] = useState<"openai" | "anthropic" | "groq" | "gemini" | "openrouter" | "deepseek">("anthropic");
   const [llmModel, setLlmModel] = useState("claude-sonnet-4-6");
   const [llmKey, setLlmKey] = useState("");
   const [showLlmKey, setShowLlmKey] = useState(false);
@@ -975,6 +1023,7 @@ function SettingsTab({ wallet }: { wallet: string }) {
     { id: "groq", label: "Groq", hint: "gsk_..." },
     { id: "gemini", label: "Gemini", hint: "AIza..." },
     { id: "openrouter", label: "OpenRouter", hint: "sk-or-..." },
+    { id: "deepseek", label: "DeepSeek", hint: "sk-..." },
   ];
 
   const LLM_MODELS_MAP: Record<typeof llmProvider, string[]> = {
@@ -983,6 +1032,7 @@ function SettingsTab({ wallet }: { wallet: string }) {
     groq: ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"],
     gemini: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
     openrouter: ["anthropic/claude-sonnet-4", "openai/gpt-4o", "google/gemini-2.5-pro", "meta-llama/llama-3.3-70b-instruct"],
+    deepseek: ["deepseek-chat", "deepseek-reasoner"],
   };
 
   function saveLlmConfig() {

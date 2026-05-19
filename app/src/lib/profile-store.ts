@@ -10,7 +10,7 @@ export type SocialLinks = {
   website: string;
 };
 
-export type LLMProvider = "openai" | "anthropic" | "groq" | "gemini" | "openrouter";
+export type LLMProvider = "openai" | "anthropic" | "groq" | "gemini" | "openrouter" | "deepseek";
 
 export type LLMConfig =
   | { mode: "own-key"; provider: LLMProvider; apiKey: string; model: string }
@@ -39,6 +39,7 @@ export type UserProfile = {
   socials: SocialLinks;
   companyFileUrl?: string;
   companyFileName?: string;
+  avatarUrl?: string;
   llmConfig?: LLMConfig;
   onboardingComplete: boolean;
   createdAt: number;
@@ -60,6 +61,7 @@ export const LLM_MODELS: Record<LLMProvider, string[]> = {
     "google/gemini-2.5-pro",
     "meta-llama/llama-3.3-70b-instruct",
   ],
+  deepseek: ["deepseek-chat", "deepseek-reasoner"],
 };
 
 const EMPTY_SOCIALS: SocialLinks = {

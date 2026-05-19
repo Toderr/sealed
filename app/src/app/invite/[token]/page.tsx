@@ -14,6 +14,14 @@ type InviterStats = {
   avg_rating: number;
   is_verified: boolean;
   handle: string | null;
+  display_name: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+  website: string | null;
+  twitter_handle: string | null;
+  linkedin_url: string | null;
+  instagram_handle: string | null;
+  company_file_name: string | null;
 };
 
 const WalletMultiButton = dynamic(
@@ -185,12 +193,65 @@ export default function InvitePage() {
     <InviteShell>
       <div className="max-w-lg mx-auto px-4 py-12 space-y-6">
         {/* Invitation header */}
-        <div className="text-center space-y-1">
+        <div className="text-center space-y-2">
           <p className="text-[13px] text-muted">You&apos;ve been invited to a deal by</p>
-          <p className="text-[20px] text-primary" style={{ fontWeight: 590 }}>
-            {payload.inviterName}
-          </p>
-          <p className="text-[12px] text-subtle">{payload.inviterWallet}</p>
+          {/* Avatar */}
+          <div className="flex justify-center">
+            <div className="w-16 h-16 rounded-full overflow-hidden bg-brand/20 border-2 border-brand/30 flex items-center justify-center text-[22px] text-brand" style={{ fontWeight: 590 }}>
+              {inviterStats?.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={inviterStats.avatar_url} alt="avatar" className="w-full h-full object-cover" />
+              ) : (
+                (inviterStats?.display_name ?? payload.inviterName)
+                  .split(" ").slice(0, 2).map((w: string) => w[0]).join("").toUpperCase()
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="text-[20px] text-primary" style={{ fontWeight: 590 }}>
+              {inviterStats?.display_name ?? payload.inviterName}
+            </p>
+            {inviterStats?.handle && (
+              <p className="text-[13px] text-muted">@{inviterStats.handle}</p>
+            )}
+            <p className="text-[12px] text-subtle">{payload.inviterWallet.slice(0, 6)}…{payload.inviterWallet.slice(-4)}</p>
+          </div>
+          {inviterStats?.bio && (
+            <p className="text-[13px] text-foreground leading-relaxed max-w-xs mx-auto">{inviterStats.bio}</p>
+          )}
+          {/* Social links */}
+          {inviterStats && (inviterStats.website || inviterStats.twitter_handle || inviterStats.linkedin_url || inviterStats.instagram_handle) && (
+            <div className="flex items-center justify-center gap-3 flex-wrap">
+              {inviterStats.website && (
+                <a href={inviterStats.website.startsWith("http") ? inviterStats.website : `https://${inviterStats.website}`} target="_blank" rel="noopener noreferrer" className="text-[12px] text-muted hover:text-accent transition-colors flex items-center gap-1">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                  Website
+                </a>
+              )}
+              {inviterStats.twitter_handle && (
+                <a href={`https://x.com/${inviterStats.twitter_handle.replace(/^@/, "")}`} target="_blank" rel="noopener noreferrer" className="text-[12px] text-muted hover:text-accent transition-colors">
+                  𝕏 {inviterStats.twitter_handle.replace(/^@/, "")}
+                </a>
+              )}
+              {inviterStats.linkedin_url && (
+                <a href={inviterStats.linkedin_url.startsWith("http") ? inviterStats.linkedin_url : `https://${inviterStats.linkedin_url}`} target="_blank" rel="noopener noreferrer" className="text-[12px] text-muted hover:text-accent transition-colors">
+                  LinkedIn
+                </a>
+              )}
+              {inviterStats.instagram_handle && (
+                <a href={`https://instagram.com/${inviterStats.instagram_handle.replace(/^@/, "")}`} target="_blank" rel="noopener noreferrer" className="text-[12px] text-muted hover:text-accent transition-colors">
+                  IG @{inviterStats.instagram_handle.replace(/^@/, "")}
+                </a>
+              )}
+            </div>
+          )}
+          {/* Company doc */}
+          {inviterStats?.company_file_name && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-surface border border-card-border text-[12px] text-muted">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              {inviterStats.company_file_name}
+            </div>
+          )}
         </div>
 
         {/* Deal preview card */}
