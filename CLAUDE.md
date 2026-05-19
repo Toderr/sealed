@@ -1,7 +1,9 @@
 # Sealed: AI-Powered Escrow on Solana
 
 ## Project Overview
-AI agent that represents businesses on an on-chain deal table. It negotiates deal terms, manages escrow, and verifies deliverables on Solana. Payment release requires the buyer to sign the transaction — the AI verifies milestone completion and recommends release, but the final decision and signing always stays with the buyer.
+**Sealed: an AI agent that negotiates, escrows, and releases payment on Solana, so you can seal the deal with ease.**
+
+It negotiates deal terms, manages escrow, and verifies deliverables on Solana. Payment release requires the buyer to sign the transaction — the AI verifies milestone completion and recommends release, but the final decision and signing always stays with the buyer.
 
 Each user has their own rating built from their past deals, reflecting their credibility as a counterparty. Ratings are stored in `sealed_reputation` (aggregates) and `sealed_ratings` (per-deal), and the on-chain `Reputation` PDA serves as the tamper-proof anchor for this score.
 

@@ -1,6 +1,6 @@
 # Sealed Agent
 
-**Escrow agent for business deals and negotiations.**
+**Sealed: an AI agent that negotiates, escrows, and releases payment on Solana, so you can seal the deal with ease.**
 
 **Live demo:** https://sealed-nine.vercel.app (Solana devnet)
 
