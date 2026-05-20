@@ -102,3 +102,13 @@ Working tree pending dari sesi sebelumnya (belum di-commit):
 - Blocker (jika ada): Tidak ada.
 - Next-action untuk agent berikutnya: Tidak ada untuk task header invite; perubahan kode sudah commit di `803986f`.
 - Do-Not tambahan: Jangan buat variasi logo/header baru untuk invite; pakai pola front page sebagai sumber tampilan brand.
+
+### Update 2026-05-20 14:50 oleh Codex
+- Status: done
+- Yang dikerjakan: Menambahkan gate nama di invite page untuk counterparty yang belum punya akun Sealed. Setelah wallet connect, page cek public profile wallet tersebut; kalau belum ada akun, user wajib input nama, lalu profile minimal dibuat lewat `/api/users/[wallet]/profile` sebelum masuk negotiation room.
+- Files modified: `app/src/app/invite/[token]/page.tsx`, `handoffs/HANDOFF_2026-05-19_main.md`
+- Commit SHA: 8084104
+- Test status: Targeted eslint pass (`npx.cmd eslint "src/app/invite/[token]/page.tsx"`); frontend build pass (`npm.cmd run build`).
+- Blocker (jika ada): Tidak ada.
+- Next-action untuk agent berikutnya: Tidak ada untuk task invitee name gate; perubahan kode sudah commit di `8084104`.
+- Do-Not tambahan: Jangan bypass profile gate untuk wallet tanpa row `sealed_users`; tetap buat profile lewat API server, bukan akses Supabase langsung dari TSX.
