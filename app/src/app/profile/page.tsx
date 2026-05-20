@@ -411,7 +411,7 @@ function InviteCard({
       dealId: deal.dealId,
       dealTitle: deal.dealId.replace(/-/g, " "),
       inviterName: profile.name,
-      inviterWallet: wallet.slice(0, 6) + "..." + wallet.slice(-4),
+      inviterWallet: wallet,
       amount: deal.totalAmount / 1_000_000,
       currency: "USDC",
       milestoneCount: deal.milestones.length,
@@ -419,7 +419,7 @@ function InviteCard({
       description: profile.bio,
     };
     const token = encodeInvite(payload);
-    return `${window.location.origin}/invite/${token}`;
+    return `${window.location.origin}/invite/${encodeURIComponent(token)}`;
   }
 
   function handleCopy() {
@@ -566,7 +566,7 @@ function DealRow({
       dealId: deal.dealId,
       dealTitle: deal.dealId.replace(/-/g, " "),
       inviterName: profile.name,
-      inviterWallet: wallet.slice(0, 6) + "..." + wallet.slice(-4),
+      inviterWallet: wallet,
       amount: amountUsdc,
       currency: "USDC",
       milestoneCount: deal.milestones.length,
@@ -574,7 +574,7 @@ function DealRow({
       description: profile.bio,
     };
     const token = encodeInvite(payload);
-    const link = `${window.location.origin}/invite/${token}`;
+    const link = `${window.location.origin}/invite/${encodeURIComponent(token)}`;
     navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

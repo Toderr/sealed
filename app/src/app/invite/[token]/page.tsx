@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import { SealedMark } from "@/components/SealedLogo";
-import { decodeInvite } from "@/lib/profile-store";
+import { decodeInvite, type InvitePayload } from "@/lib/profile-store";
 
 type InviterStats = {
   deals_total: number;
@@ -38,19 +38,49 @@ export default function InvitePage() {
 
   const token = Array.isArray(params.token) ? params.token[0] : params.token;
   const [inviterStats, setInviterStats] = useState<InviterStats | null>(null);
+  const [resolvedInviterWallet, setResolvedInviterWallet] = useState<string | null>(null);
 
   const payload = useMemo(() => {
     if (!token) return null;
     return decodeInvite(decodeURIComponent(token));
   }, [token]);
 
+  const inviterWallet = resolvedInviterWallet ?? payload?.inviterWallet ?? "";
+
   useEffect(() => {
-    if (!payload?.inviterWallet) return;
-    fetch(`/api/users/${payload.inviterWallet}/public`)
+    let cancelled = false;
+
+    if (!payload) return;
+
+    resolveInviterWallet(payload)
+      .then((wallet) => {
+        if (!cancelled) setResolvedInviterWallet(wallet);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedInviterWallet(payload.inviterWallet);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [payload]);
+
+  useEffect(() => {
+    if (!inviterWallet || isShortWallet(inviterWallet)) return;
+
+    let cancelled = false;
+
+    fetch(`/api/users/${encodeURIComponent(inviterWallet)}/public`)
       .then((r) => r.json())
-      .then((data) => setInviterStats(data))
+      .then((data) => {
+        if (!cancelled) setInviterStats(data);
+      })
       .catch(() => {});
-  }, [payload?.inviterWallet]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inviterWallet]);
 
   if (!payload) {
     return (
@@ -84,6 +114,18 @@ export default function InvitePage() {
     setAccepted(true);
 
     const sellerWallet = publicKey.toBase58();
+    let buyerWallet = inviterWallet;
+
+    if (isShortWallet(buyerWallet)) {
+      buyerWallet = await resolveInviterWallet(payload);
+      setResolvedInviterWallet(buyerWallet);
+    }
+
+    if (isShortWallet(buyerWallet)) {
+      setAccepted(false);
+      alert("This invite link was generated with an incomplete inviter wallet. Ask the inviter to copy a fresh link.");
+      return;
+    }
 
     // Signal instantly to buyer's negotiate room tab via localStorage.
     // Storage event fires in all other tabs of the same origin immediately.
@@ -115,7 +157,7 @@ export default function InvitePage() {
         // invite token so the negotiate room still loads for the counterparty.
         const minimal = {
           deal_id: payload.dealId,
-          buyer_wallet: payload.inviterWallet,
+          buyer_wallet: buyerWallet,
           seller_wallet: sellerWallet,
           title: payload.dealTitle,
           description: payload.description ?? "",
@@ -130,7 +172,7 @@ export default function InvitePage() {
       try {
         const minimal = {
           deal_id: payload.dealId,
-          buyer_wallet: payload.inviterWallet,
+          buyer_wallet: buyerWallet,
           seller_wallet: sellerWallet,
           title: payload.dealTitle,
           description: payload.description ?? "",
@@ -160,7 +202,7 @@ export default function InvitePage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-wallet": payload.inviterWallet, // buyer's wallet
+          "x-wallet": buyerWallet, // buyer's wallet
         },
         body: JSON.stringify(dealBody),
       });
@@ -214,7 +256,7 @@ export default function InvitePage() {
             {inviterStats?.handle && (
               <p className="text-[13px] text-muted">@{inviterStats.handle}</p>
             )}
-            <p className="text-[12px] text-subtle">{payload.inviterWallet.slice(0, 6)}…{payload.inviterWallet.slice(-4)}</p>
+            <p className="text-[12px] text-subtle">{formatWallet(inviterWallet)}</p>
           </div>
           {inviterStats?.bio && (
             <p className="text-[13px] text-foreground leading-relaxed max-w-xs mx-auto">{inviterStats.bio}</p>
@@ -442,19 +484,45 @@ export default function InvitePage() {
   );
 }
 
+function isShortWallet(wallet: string) {
+  return wallet.includes("...") || wallet.includes("…");
+}
+
+function formatWallet(wallet: string) {
+  if (!wallet) return "";
+  if (isShortWallet(wallet)) return wallet;
+  return `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
+}
+
+async function resolveInviterWallet(payload: InvitePayload) {
+  if (!isShortWallet(payload.inviterWallet)) return payload.inviterWallet;
+
+  const res = await fetch(`/api/deals/${encodeURIComponent(payload.dealId)}`);
+  if (!res.ok) return payload.inviterWallet;
+
+  const data = await res.json();
+  return data?.deal?.buyer_wallet ?? payload.inviterWallet;
+}
+
 function InviteShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <header className="flex items-center px-6 h-14 border-b border-card-border-subtle bg-panel">
-        <Link href="/" className="flex items-center gap-2 text-primary">
-          <SealedMark size={24} title="Sealed" />
-          <span
-            className="text-[14px] tracking-tight"
-            style={{ fontWeight: 510 }}
+      <header className="border-b border-card-border-subtle bg-panel">
+        <div className="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 h-14 flex items-center">
+          <Link
+            href="/"
+            className="flex items-center gap-2 group text-primary"
+            aria-label="Sealed Agent home"
           >
-            Sealed Agent
-          </span>
-        </Link>
+            <SealedMark size={28} />
+            <span
+              className="text-[15px] tracking-tight"
+              style={{ fontWeight: 510 }}
+            >
+              Sealed Agent
+            </span>
+          </Link>
+        </div>
       </header>
       <main className="flex-1">{children}</main>
     </div>
