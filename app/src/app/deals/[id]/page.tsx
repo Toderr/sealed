@@ -14,6 +14,7 @@ import {
 } from "@/lib/escrow-client";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { SealedMark } from "@/components/SealedLogo";
+import { SealedBackdrop } from "@/components/SealedBackdrop";
 import Link from "next/link";
 
 const WalletMultiButton = dynamic(
@@ -44,9 +45,6 @@ type Deliverable = {
   created_at: string;
 };
 
-const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.014em" };
-const labelStyle: React.CSSProperties = { fontWeight: 510, letterSpacing: "-0.006em" };
-
 export default function ActiveDealPage() {
   const params = useParams();
   const dealId = Array.isArray(params.id) ? params.id[0] : (params.id as string);
@@ -59,12 +57,13 @@ export default function ActiveDealPage() {
   const [messages, setMessages] = useState<DbMsg[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [deliverables, setDeliverables] = useState<Deliverable[]>([]);
-  const [uploading, setUploading] = useState<number | null>(null); // milestone index
+  const [uploading, setUploading] = useState<number | null>(null);
   const [approvingIndex, setApprovingIndex] = useState<number | null>(null);
   const [sendingMsg, setSendingMsg] = useState(false);
   const [openingProof, setOpeningProof] = useState<string | null>(null);
   const [sealedModalShown, setSealedModalShown] = useState(false);
   const [showSealedModal, setShowSealedModal] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMsgCount = useRef(0);
   const fileInputRefs = useRef<{ [k: number]: HTMLInputElement | null }>({});
@@ -81,7 +80,6 @@ export default function ActiveDealPage() {
     (m) => !m.status || m.status === "Pending" || m.status === "In Review"
   );
 
-  // Initial load
   useEffect(() => {
     if (!dealId) return;
     fetch(`/api/deals/${dealId}`)
@@ -100,7 +98,6 @@ export default function ActiveDealPage() {
       .catch(() => {});
   }, [dealId]);
 
-  // Poll every 4s
   useEffect(() => {
     if (!dealId) return;
     const iv = setInterval(() => {
@@ -187,6 +184,7 @@ export default function ActiveDealPage() {
   async function handleApprove(milestoneIndex: number) {
     if (!publicKey || !signTransaction || !deal?.seller_wallet) return;
     setApprovingIndex(milestoneIndex);
+    setConfirmModal(null);
     try {
       const sellerPubkey = new PublicKey(deal.seller_wallet);
       const mint = getUsdcMint();
@@ -226,8 +224,9 @@ export default function ActiveDealPage() {
 
   const isComplete = milestones.length > 0 && milestones.every((m) => m.status === "Released");
   const currentInReview = currentMilestoneIndex >= 0 && milestones[currentMilestoneIndex]?.status === "In Review";
+  const totalValue = milestones.reduce((s, m) => s + m.amount, 0);
+  const releasedValue = milestones.filter((m) => m.status === "Released").reduce((s, m) => s + m.amount, 0);
 
-  // Show "Project Sealed" popup once when all milestones are released
   useEffect(() => {
     if (isComplete && !sealedModalShown) {
       setSealedModalShown(true);
@@ -237,9 +236,9 @@ export default function ActiveDealPage() {
 
   if (!wallet) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-6 text-center px-4">
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: 24, textAlign: "center", padding: "0 16px" }}>
         <SealedMark size={48} />
-        <p className="text-[16px] text-primary" style={headingStyle}>Connect wallet to view deal</p>
+        <p style={{ fontSize: 16, color: "var(--primary)", fontWeight: 590 }}>Connect wallet to view deal</p>
         <WalletMultiButton />
       </div>
     );
@@ -247,125 +246,231 @@ export default function ActiveDealPage() {
 
   if (loadError) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4 text-center px-4">
-        <p className="text-[16px] text-primary" style={headingStyle}>Deal not found</p>
-        <p className="text-[13px] text-muted">{loadError}</p>
-        <Link href="/app" className="btn-ghost h-9 px-5 rounded-md text-[13px]">Go home</Link>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: 16, textAlign: "center", padding: "0 16px" }}>
+        <p style={{ fontSize: 16, color: "var(--primary)", fontWeight: 590 }}>Deal not found</p>
+        <p style={{ fontSize: 13, color: "var(--muted)" }}>{loadError}</p>
+        <Link href="/app" className="btn-ghost" style={{ height: 36, padding: "0 20px", borderRadius: 6, fontSize: 13, display: "inline-flex", alignItems: "center" }}>Go home</Link>
       </div>
     );
   }
 
   if (!deal) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex gap-1">{[0,150,300].map((d) => (
-          <span key={d} className="h-1.5 w-1.5 rounded-full bg-muted animate-bounce" style={{ animationDelay: `${d}ms` }} />
-        ))}</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <div style={{ display: "flex", gap: 4 }}>
+          {[0, 150, 300].map((d) => (
+            <span key={d} style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--muted)", animation: `sealed-pulse 1.2s ${d}ms infinite ease-in-out` }} />
+          ))}
+        </div>
       </div>
     );
   }
 
+  const shortBuyer = deal.buyer_wallet ? `${deal.buyer_wallet.slice(0, 4)}…${deal.buyer_wallet.slice(-4)}` : "—";
+  const shortSeller = deal.seller_wallet ? `${deal.seller_wallet.slice(0, 4)}…${deal.seller_wallet.slice(-4)}` : "—";
+  const explorerUrl = `https://explorer.solana.com/address/${deal.deal_id}?cluster=devnet`;
+
   return (
-    <div className="min-h-screen bg-background">
-      {/* Project Sealed completion modal */}
-      {showSealedModal && (
-        <ProjectSealedModal onClose={() => setShowSealedModal(false)} />
+    <div style={{ minHeight: "100vh", background: "var(--background)", position: "relative" }}>
+      <SealedBackdrop />
+
+      {showSealedModal && <ProjectSealedModal onClose={() => setShowSealedModal(false)} />}
+
+      {/* Confirm release modal */}
+      {confirmModal !== null && (
+        <ConfirmReleaseModal
+          milestone={milestones[confirmModal]}
+          milestoneIndex={confirmModal}
+          sellerWallet={shortSeller}
+          loading={approvingIndex === confirmModal}
+          onClose={() => setConfirmModal(null)}
+          onConfirm={() => handleApprove(confirmModal)}
+        />
       )}
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
-        {/* Back nav */}
-        <Link href="/app" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-          Back to deals
-        </Link>
+      {/* App-style header */}
+      <header style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 22px",
+        height: 52,
+        borderBottom: "1px solid var(--card-border-subtle)",
+        background: "var(--panel)",
+        position: "sticky",
+        top: 0,
+        zIndex: 10,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <Link href="/app" style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--primary)", textDecoration: "none" }}>
+            <SealedMark size={22} />
+            <span style={{ fontSize: 13, fontWeight: 510 }}>Sealed Agent</span>
+          </Link>
+          <span style={{ color: "var(--muted)", fontSize: 12 }}>›</span>
+          <span style={{ fontSize: 12, color: "var(--foreground)", fontFamily: "ui-monospace, monospace" }}>
+            {deal.deal_id.slice(0, 20)}
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <a
+            href={explorerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-ghost"
+            style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none" }}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
+            View on chain
+          </a>
+        </div>
+      </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* LEFT PANEL */}
-          <div className="lg:col-span-3 space-y-4">
-            {/* Header */}
-            <div className="surface-card rounded-xl p-5 space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[12px] text-muted uppercase tracking-[0.06em] mb-1" style={labelStyle}>Active Deal</p>
-                  <h1 className="text-[20px] text-primary" style={{ ...headingStyle, letterSpacing: "-0.022em" }}>{deal.title}</h1>
-                </div>
-                <span className={`pill-neutral flex-shrink-0 mt-0.5 ${isComplete ? "text-success" : "text-accent"}`}>
-                  {isComplete ? "Completed" : "In Progress"}
-                </span>
-              </div>
+      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "26px 24px", position: "relative", zIndex: 1 }}>
+        {/* Header */}
+        <div style={{ marginBottom: 18 }}>
+          <p style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted)", margin: 0, fontWeight: 510 }}>Deal</p>
+          <h1 style={{ fontSize: 24, fontWeight: 590, letterSpacing: "-0.022em", color: "var(--primary)", margin: "6px 0 0" }}>
+            {deal.title}
+          </h1>
+          <p style={{ fontSize: 12, color: "var(--subtle)", margin: "6px 0 0", fontFamily: "ui-monospace, monospace" }}>
+            {deal.deal_id}
+          </p>
+        </div>
 
-              {/* Amount + progress */}
-              <div>
-                <div className="flex items-baseline gap-2 mb-3">
-                  <span className="text-[26px] text-primary tabular-nums" style={headingStyle}>
-                    {formatUsdc(deal.total_amount_usdc)} USDC
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-[12px] text-muted mb-1.5">
-                  <span style={labelStyle}>
-                    {releasedCount < milestones.length
-                      ? `Milestone ${releasedCount + 1} of ${milestones.length}`
-                      : `All ${milestones.length} milestones complete`}
-                  </span>
-                  <span>{releasedCount}/{milestones.length} released</span>
-                </div>
-                <div className="h-2 bg-surface rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-accent rounded-full transition-all duration-500"
-                    style={{ width: milestones.length > 0 ? `${(releasedCount / milestones.length) * 100}%` : "0%" }}
-                  />
-                </div>
-              </div>
-            </div>
+        {/* Stat strip */}
+        <div className="surface-card" style={{ borderRadius: 12, padding: 16, marginBottom: 16, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0 }}>
+          <StatBlock label="Total value" value={`$${totalValue.toLocaleString()}`} sub="USDC" />
+          <StatBlock label="Released" value={`$${releasedValue.toLocaleString()}`} sub={`${releasedCount} of ${milestones.length} milestones`} accent="success" />
+          <StatBlock label="Counterparty" value={role === "buyer" ? shortSeller : shortBuyer} sub={`You as ${role}`} />
+          <StatBlock label="Status" value={isComplete ? "Completed" : "In progress"} sub="Buyer confirms releases" accent={isComplete ? "success" : "warning"} />
+        </div>
 
-            {/* Parties */}
-            <div className="surface-card rounded-xl p-5">
-              <p className="text-[11px] text-muted uppercase tracking-[0.06em] mb-3" style={labelStyle}>Parties</p>
-              <div className="grid grid-cols-3 gap-3">
-                <PartyCard label="Buyer" wallet={deal.buyer_wallet} isYou={wallet === deal.buyer_wallet} />
-                <PartyCard label="Seller" wallet={deal.seller_wallet ?? ""} isYou={wallet === deal.seller_wallet} />
-                <div className="flex flex-col items-center text-center gap-1">
-                  <div className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10 text-accent">
-                    <SealedMark size={14} />
-                  </div>
-                  <p className="text-[10px] text-muted uppercase tracking-[0.06em]">AI Agent</p>
-                  <p className="text-[12px] text-primary truncate w-full" style={labelStyle}>Sealed Agent</p>
-                </div>
-              </div>
-            </div>
+        {/* Two-column main */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16 }}>
+          {/* Milestones */}
+          <div className="surface-card" style={{ borderRadius: 12, padding: 18 }}>
+            <p style={{ fontSize: 13, color: "var(--primary)", fontWeight: 590, margin: 0 }}>Milestones</p>
+            <p style={{ fontSize: 12, color: "var(--muted)", margin: "2px 0 14px" }}>Each release requires your confirmation.</p>
+            <div style={{ position: "relative", paddingLeft: 18 }}>
+              <div style={{ position: "absolute", left: 5, top: 14, bottom: 14, width: 1, background: "var(--card-border)" }} />
+              {milestones.map((m, i) => {
+                const isReleased = m.status === "Released";
+                const isInReview = m.status === "In Review";
+                const isPending = !m.status || m.status === "Pending";
+                const isActive = isInReview || (isPending && i === currentMilestoneIndex);
+                const proofs = deliverables.filter((d) => d.milestone_index === i);
 
-            {/* Timeline */}
-            <div className="surface-card rounded-xl p-5">
-              <p className="text-[11px] text-muted uppercase tracking-[0.06em] mb-4" style={labelStyle}>Deal Timeline</p>
-              <div className="space-y-0">
-                {/* Deal created */}
-                <TimelineRow
-                  icon="check"
-                  label="Deal Created & Funded"
-                  sub={new Date(deal.created_at).toLocaleDateString()}
-                  done={true}
-                  last={false}
-                />
-                {milestones.map((m, i) => {
-                  const done = m.status === "Released";
-                  const inReview = m.status === "In Review";
-                  const isCurrent = i === currentMilestoneIndex;
-                  const isPending = !m.status || m.status === "Pending";
-                  const isLast = i === milestones.length - 1;
-                  return (
-                    <div key={i}>
-                      <TimelineRow
-                        icon={done ? "check" : inReview ? "review" : "circle"}
-                        label={`Milestone ${i + 1}: ${m.description}`}
-                        sub={done ? "Released" : inReview ? "In review" : isPending && isCurrent ? "In progress" : "Pending"}
-                        subColor={done ? "text-success" : inReview ? "text-warning" : isCurrent ? "text-accent" : "text-subtle"}
-                        done={done}
-                        last={isLast}
-                        amount={formatUsdc(m.amount)}
-                      />
-                      {/* Seller upload proof button */}
-                      {role === "seller" && isCurrent && isPending && (
-                        <div className="ml-[28px] mb-3 mt-1">
+                return (
+                  <div key={i} style={{ position: "relative", paddingBottom: 12, paddingLeft: 18 }}>
+                    <span style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 6,
+                      width: 11,
+                      height: 11,
+                      borderRadius: "50%",
+                      background: isReleased ? "var(--success)" : isInReview ? "var(--warning)" : "var(--muted)",
+                      border: "2px solid var(--background)",
+                      boxShadow: isActive ? "0 0 0 4px rgba(251,191,36,0.18)" : "none",
+                    }} />
+                    <div style={{
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      marginLeft: -4,
+                      background: isActive ? "rgba(251,191,36,0.05)" : "rgba(255,255,255,0.02)",
+                      border: `1px solid ${isActive ? "rgba(251,191,36,0.25)" : "var(--card-border-subtle)"}`,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                          <span style={{ fontSize: 11, color: "var(--subtle)", fontWeight: 510, flexShrink: 0 }}>M{i + 1}</span>
+                          <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.description}</span>
+                          {isReleased && <MiniPill tone="success">Released</MiniPill>}
+                          {isInReview && <MiniPill tone="warning">Awaiting confirm</MiniPill>}
+                          {isPending && i !== currentMilestoneIndex && <MiniPill tone="muted">Pending</MiniPill>}
+                        </div>
+                        <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510, fontVariantNumeric: "tabular-nums", fontFamily: "ui-monospace, monospace", flexShrink: 0 }}>
+                          ${m.amount.toLocaleString()}
+                        </span>
+                      </div>
+
+                      {/* Proof files */}
+                      {(isInReview || isReleased) && proofs.length > 0 && (
+                        <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "rgba(0,0,0,0.2)", border: "1px solid var(--card-border-subtle)" }}>
+                          <p style={{ fontSize: 11, color: "var(--muted)", fontWeight: 510, margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            Delivery proof
+                          </p>
+                          {proofs.map((proof) => (
+                            <button
+                              key={proof.id}
+                              onClick={() => openProof(proof.storage_key)}
+                              disabled={openingProof === proof.storage_key}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10,
+                                width: "100%",
+                                padding: "8px 10px",
+                                borderRadius: 7,
+                                background: "var(--surface)",
+                                border: "1px solid var(--card-border)",
+                                cursor: "pointer",
+                                textAlign: "left",
+                              }}
+                            >
+                              <div style={{ width: 28, height: 28, borderRadius: 6, background: "rgba(113,112,255,0.1)", color: "var(--accent)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+                                </svg>
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: 12, color: "var(--primary)", margin: 0, fontWeight: 510, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proof.filename}</p>
+                                <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>{(proof.size_bytes / 1024).toFixed(1)} KB</p>
+                              </div>
+                              <span className="btn-ghost" style={{ height: 24, padding: "0 8px", borderRadius: 4, fontSize: 11, display: "inline-flex", alignItems: "center" }}>Open</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Buyer: confirm CTA */}
+                      {role === "buyer" && isInReview && (
+                        <div className="anim-fade-up" style={{ marginTop: 12, display: "flex", gap: 8 }}>
+                          <button
+                            className="btn-ghost"
+                            style={{ flex: 1, height: 34, borderRadius: 7, fontSize: 12 }}
+                          >
+                            Request changes
+                          </button>
+                          <button
+                            className="btn-primary"
+                            onClick={() => setConfirmModal(i)}
+                            disabled={approvingIndex !== null}
+                            style={{ flex: 2, height: 34, borderRadius: 7, fontSize: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                          >
+                            {approvingIndex === i ? (
+                              <>
+                                <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round" />
+                                </svg>
+                                Releasing…
+                              </>
+                            ) : (
+                              <>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                                Confirm & release ${m.amount.toLocaleString()}
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Seller: upload proof */}
+                      {role === "seller" && (isPending || isInReview) && i === currentMilestoneIndex && (
+                        <div style={{ marginTop: 10 }}>
                           <input
                             type="file"
                             accept=".pdf,.png,.jpg,.jpeg,.docx"
@@ -376,224 +481,173 @@ export default function ActiveDealPage() {
                               if (file) handleUploadProof(file, i);
                               e.target.value = "";
                             }}
+                            style={{ display: "none" }}
                           />
                           <button
                             onClick={() => fileInputRefs.current[i]?.click()}
                             disabled={uploading === i}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-accent/30 text-accent hover:bg-accent/5 text-[12px] transition-colors disabled:opacity-50"
-                            style={labelStyle}
+                            className="btn-ghost"
+                            style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 6, fontSize: 12, cursor: "pointer" }}
                           >
                             {uploading === i ? (
                               <>
-                                <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round"/></svg>
+                                <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round" /></svg>
                                 Uploading…
                               </>
                             ) : (
                               <>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                                Upload Proof
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                                {isInReview ? "Re-upload proof" : "Upload proof"}
                               </>
                             )}
                           </button>
                         </div>
                       )}
-                      {/* Re-upload option if in review */}
-                      {role === "seller" && inReview && (
-                        <div className="ml-[28px] mb-2 mt-1">
-                          <input
-                            type="file"
-                            accept=".pdf,.png,.jpg,.jpeg,.docx"
-                            ref={(el) => { fileInputRefs.current[i + 100] = el; }}
-                            className="hidden"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) handleUploadProof(file, i);
-                              e.target.value = "";
-                            }}
-                          />
-                          <button
-                            onClick={() => fileInputRefs.current[i + 100]?.click()}
-                            disabled={uploading === i}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-card-border text-muted hover:text-foreground text-[12px] transition-colors disabled:opacity-50"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                            Re-upload
-                          </button>
-                        </div>
-                      )}
-                      {/* Proof files — visible to buyer for review, and seller to confirm */}
-                      {(inReview || done) && (() => {
-                        const proofs = deliverables.filter((d) => d.milestone_index === i);
-                        if (proofs.length === 0) return null;
-                        return (
-                          <div className="ml-[28px] mb-3 mt-1 space-y-1.5">
-                            <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>
-                              Submitted proof
-                            </p>
-                            {proofs.map((proof) => (
-                              <button
-                                key={proof.id}
-                                onClick={() => openProof(proof.storage_key)}
-                                disabled={openingProof === proof.storage_key}
-                                className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-card-border bg-surface hover:border-accent/40 hover:bg-accent/5 transition-colors text-left disabled:opacity-50"
-                              >
-                                <FileIcon mime={proof.content_type} />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-[12px] text-foreground truncate" style={labelStyle}>{proof.filename}</p>
-                                  <p className="text-[10px] text-subtle">{(proof.size_bytes / 1024).toFixed(1)} KB</p>
-                                </div>
-                                {openingProof === proof.storage_key ? (
-                                  <svg className="animate-spin shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round"/></svg>
-                                ) : (
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-muted shrink-0"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        );
-                      })()}
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* RIGHT PANEL: Chat */}
-          <div className="lg:col-span-2">
+          {/* Right rail */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Parties */}
+            <div className="surface-card" style={{ borderRadius: 12, padding: 16 }}>
+              <p style={{ fontSize: 13, color: "var(--primary)", fontWeight: 590, margin: 0 }}>Parties</p>
+              <div style={{ marginTop: 12 }}>
+                <PartyRow
+                  label="Buyer"
+                  wallet={deal.buyer_wallet}
+                  isYou={wallet === deal.buyer_wallet}
+                />
+                <div style={{ height: 10 }} />
+                <PartyRow
+                  label="Seller"
+                  wallet={deal.seller_wallet ?? ""}
+                  isYou={wallet === deal.seller_wallet}
+                />
+              </div>
+            </div>
+
+            {/* Activity / chat */}
             <div
-              className="surface-card rounded-xl overflow-hidden flex flex-col"
-              style={{ height: "calc(100vh - 160px)", minHeight: "520px" }}
+              className="surface-card"
+              style={{ borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column", height: "calc(100vh - 480px)", minHeight: 280 }}
             >
-              {/* Header */}
-              <div className="px-4 py-3.5 border-b border-card-border-subtle flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2.5">
-                  <div className="h-7 w-7 rounded-lg bg-accent/10 flex items-center justify-center text-accent">
-                    <SealedMark size={13} />
-                  </div>
-                  <p className="text-[13px] text-primary" style={labelStyle}>Sealed Agent</p>
+              <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--card-border-subtle)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                <div style={{ width: 22, height: 22, borderRadius: 6, background: "rgba(113,112,255,0.1)", color: "var(--accent)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  <SealedMark size={12} />
                 </div>
-                <span className="flex items-center gap-1.5 text-[11px] text-success">
-                  <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+                <p style={{ fontSize: 13, color: "var(--primary)", margin: 0, fontWeight: 510 }}>Sealed Agent</p>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--success)", marginLeft: "auto" }}>
+                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--success)" }} />
                   Online
                 </span>
               </div>
 
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+              <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
                 {messages.length === 0 && (
-                  <div className="text-center py-8">
-                    <p className="text-[13px] text-muted">
-                      {role === "seller"
-                        ? "Upload proof for the current milestone to get started."
-                        : "Waiting for the seller to submit proof."}
+                  <div style={{ textAlign: "center", paddingTop: 24 }}>
+                    <p style={{ fontSize: 12, color: "var(--muted)" }}>
+                      {role === "seller" ? "Upload proof for the current milestone to get started." : "Waiting for the seller to submit proof."}
                     </p>
                   </div>
                 )}
-
                 {messages.map((m) => {
                   const isAgent = m.role === "assistant";
                   const isSystem = m.role === "system";
                   if (isSystem) return (
-                    <div key={m.id} className="text-center">
-                      <span className="text-[11px] text-subtle px-2">{m.content}</span>
+                    <div key={m.id} style={{ textAlign: "center" }}>
+                      <span style={{ fontSize: 11, color: "var(--subtle)", padding: "0 8px" }}>{m.content}</span>
                     </div>
                   );
                   return (
-                    <div key={m.id} className={`flex ${isAgent ? "justify-start" : "justify-end"}`}>
-                      <div className={`max-w-[88%] rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
-                        isAgent ? "surface-card text-foreground" : "bg-brand text-white"
-                      }`}>
+                    <div key={m.id} style={{ display: "flex", justifyContent: isAgent ? "flex-start" : "flex-end" }}>
+                      <div style={{
+                        maxWidth: "88%",
+                        borderRadius: 11,
+                        padding: "9px 13px",
+                        fontSize: 12,
+                        lineHeight: 1.55,
+                        background: isAgent ? "rgba(255,255,255,0.025)" : "var(--brand)",
+                        border: isAgent ? "1px solid var(--card-border)" : "none",
+                        color: isAgent ? "var(--foreground)" : "#ffffff",
+                      }}>
                         {isAgent && (
-                          <p className="text-[10px] text-accent mb-1">Sealed Agent</p>
+                          <p style={{ fontSize: 10, color: "var(--accent)", margin: "0 0 4px" }}>Sealed Agent</p>
                         )}
-                        <div className="whitespace-pre-wrap">{renderMarkdown(m.content)}</div>
+                        <div style={{ whiteSpace: "pre-wrap" }}>{renderMarkdown(m.content)}</div>
                       </div>
                     </div>
                   );
                 })}
 
-                {/* Buyer: proof review + approve */}
+                {/* Buyer: proof review inline */}
                 {role === "buyer" && currentInReview && (() => {
                   const proofs = deliverables.filter((d) => d.milestone_index === currentMilestoneIndex);
-                  return (
-                    <div className="space-y-2">
-                      {proofs.length > 0 && (
-                        <div className="surface-card rounded-xl p-3 space-y-2">
-                          <p className="text-[11px] text-accent uppercase tracking-[0.06em]" style={labelStyle}>
-                            Review proof — Milestone {currentMilestoneIndex + 1}
-                          </p>
-                          {proofs.map((proof) => (
-                            <button
-                              key={proof.id}
-                              onClick={() => openProof(proof.storage_key)}
-                              disabled={openingProof === proof.storage_key}
-                              className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-card-border bg-surface hover:border-accent/40 hover:bg-accent/5 transition-colors text-left disabled:opacity-50"
-                            >
-                              <FileIcon mime={proof.content_type} />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[12px] text-foreground truncate" style={labelStyle}>{proof.filename}</p>
-                                <p className="text-[10px] text-subtle">{(proof.size_bytes / 1024).toFixed(1)} KB</p>
-                              </div>
-                              {openingProof === proof.storage_key ? (
-                                <svg className="animate-spin shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round"/></svg>
-                              ) : (
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-muted shrink-0"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <div className="flex justify-end">
-                        <button
-                          onClick={() => handleApprove(currentMilestoneIndex)}
-                          disabled={approvingIndex !== null}
-                          className="flex items-center gap-2 bg-success/10 border border-success/30 text-success rounded-xl px-4 py-2.5 text-[13px] hover:bg-success/20 transition-colors disabled:opacity-50"
-                          style={labelStyle}
-                        >
-                          {approvingIndex === currentMilestoneIndex ? (
-                            <>
-                              <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round"/></svg>
-                              Releasing…
-                            </>
-                          ) : (
-                            <>Looks good. Approved! ✓</>
-                          )}
+                  return proofs.length > 0 ? (
+                    <div style={{ padding: 10, borderRadius: 10, background: "rgba(113,112,255,0.04)", border: "1px solid rgba(113,112,255,0.18)", fontSize: 11, color: "var(--muted)" }}>
+                      <p style={{ fontSize: 10, color: "var(--accent)", margin: "0 0 6px", fontWeight: 510, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Review Milestone {currentMilestoneIndex + 1}
+                      </p>
+                      {proofs.map((p) => (
+                        <button key={p.id} onClick={() => openProof(p.storage_key)} disabled={openingProof === p.storage_key}
+                          style={{ fontSize: 11, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                          📎 {p.filename}
                         </button>
-                      </div>
+                      ))}
                     </div>
-                  );
+                  ) : null;
                 })()}
 
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input */}
               {wallet && (
-                <div className="border-t border-card-border-subtle px-4 py-3 shrink-0">
-                  <div className="flex gap-2">
+                <div style={{ borderTop: "1px solid var(--card-border-subtle)", padding: "10px 12px", flexShrink: 0 }}>
+                  <div style={{ display: "flex", gap: 8 }}>
                     <input
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); }
-                      }}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
                       placeholder="Type a message…"
                       disabled={sendingMsg}
-                      className="flex-1 h-9 rounded-md bg-surface border border-card-border px-3 text-[13px] text-foreground placeholder:text-subtle outline-none focus:border-accent/50 transition-colors disabled:opacity-50"
+                      style={{
+                        flex: 1,
+                        height: 34,
+                        borderRadius: 6,
+                        background: "var(--surface)",
+                        border: "1px solid var(--card-border)",
+                        padding: "0 12px",
+                        fontSize: 12,
+                        color: "var(--primary)",
+                        outline: "none",
+                      }}
                     />
                     <button
                       onClick={handleSendMessage}
                       disabled={!chatInput.trim() || sendingMsg}
-                      className="btn-primary h-9 w-9 rounded-md flex items-center justify-center shrink-0 disabled:opacity-40"
+                      className="btn-primary"
+                      style={{ height: 34, width: 34, borderRadius: 6, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
                       </svg>
                     </button>
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Escrow info */}
+            <div style={{ padding: "10px 12px", borderRadius: 8, background: "rgba(113,112,255,0.04)", border: "1px solid rgba(113,112,255,0.18)", display: "flex", gap: 10 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              <p style={{ fontSize: 11, color: "var(--muted)", margin: 0, lineHeight: 1.5 }}>
+                Funds stay in escrow until you confirm. Refund requires both signatures.
+              </p>
             </div>
           </div>
         </div>
@@ -604,75 +658,148 @@ export default function ActiveDealPage() {
 
 /* ── Sub-components ── */
 
-function PartyCard({ label, wallet, isYou }: { label: string; wallet: string; isYou: boolean }) {
-  const short = wallet ? `${wallet.slice(0, 4)}…${wallet.slice(-4)}` : "—";
+function StatBlock({ label, value, sub, accent }: { label: string; value: string; sub: string; accent?: "success" | "warning" }) {
+  const color = accent === "success" ? "var(--success)" : accent === "warning" ? "var(--warning)" : "var(--primary)";
   return (
-    <div className="flex flex-col items-center text-center gap-1">
-      <div className={`h-8 w-8 rounded-lg flex items-center justify-center text-[11px] font-mono ${
-        isYou ? "bg-accent/10 text-accent" : "bg-surface border border-card-border text-muted"
-      }`}>
-        {wallet ? wallet.slice(0, 2) : "?"}
-      </div>
-      <p className="text-[10px] text-muted uppercase tracking-[0.06em]">{label}</p>
-      <p className="text-[11px] text-primary font-mono truncate w-full">{short}</p>
-      {isYou && <span className="pill-neutral text-accent text-[10px]">You</span>}
+    <div style={{ paddingRight: 14, borderRight: "1px solid var(--card-border-subtle)" }}>
+      <p style={{ fontSize: 11, color: "var(--muted)", margin: 0, fontWeight: 510, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</p>
+      <p style={{ fontSize: 18, fontWeight: 590, color, margin: "6px 0 1px", letterSpacing: "-0.015em", fontVariantNumeric: "tabular-nums" }}>{value}</p>
+      <p style={{ fontSize: 11, color: "var(--subtle)", margin: 0 }}>{sub}</p>
     </div>
   );
 }
 
-function TimelineRow({
-  icon, label, sub, subColor = "text-muted", done, last, amount,
+function PartyRow({ label, wallet, isYou }: { label: string; wallet: string; isYou: boolean }) {
+  const short = wallet ? `${wallet.slice(0, 4)}…${wallet.slice(-4)}` : "—";
+  const initials = wallet ? wallet.slice(0, 2).toUpperCase() : "?";
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+      <div style={{
+        width: 30,
+        height: 30,
+        borderRadius: "50%",
+        background: isYou ? "linear-gradient(135deg, rgba(113,112,255,0.3), rgba(94,106,210,0.15))" : "var(--surface)",
+        color: isYou ? "var(--accent)" : "var(--muted)",
+        fontWeight: 590,
+        fontSize: 11,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        border: "1px solid var(--card-border)",
+      }}>
+        {initials}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "var(--primary)", fontFamily: "ui-monospace, monospace" }}>{short}</span>
+          {isYou && (
+            <span style={{ background: "transparent", border: "1px solid rgba(113,112,255,0.3)", borderRadius: 9999, padding: "1px 8px", fontSize: 10, color: "var(--accent)", fontWeight: 510 }}>You</span>
+          )}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--muted)" }}>{label}</div>
+      </div>
+    </div>
+  );
+}
+
+function MiniPill({ tone, children }: { tone: string; children: React.ReactNode }) {
+  const tones: Record<string, { c: string; bd: string }> = {
+    success: { c: "var(--success)", bd: "rgba(16,185,129,0.3)" },
+    warning: { c: "var(--warning)", bd: "rgba(251,191,36,0.3)" },
+    muted:   { c: "var(--muted)",   bd: "rgba(255,255,255,0.08)" },
+  };
+  const t = tones[tone] ?? tones.muted;
+  return (
+    <span style={{ fontSize: 10, color: t.c, border: `1px solid ${t.bd}`, borderRadius: 9999, padding: "1px 6px", fontWeight: 510, flexShrink: 0, whiteSpace: "nowrap" }}>
+      {children}
+    </span>
+  );
+}
+
+function ConfirmReleaseModal({
+  milestone,
+  milestoneIndex,
+  sellerWallet,
+  loading,
+  onClose,
+  onConfirm,
 }: {
-  icon: "check" | "review" | "circle";
-  label: string;
-  sub: string;
-  subColor?: string;
-  done: boolean;
-  last: boolean;
-  amount?: string;
+  milestone: Milestone;
+  milestoneIndex: number;
+  sellerWallet: string;
+  loading: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
 }) {
   return (
-    <div className="flex gap-3">
-      <div className="flex flex-col items-center">
-        <div className={`h-6 w-6 rounded-full flex items-center justify-center shrink-0 ${
-          done ? "bg-success/15 text-success" :
-          icon === "review" ? "bg-warning/15 text-warning" :
-          "border-2 border-card-border text-subtle"
-        }`}>
-          {icon === "check" && (
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-          )}
-          {icon === "review" && (
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="2"/><circle cx="12" cy="12" r="9"/>
-            </svg>
-          )}
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.65)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        animation: "sealed-fade-up 0.2s ease-out both",
+        zIndex: 100,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="surface-card"
+        style={{
+          background: "var(--panel)",
+          borderRadius: 14,
+          padding: 22,
+          maxWidth: 400,
+          width: "100%",
+          boxShadow: "0 24px 48px -12px rgba(0,0,0,0.55)",
+        }}
+      >
+        <p style={{ fontSize: 16, fontWeight: 590, color: "var(--primary)", margin: 0 }}>
+          Confirm milestone delivery?
+        </p>
+        <p style={{ fontSize: 13, color: "var(--muted)", margin: "8px 0 16px" }}>
+          You&apos;ll sign one transaction. The escrow will release{" "}
+          <span style={{ color: "var(--primary)", fontWeight: 510, fontVariantNumeric: "tabular-nums" }}>
+            ${milestone.amount.toLocaleString()} USDC
+          </span>{" "}
+          to seller. This cannot be reversed without their signature.
+        </p>
+        <div style={{ padding: 12, borderRadius: 8, background: "rgba(255,255,255,0.07)", border: "1px solid var(--card-border)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+            <span style={{ color: "var(--muted)" }}>Milestone</span>
+            <span style={{ color: "var(--foreground)" }}>M{milestoneIndex + 1}: {milestone.description}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+            <span style={{ color: "var(--muted)" }}>Recipient</span>
+            <span style={{ color: "var(--foreground)", fontFamily: "ui-monospace, monospace" }}>{sellerWallet}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+            <span style={{ color: "var(--muted)" }}>Network</span>
+            <span style={{ color: "var(--foreground)" }}>Solana · ~0.000005 SOL fee</span>
+          </div>
         </div>
-        {!last && <div className="w-px flex-1 bg-card-border-subtle mt-1 mb-1" style={{ minHeight: "16px" }} />}
-      </div>
-      <div className="pb-4 flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <p className={`text-[13px] truncate ${done ? "text-foreground" : "text-muted"}`} style={done ? labelStyle : undefined}>
-            {label}
-          </p>
-          {amount && <span className="text-[12px] text-muted font-mono shrink-0">${amount}</span>}
+        <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+          <button onClick={onClose} className="btn-ghost" style={{ flex: 1, height: 38, borderRadius: 7, fontSize: 13 }}>Cancel</button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="btn-primary"
+            style={{ flex: 2, height: 38, borderRadius: 7, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round" />
+                </svg>
+                Releasing…
+              </>
+            ) : "Sign & release"}
+          </button>
         </div>
-        <p className={`text-[11px] mt-0.5 ${subColor}`}>{sub}</p>
       </div>
-    </div>
-  );
-}
-
-function FileIcon({ mime }: { mime: string }) {
-  const isPdf = mime === "application/pdf";
-  const isImg = mime.startsWith("image/");
-  return (
-    <div className={`h-7 w-7 rounded-md flex items-center justify-center shrink-0 text-[9px] font-mono font-bold ${
-      isPdf ? "bg-danger/10 text-danger" : isImg ? "bg-accent/10 text-accent" : "bg-surface border border-card-border text-muted"
-    }`}>
-      {isPdf ? "PDF" : isImg ? "IMG" : "DOC"}
     </div>
   );
 }
@@ -681,88 +808,35 @@ function ProjectSealedModal({ onClose }: { onClose: () => void }) {
   return (
     <>
       <style>{`
-        @keyframes circle-draw {
-          from { stroke-dashoffset: 283; }
-          to   { stroke-dashoffset: 0; }
-        }
-        @keyframes check-draw {
-          from { stroke-dashoffset: 100; opacity: 0; }
-          to   { stroke-dashoffset: 0;   opacity: 1; }
-        }
-        @keyframes modal-in {
-          from { opacity: 0; transform: scale(0.88); }
-          to   { opacity: 1; transform: scale(1); }
-        }
-        @keyframes overlay-in {
-          from { opacity: 0; }
-          to   { opacity: 1; }
-        }
-        @keyframes badge-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
-          50%       { box-shadow: 0 0 0 16px rgba(34,197,94,0); }
-        }
+        @keyframes circle-draw { from { stroke-dashoffset: 283; } to { stroke-dashoffset: 0; } }
+        @keyframes check-draw { from { stroke-dashoffset: 100; opacity: 0; } to { stroke-dashoffset: 0; opacity: 1; } }
+        @keyframes modal-in { from { opacity: 0; transform: scale(0.88); } to { opacity: 1; transform: scale(1); } }
+        @keyframes overlay-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes badge-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); } 50% { box-shadow: 0 0 0 16px rgba(34,197,94,0); } }
       `}</style>
-
-      {/* Overlay */}
       <div
         className="fixed inset-0 z-50 flex items-center justify-center px-4"
         style={{ background: "rgba(0,0,0,0.72)", animation: "overlay-in 0.25s ease both" }}
         onClick={onClose}
       >
-        {/* Card */}
         <div
           className="relative bg-[#0D1117] border border-[rgba(255,255,255,0.08)] rounded-2xl px-10 py-10 flex flex-col items-center gap-5 max-w-sm w-full shadow-2xl"
           style={{ animation: "modal-in 0.35s cubic-bezier(0.34,1.56,0.64,1) both" }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Animated checkmark */}
           <div style={{ animation: "badge-pulse 2s ease-in-out 0.8s infinite" }} className="rounded-full">
             <svg width="88" height="88" viewBox="0 0 88 88" fill="none">
-              {/* Circle */}
-              <circle
-                cx="44" cy="44" r="40"
-                stroke="#22C55E" strokeWidth="3.5" fill="none"
-                strokeDasharray="251" strokeDashoffset="251"
-                strokeLinecap="round"
-                style={{ animation: "circle-draw 0.55s ease-out 0.1s both" }}
-              />
-              {/* Inner glow fill */}
+              <circle cx="44" cy="44" r="40" stroke="#22C55E" strokeWidth="3.5" fill="none" strokeDasharray="251" strokeDashoffset="251" strokeLinecap="round" style={{ animation: "circle-draw 0.55s ease-out 0.1s both" }} />
               <circle cx="44" cy="44" r="36" fill="rgba(34,197,94,0.08)" />
-              {/* Checkmark */}
-              <polyline
-                points="26,44 38,56 62,30"
-                stroke="#22C55E" strokeWidth="4" fill="none"
-                strokeLinecap="round" strokeLinejoin="round"
-                strokeDasharray="100" strokeDashoffset="100"
-                style={{ animation: "check-draw 0.4s ease-out 0.65s both" }}
-              />
+              <polyline points="26,44 38,56 62,30" stroke="#22C55E" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="100" strokeDashoffset="100" style={{ animation: "check-draw 0.4s ease-out 0.65s both" }} />
             </svg>
           </div>
-
-          {/* Text */}
           <div className="text-center space-y-1.5">
-            <h2
-              className="text-[22px] text-white"
-              style={{ fontWeight: 700, letterSpacing: "-0.022em" }}
-            >
-              Project Sealed
-            </h2>
-            <p className="text-[14px] text-[#8b949e] leading-relaxed">
-              All milestones completed. Funds have been released to the seller.
-            </p>
+            <h2 className="text-[22px] text-white" style={{ fontWeight: 700, letterSpacing: "-0.022em" }}>Project Sealed</h2>
+            <p className="text-[14px] text-[#8b949e] leading-relaxed">All milestones completed. Funds have been released to the seller.</p>
           </div>
-
-          {/* Divider */}
           <div className="w-full h-px bg-[rgba(255,255,255,0.06)]" />
-
-          {/* Close */}
-          <button
-            onClick={onClose}
-            className="w-full h-10 rounded-lg bg-[#22C55E] text-white text-[14px] hover:bg-[#16a34a] transition-colors"
-            style={{ fontWeight: 600 }}
-          >
-            Done
-          </button>
+          <button onClick={onClose} className="w-full h-10 rounded-lg bg-[#22C55E] text-white text-[14px] hover:bg-[#16a34a] transition-colors" style={{ fontWeight: 600 }}>Done</button>
         </div>
       </div>
     </>

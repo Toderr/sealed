@@ -5,10 +5,8 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { SealedMark } from "@/components/SealedLogo";
+import { SealedBackdrop } from "@/components/SealedBackdrop";
 import type { PublicProfile } from "@/lib/types";
-
-const labelStyle: React.CSSProperties = { fontWeight: 510, letterSpacing: "-0.006em" };
-const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.014em" };
 
 type FullProfile = PublicProfile & {
   bio?: string;
@@ -22,6 +20,7 @@ type FullProfile = PublicProfile & {
 };
 
 type FriendStatus = "none" | "friends" | "outgoing" | "incoming" | "self";
+type Tab = "timeline" | "reviews" | "agents";
 
 export default function PublicProfilePage() {
   const params = useParams();
@@ -33,6 +32,7 @@ export default function PublicProfilePage() {
   const [loading, setLoading] = useState(true);
   const [friendStatus, setFriendStatus] = useState<FriendStatus>("none");
   const [friendLoading, setFriendLoading] = useState(false);
+  const [tab, setTab] = useState<Tab>("timeline");
 
   const wallet = profileWallet;
 
@@ -40,14 +40,10 @@ export default function PublicProfilePage() {
     if (!wallet) return;
     fetch(`/api/users/${wallet}/public`)
       .then((r) => r.json())
-      .then((data: FullProfile) => {
-        setProfile(data);
-        setLoading(false);
-      })
+      .then((data: FullProfile) => { setProfile(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, [wallet]);
 
-  // Check friendship status
   useEffect(() => {
     if (!myWallet || !wallet || myWallet === wallet) return;
     fetch(`/api/friends/status?with=${wallet}`, { headers: { "x-wallet": myWallet } })
@@ -91,159 +87,338 @@ export default function PublicProfilePage() {
     ? profile.handle.slice(0, 2).toUpperCase()
     : shortWallet.slice(0, 2).toUpperCase();
 
+  const isSelf = myWallet === wallet;
+
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="flex items-center px-6 h-14 border-b border-card-border-subtle bg-panel">
-        <Link href="/app" className="flex items-center gap-2 text-primary">
-          <SealedMark size={24} title="Sealed" />
-          <span className="text-[14px] tracking-tight" style={{ fontWeight: 510 }}>Sealed</span>
+    <div style={{ minHeight: "100vh", background: "var(--background)", display: "flex", flexDirection: "column", position: "relative" }}>
+      <SealedBackdrop />
+
+      {/* Header */}
+      <header style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 22px",
+        height: 52,
+        borderBottom: "1px solid var(--card-border-subtle)",
+        background: "var(--panel)",
+        position: "sticky",
+        top: 0,
+        zIndex: 10,
+      }}>
+        <Link href="/app" style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--primary)", textDecoration: "none" }}>
+          <SealedMark size={22} />
+          <span style={{ fontSize: 13, fontWeight: 510 }}>Sealed Agent</span>
         </Link>
+        {isSelf && (
+          <Link
+            href="/onboarding?edit=1"
+            className="btn-ghost"
+            style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", textDecoration: "none" }}
+          >
+            Edit profile
+          </Link>
+        )}
       </header>
 
-      <main className="flex-1 max-w-2xl mx-auto w-full px-4 sm:px-6 py-10">
-        {loading ? (
-          <div className="flex items-center justify-center py-24">
-            <div className="flex gap-1">{[0, 150, 300].map((d) => <span key={d} className="h-1.5 w-1.5 rounded-full bg-muted animate-bounce" style={{ animationDelay: `${d}ms` }} />)}</div>
+      {loading ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1 }}>
+          <div style={{ display: "flex", gap: 4 }}>
+            {[0, 150, 300].map((d) => (
+              <span key={d} style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--muted)", animation: `sealed-pulse 1.2s ${d}ms infinite ease-in-out` }} />
+            ))}
           </div>
-        ) : !profile ? (
-          <div className="text-center py-24">
-            <p className="text-[16px] text-primary" style={headingStyle}>Profile not found</p>
-            <p className="text-[13px] text-muted mt-1">{shortWallet}</p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-start gap-5">
-              <div className="w-16 h-16 rounded-xl bg-brand/20 border border-brand/30 flex items-center justify-center text-[22px] text-accent flex-shrink-0" style={headingStyle}>
-                {initials}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-[20px] text-primary" style={headingStyle}>
-                    {profile.handle ? `@${profile.handle}` : shortWallet}
-                  </h1>
-                  {profile.is_verified && (
-                    <span className="flex items-center gap-1 text-[12px] text-success">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        </div>
+      ) : !profile ? (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, textAlign: "center" }}>
+          <p style={{ fontSize: 16, color: "var(--primary)", fontWeight: 590 }}>Profile not found</p>
+          <p style={{ fontSize: 13, color: "var(--muted)" }}>{shortWallet}</p>
+          <Link href="/app" className="btn-ghost" style={{ height: 32, padding: "0 14px", borderRadius: 6, fontSize: 12, marginTop: 8, display: "inline-flex", alignItems: "center", textDecoration: "none" }}>← Back</Link>
+        </div>
+      ) : (
+        <div style={{ flex: 1, overflowY: "auto", position: "relative", zIndex: 1 }}>
+          {/* Hero band */}
+          <div style={{
+            padding: "36px 32px 0",
+            background: "radial-gradient(circle at 20% 0%, rgba(113,112,255,0.08), transparent 60%)",
+          }}>
+            <div style={{ maxWidth: 1020, margin: "0 auto", display: "grid", gridTemplateColumns: "400px 1fr", gap: 28, alignItems: "stretch" }}>
+              {/* Trust card */}
+              <div style={{
+                borderRadius: 16,
+                padding: 22,
+                background: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015))",
+                border: "1px solid var(--card-border)",
+                position: "relative",
+                overflow: "hidden",
+              }}>
+                {/* Watermark */}
+                <div style={{ position: "absolute", right: -20, top: -20, opacity: 0.04, color: "var(--accent)" }}>
+                  <SealedMark size={180} />
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 14, position: "relative" }}>
+                  <div style={{
+                    width: 72,
+                    height: 72,
+                    borderRadius: 16,
+                    background: "linear-gradient(135deg, rgba(113,112,255,0.55), rgba(94,106,210,0.3))",
+                    border: "1.5px solid rgba(113,112,255,0.4)",
+                    color: "#fff",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 24,
+                    fontWeight: 590,
+                    flexShrink: 0,
+                  }}>
+                    {initials}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <p style={{ fontSize: 18, fontWeight: 590, color: "var(--primary)", margin: 0, letterSpacing: "-0.012em" }}>
+                        {profile.handle ? `@${profile.handle}` : shortWallet}
+                      </p>
+                      {profile.is_verified && (
+                        <span style={{
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                          padding: "2px 7px", borderRadius: 9999,
+                          background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)",
+                          color: "var(--success)", fontSize: 10, fontWeight: 510,
+                        }}>
+                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9 12 11 14 15 10" />
+                          </svg>
+                          Verified
+                        </span>
+                      )}
+                    </div>
+                    <p style={{ fontSize: 12, color: "var(--muted)", margin: "2px 0 0" }}>
+                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{shortWallet}</span>
+                    </p>
+                    {profile.bio && (
+                      <p style={{ fontSize: 12, color: "var(--foreground)", margin: "10px 0 0", lineHeight: 1.55 }}>
+                        {profile.bio}
+                      </p>
+                    )}
+                    {profile.member_since && (
+                      <p style={{ fontSize: 11, color: "var(--subtle)", margin: "6px 0 0" }}>
+                        Member since {new Date(profile.member_since).toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Big trust score */}
+                <div style={{ marginTop: 22, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, position: "relative" }}>
+                  <TrustStat value={profile.deals_total ?? 0} label="Deals done" />
+                  <TrustStat
+                    value={profile.deals_total > 0 ? `${Math.round((profile.deals_successful / profile.deals_total) * 100)}%` : "—"}
+                    label="Completion"
+                    accent="success"
+                  />
+                  <TrustStat
+                    value={profile.avg_rating > 0 ? profile.avg_rating.toFixed(1) : "—"}
+                    label="Avg rating"
+                    star={profile.avg_rating > 0}
+                  />
+                </div>
+
+                {/* Trust seal */}
+                {profile.deals_total > 0 && (
+                  <div style={{
+                    marginTop: 18, padding: "12px 14px", borderRadius: 10,
+                    background: "rgba(113,112,255,0.05)", border: "1px solid rgba(113,112,255,0.18)",
+                    display: "flex", alignItems: "center", gap: 12, position: "relative",
+                  }}>
+                    <div style={{
+                      width: 34, height: 34, borderRadius: "50%",
+                      background: "var(--background)", border: "1px solid var(--accent)",
+                      display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--accent)",
+                      flexShrink: 0,
+                    }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9 12 11 14 15 10" />
                       </svg>
-                      Verified
-                    </span>
-                  )}
-                </div>
-                <p className="text-[12px] text-subtle font-mono mt-0.5">{shortWallet}</p>
-                {profile.member_since && (
-                  <p className="text-[12px] text-muted mt-1">Member since {new Date(profile.member_since).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</p>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 12, color: "var(--accent)", margin: 0, fontWeight: 590 }}>
+                        {profile.deals_successful} settled · 0 disputes
+                      </p>
+                      <p style={{ fontSize: 11, color: "var(--muted)", margin: "1px 0 0" }}>On-chain verified deal history</p>
+                    </div>
+                  </div>
                 )}
+
+                {/* Action buttons */}
+                {!isSelf && myWallet && (
+                  <button
+                    onClick={handleFriendAction}
+                    disabled={friendLoading || friendStatus === "outgoing"}
+                    className="btn-primary"
+                    style={{ marginTop: 18, width: "100%", height: 42, borderRadius: 9, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, position: "relative", cursor: "pointer" }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m11 17 2 2a1 1 0 0 0 3-3" /><path d="m14 14 2.5 2.5a1 1 0 0 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 0 1-1.41 0l-2.62-2.62a1 1 0 0 0-1.41 0L3 10.5" />
+                    </svg>
+                    {friendLoading ? "…" : friendStatus === "friends" ? "Friends ✓" : friendStatus === "outgoing" ? "Request sent" : friendStatus === "incoming" ? "Accept request" : "Start a deal"}
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    const url = `${window.location.origin}/profile/${wallet}`;
+                    navigator.clipboard.writeText(url).catch(() => {});
+                  }}
+                  className="btn-ghost"
+                  style={{ marginTop: 8, width: "100%", height: 36, borderRadius: 9, fontSize: 12, position: "relative", cursor: "pointer" }}
+                >
+                  Copy profile link
+                </button>
               </div>
 
-              {/* Friend action button — only shown when wallet connected and not own profile */}
-              {myWallet && myWallet !== wallet && (
-                <FriendButton
-                  status={friendStatus}
-                  loading={friendLoading}
-                  onClick={handleFriendAction}
-                />
-              )}
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatCard label="Completed deals" value={profile.deals_successful} />
-              <StatCard label="Total deals" value={profile.deals_total} />
-              <StatCard
-                label="Success rate"
-                value={profile.deals_total > 0 ? `${Math.round((profile.deals_successful / profile.deals_total) * 100)}%` : "—"}
-              />
-              <StatCard
-                label="Avg rating"
-                value={profile.avg_rating > 0 ? `${profile.avg_rating.toFixed(1)} ★` : "—"}
-              />
-            </div>
-
-            {/* Socials */}
-            {profile.socials && Object.values(profile.socials).some(Boolean) && (
-              <div className="surface-card rounded-xl p-5 space-y-3">
-                <p className="text-[13px] text-primary" style={labelStyle}>Contact & socials</p>
-                <div className="flex flex-wrap gap-3">
-                  {profile.socials.twitter && (
-                    <SocialLink href={profile.socials.twitter} label="Twitter / X" />
-                  )}
-                  {profile.socials.telegram && (
-                    <SocialLink href={profile.socials.telegram} label="Telegram" />
-                  )}
-                  {profile.socials.linkedin && (
-                    <SocialLink href={profile.socials.linkedin} label="LinkedIn" />
-                  )}
-                  {profile.socials.instagram && (
-                    <SocialLink href={profile.socials.instagram} label="Instagram" />
-                  )}
-                  {profile.socials.website && (
-                    <SocialLink href={profile.socials.website} label="Website" />
-                  )}
+              {/* Right: narrative */}
+              <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                <div>
+                  <p style={{ fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--accent)", margin: 0, fontWeight: 510 }}>
+                    Reputation on Sealed
+                  </p>
+                  <h1 style={{ fontSize: 32, fontWeight: 590, letterSpacing: "-0.024em", color: "var(--primary)", margin: "10px 0 0", lineHeight: 1.1 }}>
+                    {profile.deals_total > 0
+                      ? `${profile.deals_total} deal${profile.deals_total === 1 ? "" : "s"} completed on-chain.`
+                      : "New to Sealed."}
+                  </h1>
+                  <p style={{ fontSize: 14, color: "var(--muted)", marginTop: 14, lineHeight: 1.6, maxWidth: 500 }}>
+                    {profile.deals_total > 0
+                      ? "Every number on this profile traces to an on-chain Sealed deal. No self-reported volume, no decorative stats."
+                      : "This wallet hasn't completed a deal yet. All stats will appear here once deals are settled on-chain."}
+                  </p>
                 </div>
+
+                {/* Socials */}
+                {profile.socials && Object.values(profile.socials).some(Boolean) && (
+                  <div style={{ marginTop: 20, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {profile.socials.twitter && <SocialBtn href={profile.socials.twitter} label="Twitter / X" />}
+                    {profile.socials.telegram && <SocialBtn href={profile.socials.telegram} label="Telegram" />}
+                    {profile.socials.linkedin && <SocialBtn href={profile.socials.linkedin} label="LinkedIn" />}
+                    {profile.socials.instagram && <SocialBtn href={profile.socials.instagram} label="Instagram" />}
+                    {profile.socials.website && <SocialBtn href={profile.socials.website} label="Website" />}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Tabs + content */}
+          <div style={{ maxWidth: 1020, margin: "0 auto", padding: "26px 32px 48px" }}>
+            <div style={{ display: "flex", gap: 14, marginBottom: 16, borderBottom: "1px solid var(--card-border-subtle)" }}>
+              {([
+                { id: "timeline", label: "Deal timeline" },
+                { id: "reviews",  label: "Reviews" },
+                { id: "agents",   label: "Active agents" },
+              ] as { id: Tab; label: string }[]).map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  style={{
+                    padding: "10px 4px",
+                    marginBottom: -1,
+                    borderBottom: `2px solid ${tab === t.id ? "var(--accent)" : "transparent"}`,
+                    color: tab === t.id ? "var(--primary)" : "var(--muted)",
+                    fontSize: 13,
+                    fontWeight: tab === t.id ? 590 : 510,
+                    background: "none",
+                    border: "none",
+                    borderBottomStyle: "solid",
+                    borderBottomWidth: 2,
+                    borderBottomColor: tab === t.id ? "var(--accent)" : "transparent",
+                    cursor: "pointer",
+                    transition: "color 150ms",
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {tab === "timeline" && (
+              profile.deals_total > 0 ? (
+                <div style={{ textAlign: "center", padding: "48px 0", color: "var(--muted)", fontSize: 13 }}>
+                  Deal timeline will appear here as deals are completed.
+                </div>
+              ) : (
+                <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
+                  No completed deals yet.
+                </div>
+              )
+            )}
+
+            {tab === "reviews" && (
+              <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
+                {profile.avg_rating > 0 ? "Reviews will load here." : "No reviews yet."}
               </div>
             )}
 
-            <Link href="/app" className="btn-ghost h-9 px-5 rounded-md text-[13px] inline-flex items-center gap-2">
-              ← Back
-            </Link>
+            {tab === "agents" && (
+              <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
+                No public agent profiles.
+              </div>
+            )}
           </div>
-        )}
-      </main>
+        </div>
+      )}
     </div>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
+function TrustStat({
+  value,
+  label,
+  accent,
+  star,
+}: {
+  value: string | number;
+  label: string;
+  accent?: "success";
+  star?: boolean;
+}) {
+  const color = accent === "success" ? "var(--success)" : "var(--primary)";
   return (
-    <div className="surface-card rounded-xl p-4 space-y-1">
-      <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={{ fontWeight: 510 }}>{label}</p>
-      <p className="text-[20px] text-primary tabular-nums" style={{ fontWeight: 590 }}>{value}</p>
+    <div>
+      <div style={{
+        fontSize: 28,
+        fontWeight: 590,
+        color,
+        letterSpacing: "-0.022em",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        fontVariantNumeric: "tabular-nums",
+      }}>
+        {value}
+        {star && (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--warning)" stroke="none">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg>
+        )}
+      </div>
+      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2, fontWeight: 510 }}>{label}</div>
     </div>
   );
 }
 
-function SocialLink({ href, label }: { href: string; label: string }) {
+function SocialBtn({ href, label }: { href: string; label: string }) {
   const url = href.startsWith("http") ? href : `https://${href}`;
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="btn-ghost h-8 px-3 rounded-md text-[12px] inline-flex items-center gap-1.5">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="btn-ghost"
+      style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none" }}
+    >
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
       </svg>
       {label}
     </a>
-  );
-}
-
-function FriendButton({
-  status,
-  loading,
-  onClick,
-}: {
-  status: FriendStatus;
-  loading: boolean;
-  onClick: () => void;
-}) {
-  const cfg: Record<FriendStatus, { label: string; cls: string }> = {
-    none:     { label: "Add Friend",        cls: "btn-primary" },
-    outgoing: { label: "Request sent",      cls: "btn-ghost opacity-70" },
-    incoming: { label: "Accept request",    cls: "btn-primary" },
-    friends:  { label: "Friends ✓",         cls: "btn-ghost" },
-    self:     { label: "",                  cls: "" },
-  };
-
-  if (status === "self") return null;
-  const { label, cls } = cfg[status];
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={loading || status === "outgoing"}
-      className={`${cls} h-9 px-4 rounded-md text-[12px] flex-shrink-0 transition-colors disabled:opacity-50`}
-      style={{ fontWeight: 510 }}
-    >
-      {loading ? "…" : label}
-    </button>
   );
 }

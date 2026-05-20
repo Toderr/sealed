@@ -8,10 +8,10 @@
 
 :root {
   /* --- Surfaces: luminance-stepped dark backgrounds --- */
-  --background: #08090a;            /* marketing black (page canvas) */
-  --panel: #0f1011;                 /* panels, sticky headers, sidebars */
-  --surface: #191a1b;               /* elevated cards, popovers */
-  --surface-hover: #28282c;         /* lightest dark surface, hover */
+  --background: #0b0d12;            /* canvas — slightly lifted, warm cool-blue */
+  --panel: #11141a;                 /* panels, sticky headers, sidebars */
+  --surface: #181b22;               /* elevated cards, popovers */
+  --surface-hover: #232732;         /* lightest dark surface, hover */
 
   /* --- Text: 4-tier cool gray hierarchy --- */
   --primary: #f7f8f8;               /* primary heading text (never pure white) */
@@ -164,14 +164,20 @@ body {
 
 /* --- Shared utility classes for repeating patterns --- */
 
-/* Level-2 card: translucent surface + subtle border (DESIGN.md §4). */
+/* Level-2 card: elevated glass effect — lifts off the backdrop visually. */
 .surface-card {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--card-border);
+  background: rgba(255, 255, 255, 0.065);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 2px 4px rgba(0, 0, 0, 0.25),
+    0 12px 28px -10px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 .surface-card-subtle {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--card-border-subtle);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
 }
 
 /* Ghost button, DESIGN.md §4 Ghost Button spec. */
@@ -212,6 +218,40 @@ body {
   color: var(--foreground);
   line-height: 1.4;
 }
+
+/* --- Sealed design system animations --- */
+@keyframes sealed-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+@keyframes sealed-ping {
+  75%, 100% { transform: scale(2); opacity: 0; }
+}
+@keyframes sealed-blink {
+  50% { opacity: 0.15; }
+}
+@keyframes sealed-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+@keyframes sealed-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes sealed-typing-dot {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-2px); }
+}
+@keyframes sealed-orbit {
+  to { transform: rotate(360deg); }
+}
+@keyframes sealed-progress-stripe {
+  0% { background-position: 0 0; }
+  100% { background-position: 24px 0; }
+}
+
+.anim-fade-up { animation: sealed-fade-up 0.4s ease-out both; }
+.anim-pulse   { animation: sealed-pulse 2s ease-in-out infinite; }
 
 /* --- Landing-page card illustrations ---
  * Looping animations triggered by `.group:hover` on the card.

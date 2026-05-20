@@ -6,21 +6,20 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { SealedMark } from "@/components/SealedLogo";
+import { SealedBackdrop } from "@/components/SealedBackdrop";
 import {
   useProfileStore,
   LLM_MODELS,
   X402_MODELS,
-  X402_TOP_UP_AMOUNTS,
   type LLMProvider,
 } from "@/lib/profile-store";
 
 const WalletMultiButton = dynamic(
-  () =>
-    import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
+  () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
   { ssr: false }
 );
 
-type Step = "profile" | "llm";
+type Step = "wallet" | "profile" | "agent" | "done";
 
 export default function OnboardingPage() {
   return (
@@ -37,7 +36,7 @@ function OnboardingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnUrl = searchParams.get("returnUrl") ?? "/profile";
-  const [step, setStep] = useState<Step>("profile");
+  const [step, setStep] = useState<Step>("wallet");
 
   // Profile fields
   const [name, setName] = useState("");
@@ -51,7 +50,7 @@ function OnboardingContent() {
   const [companyFileName, setCompanyFileName] = useState<string | undefined>();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // LLM fields
+  // Agent/LLM fields
   const [llmMode, setLlmMode] = useState<"own-key" | "x402">("own-key");
   const [x402TopUpAmount, setX402TopUpAmount] = useState(10);
   const [x402Model, setX402Model] = useState(X402_MODELS[0].id);
@@ -60,8 +59,17 @@ function OnboardingContent() {
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("claude-sonnet-4-6");
   const [showKey, setShowKey] = useState(false);
+  const [agentStyle, setAgentStyle] = useState<"firm" | "flexible" | "collab">("flexible");
+  const [priceFloor, setPriceFloor] = useState(80);
 
-  // Prefill from existing profile if editing
+  // Step progress when wallet connects
+  useEffect(() => {
+    // Advancing step when wallet connects is intentional synchronous state sync
+    if (wallet && step === "wallet") setStep("profile"); // eslint-disable-line react-hooks/set-state-in-effect
+  }, [wallet, step]);
+
+  // Prefill from existing profile — synchronizing local form state from store is intentional
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!profile) return;
     setName(profile.name);
@@ -83,6 +91,7 @@ function OnboardingContent() {
       setX402Model(profile.llmConfig.model);
     }
   }, [profile]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Redirect if already onboarded (unless editing)
   useEffect(() => {
@@ -99,13 +108,7 @@ function OnboardingContent() {
       name: name.trim(),
       username: handle,
       bio: bio.trim(),
-      socials: {
-        twitter: twitter.trim(),
-        telegram: telegram.trim(),
-        instagram: instagram.trim(),
-        linkedin: linkedin.trim(),
-        website: website.trim(),
-      },
+      socials: { twitter: twitter.trim(), telegram: telegram.trim(), instagram: instagram.trim(), linkedin: linkedin.trim(), website: website.trim() },
       companyFileName,
     });
     if (wallet) {
@@ -125,7 +128,7 @@ function OnboardingContent() {
         }),
       }).catch(() => {});
     }
-    setStep("llm");
+    setStep("agent");
   }
 
   function handleFinish() {
@@ -138,210 +141,221 @@ function OnboardingContent() {
         ? ({ mode: "x402", balance: existingX402Balance, model: x402Model } as const)
         : undefined;
     updateProfile({ llmConfig, onboardingComplete: true });
-    router.push(returnUrl);
-  }
-
-  function handleSkipLLM() {
-    updateProfile({ onboardingComplete: true });
-    router.push(returnUrl);
+    setStep("done");
   }
 
   if (!loaded) return null;
 
-  if (!wallet) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <OnboardingHeader />
-        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-4">
-          <div className="text-center space-y-2">
-            <h1 className="text-[22px] text-primary" style={{ fontWeight: 590 }}>
-              Connect your wallet to get started
-            </h1>
-            <p className="text-[14px] text-muted max-w-xs">
-              Sealed uses your wallet as your identity — no email or password
-              needed.
+  const stops: { k: Step; title: string; sub: string }[] = [
+    { k: "wallet",  title: "Connect",  sub: "Wallet is identity" },
+    { k: "profile", title: "Identify", sub: "Real name, real bio" },
+    { k: "agent",   title: "Train",    sub: "How your agent acts" },
+    { k: "done",    title: "Sealed",   sub: "Identity locked" },
+  ];
+  const stepIndex = stops.findIndex((s) => s.k === step);
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--background)", display: "flex", flexDirection: "column", position: "relative" }}>
+      <SealedBackdrop />
+
+      {/* Compact header */}
+      <header style={{
+        display: "flex",
+        alignItems: "center",
+        padding: "0 22px",
+        height: 52,
+        borderBottom: "1px solid var(--card-border-subtle)",
+        background: "var(--panel)",
+        flexShrink: 0,
+        position: "relative",
+        zIndex: 10,
+      }}>
+        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--primary)", textDecoration: "none" }}>
+          <SealedMark size={22} />
+          <span style={{ fontSize: 13, fontWeight: 510 }}>Sealed Agent</span>
+        </Link>
+      </header>
+
+      {/* Two-column layout */}
+      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "300px 1fr", overflow: "hidden", position: "relative", zIndex: 1 }}>
+        {/* Rail */}
+        <aside style={{ borderRight: "1px solid var(--card-border-subtle)", background: "var(--panel)", padding: "40px 28px", overflow: "hidden" }}>
+          <p style={{ fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--accent)", margin: 0, fontWeight: 510 }}>
+            Onboarding
+          </p>
+          <h1 style={{ fontSize: 24, fontWeight: 590, letterSpacing: "-0.02em", color: "var(--primary)", margin: "8px 0 0" }}>
+            Become<br />a Sealed identity.
+          </h1>
+          <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 12, lineHeight: 1.55 }}>
+            Each step adds a layer of trust. Stop anytime — your progress saves.
+          </p>
+
+          {/* Vertical timeline */}
+          <div style={{ marginTop: 28, position: "relative" }}>
+            <div style={{
+              position: "absolute",
+              left: 11,
+              top: 12,
+              bottom: 12,
+              width: 1,
+              background: "var(--card-border)",
+            }} />
+            <div style={{
+              position: "absolute",
+              left: 11,
+              top: 12,
+              width: 1,
+              height: `${(stepIndex / (stops.length - 1)) * 100}%`,
+              background: "var(--accent)",
+              transition: "height 300ms",
+            }} />
+            {stops.map((s, i) => {
+              const isPast = i < stepIndex;
+              const isCurrent = s.k === step;
+              return (
+                <button
+                  key={s.k}
+                  onClick={() => i <= stepIndex && setStep(s.k)}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "24px 1fr",
+                    gap: 14,
+                    padding: "10px 0",
+                    textAlign: "left",
+                    width: "100%",
+                    position: "relative",
+                    color: isCurrent ? "var(--primary)" : isPast ? "var(--foreground)" : "var(--muted)",
+                    background: "none",
+                    border: "none",
+                    cursor: i <= stepIndex ? "pointer" : "default",
+                  }}
+                >
+                  <span style={{
+                    width: 23,
+                    height: 23,
+                    borderRadius: "50%",
+                    background: isPast ? "var(--accent)" : "var(--background)",
+                    border: `1.5px solid ${isCurrent ? "var(--accent)" : isPast ? "var(--accent)" : "var(--card-border)"}`,
+                    boxShadow: isCurrent ? "0 0 0 4px rgba(113,112,255,0.15)" : "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: isPast ? "#fff" : isCurrent ? "var(--accent)" : "var(--muted)",
+                    fontSize: 11,
+                    fontWeight: 590,
+                    transition: "all 200ms",
+                  }}>
+                    {isPast ? (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    ) : i + 1}
+                  </span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 510 }}>{s.title}</div>
+                    <div style={{ fontSize: 11, color: "var(--subtle)", marginTop: 1 }}>{s.sub}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Trust seal note */}
+          <div style={{ marginTop: 36, padding: 16, background: "rgba(113,112,255,0.04)", border: "1px solid rgba(113,112,255,0.18)", borderRadius: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+              <span style={{ fontSize: 12, fontWeight: 510, color: "var(--accent)" }}>Trust seal</span>
+            </div>
+            <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>
+              Counterparties see your wallet, handle, completion rate, and rating before they accept any deal.
             </p>
           </div>
-          <WalletMultiButton />
-        </div>
-      </div>
-    );
-  }
+        </aside>
 
-  return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <OnboardingHeader />
-      <main className="flex-1 flex flex-col items-center justify-center px-4 py-12">
-        <div className="w-full max-w-lg">
-          {/* Step progress */}
-          <div className="mb-10">
-            <div className="flex items-center gap-2 mb-2">
-              <StepDot n={1} active={step === "profile"} done={step === "llm"} />
-              <div className="flex-1 h-px bg-card-border" />
-              <StepDot n={2} active={step === "llm"} done={false} />
-            </div>
-            <div className="flex justify-between text-[11px] text-muted">
-              <span>Your profile</span>
-              <span>AI configuration</span>
-            </div>
-          </div>
-
-          {step === "profile" ? (
-            <ProfileStep
-              name={name}
-              setName={setName}
-              username={username}
-              setUsername={setUsername}
-              bio={bio}
-              setBio={setBio}
-              twitter={twitter}
-              setTwitter={setTwitter}
-              telegram={telegram}
-              setTelegram={setTelegram}
-              instagram={instagram}
-              setInstagram={setInstagram}
-              linkedin={linkedin}
-              setLinkedin={setLinkedin}
-              website={website}
-              setWebsite={setWebsite}
+        {/* Active panel */}
+        <main style={{ overflowY: "auto", padding: "44px 56px" }}>
+          {step === "wallet" && (
+            <WalletPanel />
+          )}
+          {step === "profile" && (
+            <ProfilePanel
+              name={name} setName={setName}
+              username={username} setUsername={setUsername}
+              bio={bio} setBio={setBio}
+              twitter={twitter} setTwitter={setTwitter}
+              telegram={telegram} setTelegram={setTelegram}
+              instagram={instagram} setInstagram={setInstagram}
+              linkedin={linkedin} setLinkedin={setLinkedin}
+              website={website} setWebsite={setWebsite}
               companyFileName={companyFileName}
               fileRef={fileRef}
-              onFileChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) setCompanyFileName(f.name);
-              }}
+              onFileChange={(e) => { const f = e.target.files?.[0]; if (f) setCompanyFileName(f.name); }}
               onContinue={handleProfileContinue}
-            />
-          ) : (
-            <LLMStep
-              mode={llmMode}
-              setMode={setLlmMode}
-              provider={provider}
-              setProvider={(p) => {
-                setProvider(p);
-                setModel(LLM_MODELS[p][0]);
-              }}
-              apiKey={apiKey}
-              setApiKey={setApiKey}
-              model={model}
-              setModel={setModel}
-              showKey={showKey}
-              setShowKey={setShowKey}
-              x402TopUpAmount={x402TopUpAmount}
-              setX402TopUpAmount={setX402TopUpAmount}
-              x402Model={x402Model}
-              setX402Model={setX402Model}
-              x402Balance={
-                profile?.llmConfig?.mode === "x402"
-                  ? profile.llmConfig.balance
-                  : 0
-              }
-              topping={topping}
-              setTopping={setTopping}
-              onBack={() => setStep("profile")}
-              onFinish={handleFinish}
-              onSkip={handleSkipLLM}
+              wallet={wallet}
             />
           )}
-        </div>
-      </main>
+          {step === "agent" && (
+            <AgentPanel
+              llmMode={llmMode} setLlmMode={setLlmMode}
+              provider={provider} setProvider={(p) => { setProvider(p); setModel(LLM_MODELS[p][0]); }}
+              apiKey={apiKey} setApiKey={setApiKey}
+              model={model} setModel={setModel}
+              showKey={showKey} setShowKey={setShowKey}
+              x402TopUpAmount={x402TopUpAmount} setX402TopUpAmount={setX402TopUpAmount}
+              x402Model={x402Model} setX402Model={setX402Model}
+              x402Balance={profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0}
+              topping={topping} setTopping={setTopping}
+              agentStyle={agentStyle} setAgentStyle={setAgentStyle}
+              priceFloor={priceFloor} setPriceFloor={setPriceFloor}
+              onBack={() => setStep("profile")}
+              onFinish={handleFinish}
+            />
+          )}
+          {step === "done" && (
+            <DonePanel onStart={() => router.push(returnUrl)} onProfile={() => router.push(wallet ? `/profile/${wallet}` : "/profile")} />
+          )}
+        </main>
+      </div>
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Sub-components                                                        */
-/* ------------------------------------------------------------------ */
+/* ── Step panels ── */
 
-function OnboardingHeader() {
+function WalletPanel() {
   return (
-    <header className="flex items-center px-6 h-14 border-b border-card-border-subtle bg-panel">
-      <Link href="/" className="flex items-center gap-2 text-primary">
-        <SealedMark size={24} title="Sealed" />
-        <span
-          className="text-[14px] tracking-tight"
-          style={{ fontWeight: 510 }}
-        >
-          Sealed Agent
-        </span>
-      </Link>
-    </header>
-  );
-}
-
-function StepDot({
-  n,
-  active,
-  done,
-}: {
-  n: number;
-  active: boolean;
-  done: boolean;
-}) {
-  return (
-    <div
-      className={`w-7 h-7 rounded-full flex items-center justify-center text-[12px] transition-colors ${
-        done
-          ? "bg-success text-background"
-          : active
-          ? "bg-brand text-white"
-          : "bg-surface text-muted border border-card-border"
-      }`}
-      style={{ fontWeight: 510 }}
-    >
-      {done ? (
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path
-            d="M2 6l3 3 5-5"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      ) : (
-        n
-      )}
+    <div style={{ maxWidth: 540 }}>
+      <StepTag step={1} />
+      <h2 style={{ fontSize: 26, fontWeight: 590, letterSpacing: "-0.02em", color: "var(--primary)", margin: "16px 0 8px" }}>
+        Your wallet is your identity.
+      </h2>
+      <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 28 }}>
+        Sealed never holds funds. The wallet you connect signs every deal you authorize — and only when you say so.
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {[
+          { name: "Phantom",  g: "linear-gradient(135deg, #ab9ff2, #534bb1)" },
+          { name: "Solflare", g: "linear-gradient(135deg, #fc8d3a, #b53d12)" },
+          { name: "Backpack", g: "linear-gradient(135deg, #ff3939, #ad0c0c)" },
+          { name: "Ledger",   g: "#1c1c1c" },
+        ].map((w) => (
+          <WalletMultiButton key={w.name} />
+        ))}
+      </div>
+      <p style={{ fontSize: 12, color: "var(--subtle)", textAlign: "center", marginTop: 24 }}>
+        By continuing you agree to Sealed&apos;s terms. Your wallet stays in your custody.
+      </p>
     </div>
   );
 }
 
-function Field({
-  label,
-  required,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label className="block text-[12px] text-muted" style={{ fontWeight: 510 }}>
-        {label}
-        {required && <span className="text-danger ml-0.5">*</span>}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-const inputCls =
-  "w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary placeholder-muted outline-none focus:border-accent transition-colors";
-
-/* --- Step 1: Profile ------------------------------------------ */
-
-function ProfileStep({
-  name, setName,
-  username, setUsername,
-  bio, setBio,
-  twitter, setTwitter,
-  telegram, setTelegram,
-  instagram, setInstagram,
-  linkedin, setLinkedin,
-  website, setWebsite,
-  companyFileName, fileRef, onFileChange,
-  onContinue,
+function ProfilePanel({
+  name, setName, username, setUsername, bio, setBio,
+  twitter, setTwitter, telegram, setTelegram, instagram, setInstagram,
+  linkedin, setLinkedin, website, setWebsite,
+  companyFileName, fileRef, onFileChange, onContinue, wallet,
 }: {
   name: string; setName: (v: string) => void;
   username: string; setUsername: (v: string) => void;
@@ -355,182 +369,124 @@ function ProfileStep({
   fileRef: React.RefObject<HTMLInputElement | null>;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onContinue: () => void;
+  wallet: string | null;
 }) {
   const canContinue = name.trim().length > 0 && username.trim().length > 0;
+  const initials = name.trim() ? name.trim().split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() : "?";
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-[20px] text-primary mb-1" style={{ fontWeight: 590 }}>
-          Tell your agent about you
-        </h1>
-        <p className="text-[13px] text-muted">
-          Your agent uses this to represent you accurately in every deal.
-        </p>
+    <div style={{ maxWidth: 620 }}>
+      <StepTag step={2} />
+      <h2 style={{ fontSize: 26, fontWeight: 590, letterSpacing: "-0.02em", color: "var(--primary)", margin: "16px 0 8px" }}>
+        Identify yourself to the room.
+      </h2>
+      <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 28 }}>
+        Your invite card carries this. Counterparties trust what they can verify.
+      </p>
+
+      {/* Live preview card */}
+      <div className="surface-card" style={{ borderRadius: 14, padding: 20, marginBottom: 24, position: "relative" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: "50%",
+            background: "linear-gradient(135deg, rgba(113,112,255,0.4), rgba(94,106,210,0.2))",
+            border: "2px solid rgba(113,112,255,0.4)",
+            color: "var(--accent)",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            fontSize: 18, fontWeight: 590,
+          }}>
+            {initials}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 590, color: "var(--primary)" }}>{name || "Your name"}</div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>
+              @{username || "handle"}{wallet ? ` · ${wallet.slice(0, 4)}…${wallet.slice(-4)}` : ""}
+            </div>
+          </div>
+          <span style={{ fontSize: 11, color: "var(--muted)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 9999, padding: "2px 10px" }}>Preview</span>
+        </div>
+        {bio && <p style={{ fontSize: 13, color: "var(--foreground)", margin: "14px 0 0", lineHeight: 1.5 }}>{bio}</p>}
       </div>
 
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Full name" required>
+      <div style={{ display: "grid", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <FormField label="Display name" required>
             <input
-              className={inputCls}
-              placeholder="Rednave Sanjaya"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              placeholder="Alex Karim"
+              style={inputCss}
               autoFocus
             />
-          </Field>
-          <Field label="Username" required>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-[13px]">
-                @
-              </span>
+          </FormField>
+          <FormField label="Handle" required>
+            <div style={{ position: "relative" }}>
+              <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--subtle)", fontSize: 13 }}>@</span>
               <input
-                className={inputCls + " pl-6"}
-                placeholder="rednave"
                 value={username}
-                onChange={(e) =>
-                  setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))
-                }
+                onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
+                placeholder="alexk"
+                style={{ ...inputCss, paddingLeft: 24 }}
               />
             </div>
-          </Field>
+          </FormField>
         </div>
 
-        <Field label="About you / your business">
+        <FormField label="Short bio">
           <textarea
-            className="w-full rounded-md bg-surface border border-card-border px-3 py-2.5 text-[13px] text-primary placeholder-muted outline-none focus:border-accent transition-colors resize-none"
-            placeholder="Tell your agent about your business, what you sell, who you work with, your deal preferences — the more detail, the better it can negotiate on your behalf."
-            rows={4}
             value={bio}
             onChange={(e) => setBio(e.target.value.slice(0, 600))}
+            placeholder="Independent product strategist. Past: Stripe, Linear."
+            rows={2}
+            style={{ ...inputCss, height: "auto", paddingTop: 10, paddingBottom: 10, resize: "none" }}
           />
-          <div className="text-right text-[11px] text-subtle mt-1">
-            {bio.length}/600
-          </div>
-        </Field>
+        </FormField>
 
-        {/* Social links */}
-        <div>
-          <p
-            className="text-[12px] text-muted mb-3"
-            style={{ fontWeight: 510 }}
-          >
-            Social accounts{" "}
-            <span className="text-subtle font-normal">(optional)</span>
-          </p>
-          <div className="space-y-2">
-            <SocialInput
-              icon={<XIcon />}
-              placeholder="x.com/yourhandle"
-              value={twitter}
-              onChange={setTwitter}
-            />
-            <SocialInput
-              icon={<TelegramIcon />}
-              placeholder="t.me/yourhandle"
-              value={telegram}
-              onChange={setTelegram}
-            />
-            <SocialInput
-              icon={<InstagramIcon />}
-              placeholder="instagram.com/yourhandle"
-              value={instagram}
-              onChange={setInstagram}
-            />
-            <SocialInput
-              icon={<LinkedInIcon />}
-              placeholder="linkedin.com/in/yourhandle"
-              value={linkedin}
-              onChange={setLinkedin}
-            />
-            <SocialInput
-              icon={<GlobeIcon />}
-              placeholder="yourwebsite.com"
-              value={website}
-              onChange={setWebsite}
-            />
+        <FormField label="Social accounts (optional)">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {[
+              { placeholder: "x.com/yourhandle", value: twitter, onChange: setTwitter },
+              { placeholder: "t.me/yourhandle", value: telegram, onChange: setTelegram },
+              { placeholder: "linkedin.com/in/yourhandle", value: linkedin, onChange: setLinkedin },
+              { placeholder: "yourwebsite.com", value: website, onChange: setWebsite },
+            ].map((s, i) => (
+              <input key={i} value={s.value} onChange={(e) => s.onChange(e.target.value)} placeholder={s.placeholder} style={{ ...inputCss, fontSize: 12 }} />
+            ))}
           </div>
-        </div>
+        </FormField>
 
-        {/* Company profile / whitepaper upload */}
-        <div>
-          <p
-            className="text-[12px] text-muted mb-2"
-            style={{ fontWeight: 510 }}
-          >
-            Company profile / whitepaper{" "}
-            <span className="text-subtle font-normal">(optional)</span>
-          </p>
+        <FormField label="Company profile (optional)">
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            className="w-full h-20 rounded-md border border-dashed border-card-border hover:border-accent/50 flex flex-col items-center justify-center gap-1.5 text-muted hover:text-primary transition-colors cursor-pointer"
+            className="btn-ghost"
+            style={{ width: "100%", height: 60, borderRadius: 8, borderStyle: "dashed", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer" }}
           >
-            {companyFileName ? (
-              <>
-                <FileIcon className="w-5 h-5 text-accent" />
-                <span className="text-[12px] text-primary">{companyFileName}</span>
-                <span className="text-[11px] text-muted">Click to replace</span>
-              </>
-            ) : (
-              <>
-                <UploadIcon className="w-5 h-5" />
-                <span className="text-[12px]">Upload PDF or DOCX</span>
-              </>
-            )}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>{companyFileName ?? "Drop or browse PDF/DOCX"}</span>
           </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,.docx,.doc"
-            className="hidden"
-            onChange={onFileChange}
-          />
-        </div>
+          <input ref={fileRef} type="file" accept=".pdf,.docx,.doc" style={{ display: "none" }} onChange={onFileChange} />
+        </FormField>
       </div>
 
-      <button
-        onClick={onContinue}
-        disabled={!canContinue}
-        className="btn-primary w-full h-10 rounded-md text-[13px] disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        Continue
-      </button>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24 }}>
+        <button
+          onClick={onContinue}
+          disabled={!canContinue}
+          className="btn-primary"
+          style={{ height: 38, padding: "0 18px", borderRadius: 7, fontSize: 13 }}
+        >
+          Continue →
+        </button>
+      </div>
     </div>
   );
 }
 
-function SocialInput({
-  icon,
-  placeholder,
-  value,
-  onChange,
-}: {
-  icon: React.ReactNode;
-  placeholder: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex items-center gap-2 h-9 rounded-md bg-surface border border-card-border px-3 focus-within:border-accent transition-colors">
-      <span className="text-muted flex-shrink-0 w-4 flex items-center justify-center">
-        {icon}
-      </span>
-      <input
-        className="flex-1 bg-transparent text-[13px] text-primary placeholder-subtle outline-none"
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </div>
-  );
-}
-
-/* --- Step 2: LLM config --------------------------------------- */
-
-function LLMStep({
-  mode, setMode,
+function AgentPanel({
+  llmMode, setLlmMode,
   provider, setProvider,
   apiKey, setApiKey,
   model, setModel,
@@ -538,28 +494,21 @@ function LLMStep({
   x402TopUpAmount, setX402TopUpAmount,
   x402Model, setX402Model,
   x402Balance, topping, setTopping,
-  onBack, onFinish, onSkip,
+  agentStyle, setAgentStyle,
+  priceFloor, setPriceFloor,
+  onBack, onFinish,
 }: {
-  mode: "own-key" | "x402";
-  setMode: (m: "own-key" | "x402") => void;
-  provider: LLMProvider;
-  setProvider: (p: LLMProvider) => void;
-  apiKey: string;
-  setApiKey: (k: string) => void;
-  model: string;
-  setModel: (m: string) => void;
-  showKey: boolean;
-  setShowKey: (v: boolean) => void;
-  x402TopUpAmount: number;
-  setX402TopUpAmount: (v: number) => void;
-  x402Model: string;
-  setX402Model: (v: string) => void;
-  x402Balance: number;
-  topping: boolean;
-  setTopping: (v: boolean) => void;
-  onBack: () => void;
-  onFinish: () => void;
-  onSkip: () => void;
+  llmMode: "own-key" | "x402"; setLlmMode: (m: "own-key" | "x402") => void;
+  provider: LLMProvider; setProvider: (p: LLMProvider) => void;
+  apiKey: string; setApiKey: (k: string) => void;
+  model: string; setModel: (m: string) => void;
+  showKey: boolean; setShowKey: (v: boolean) => void;
+  x402TopUpAmount: number; setX402TopUpAmount: (v: number) => void;
+  x402Model: string; setX402Model: (v: string) => void;
+  x402Balance: number; topping: boolean; setTopping: (v: boolean) => void;
+  agentStyle: "firm" | "flexible" | "collab"; setAgentStyle: (s: "firm" | "flexible" | "collab") => void;
+  priceFloor: number; setPriceFloor: (v: number) => void;
+  onBack: () => void; onFinish: () => void;
 }) {
   const PROVIDERS: { id: LLMProvider; label: string }[] = [
     { id: "anthropic", label: "Anthropic" },
@@ -569,389 +518,277 @@ function LLMStep({
     { id: "openrouter", label: "OpenRouter" },
   ];
 
-  async function handleTopUp() {
-    setTopping(true);
-    try {
-      const res = await fetch("/api/topup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountUsd: x402TopUpAmount }),
-      });
-      if (res.status === 402) {
-        // x402: payment required — full flow handled post-launch
-        alert("x402 payment flow coming soon. Your wallet will be charged via Solana USDC.");
-      } else if (res.ok) {
-        alert(`Top-up successful! $${x402TopUpAmount} credited.`);
-      }
-    } catch {
-      // no-op for now
-    } finally {
-      setTopping(false);
-    }
-  }
+  const styles: { id: "firm" | "flexible" | "collab"; label: string; sub: string }[] = [
+    { id: "firm",     label: "Firm",          sub: "Hold the line on price and scope." },
+    { id: "flexible", label: "Flexible",      sub: "Balanced trade-offs for bigger wins." },
+    { id: "collab",   label: "Collaborative", sub: "Seeks alignment over pure wins." },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-[20px] text-primary mb-1" style={{ fontWeight: 590 }}>
-          Power your agent
-        </h1>
-        <p className="text-[13px] text-muted">
-          Choose how your Sealed agent pays for LLM inference.
-        </p>
-      </div>
+    <div style={{ maxWidth: 620 }}>
+      <StepTag step={3} />
+      <h2 style={{ fontSize: 26, fontWeight: 590, letterSpacing: "-0.02em", color: "var(--primary)", margin: "16px 0 8px" }}>
+        Train your agent.
+      </h2>
+      <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 28 }}>
+        Your agent proposes — you confirm. It never moves funds on its own.
+      </p>
 
-      {/* Mode tabs */}
-      <div className="flex rounded-md bg-surface border border-card-border p-0.5">
-        {(["own-key", "x402"] as const).map((m) => (
-          <button
-            key={m}
-            onClick={() => setMode(m)}
-            className={`flex-1 h-8 rounded text-[12px] transition-colors ${
-              mode === m
-                ? "bg-surface-hover text-primary"
-                : "text-muted hover:text-primary"
-            }`}
-            style={{ fontWeight: 510 }}
-          >
-            {m === "own-key" ? "Use my own API key" : "Top up via x402"}
-          </button>
-        ))}
-      </div>
-
-      {mode === "own-key" ? (
-        <div className="space-y-4">
-          <Field label="Provider">
-            <div className="grid grid-cols-3 gap-2">
-              {PROVIDERS.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setProvider(p.id)}
-                  className={`h-9 rounded-md text-[12px] border transition-colors ${
-                    provider === p.id
-                      ? "border-accent bg-accent/10 text-accent"
-                      : "border-card-border bg-surface text-muted hover:text-primary"
-                  }`}
-                  style={{ fontWeight: 510 }}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </Field>
-
-          <Field label="Model">
-            <select
-              className={inputCls + " cursor-pointer"}
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
+      {/* Negotiation style */}
+      <FormField label="Negotiation style">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          {styles.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setAgentStyle(s.id)}
+              style={{
+                padding: "12px 14px",
+                borderRadius: 10,
+                textAlign: "left",
+                background: agentStyle === s.id ? "rgba(113,112,255,0.06)" : "rgba(255,255,255,0.02)",
+                border: `1px solid ${agentStyle === s.id ? "rgba(113,112,255,0.4)" : "var(--card-border)"}`,
+                color: "var(--foreground)",
+                cursor: "pointer",
+                transition: "all 150ms",
+              }}
             >
-              {LLM_MODELS[provider].map((m) => (
-                <option key={m} value={m} className="bg-surface">
-                  {m}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="API key">
-            <div className="relative">
-              <input
-                className={inputCls + " pr-10"}
-                type={showKey ? "text" : "password"}
-                placeholder={
-                  provider === "anthropic"
-                    ? "sk-ant-..."
-                    : provider === "openai"
-                    ? "sk-..."
-                    : "gsk_..."
-                }
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(!showKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-primary transition-colors"
-                aria-label={showKey ? "Hide key" : "Show key"}
-              >
-                {showKey ? <EyeOffIcon /> : <EyeIcon />}
-              </button>
-            </div>
-            <p className="text-[11px] text-subtle mt-1.5">
-              Stored locally in your browser. Never sent to Sealed servers.
-            </p>
-          </Field>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ fontSize: 13, fontWeight: 590, color: agentStyle === s.id ? "var(--accent)" : "var(--primary)" }}>{s.label}</div>
+                {agentStyle === s.id && (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
+              </div>
+              <p style={{ fontSize: 11, color: "var(--muted)", margin: "6px 0 0", lineHeight: 1.45 }}>{s.sub}</p>
+            </button>
+          ))}
         </div>
-      ) : (
-        <X402Panel
-          topUpAmount={x402TopUpAmount}
-          setTopUpAmount={setX402TopUpAmount}
-          x402Model={x402Model}
-          setX402Model={setX402Model}
-          balance={x402Balance}
-          topping={topping}
-          onTopUp={handleTopUp}
-        />
-      )}
+      </FormField>
 
-      <div className="flex gap-3">
-        <button
-          onClick={onBack}
-          className="btn-ghost h-10 px-4 rounded-md text-[13px] flex-shrink-0"
-        >
+      {/* Price floor */}
+      <div style={{ marginTop: 20, padding: 18, borderRadius: 12, border: "1px solid var(--card-border)", background: "rgba(255,255,255,0.07)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 510, color: "var(--primary)" }}>Price floor</div>
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>Minimum the agent will accept of your asking price.</div>
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 590, color: "var(--accent)", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
+            {priceFloor}%
+          </div>
+        </div>
+        <div style={{ position: "relative", height: 32 }}>
+          <div style={{ position: "absolute", left: 0, right: 0, top: 14, height: 4, borderRadius: 4, background: "var(--surface)" }} />
+          <div style={{
+            position: "absolute", left: 0, top: 14, height: 4, borderRadius: 4,
+            width: `${((priceFloor - 50) / 50) * 100}%`,
+            background: "linear-gradient(to right, rgba(113,112,255,0.4), var(--accent))",
+            transition: "width 150ms",
+          }} />
+          <input
+            type="range" min={50} max={100} value={priceFloor}
+            onChange={(e) => setPriceFloor(Number(e.target.value))}
+            style={{ position: "absolute", inset: 0, width: "100%", opacity: 0, cursor: "pointer" }}
+          />
+          <div style={{
+            position: "absolute", top: 6, left: `${((priceFloor - 50) / 50) * 100}%`,
+            transform: "translateX(-50%)", width: 20, height: 20, borderRadius: "50%",
+            background: "var(--accent)", boxShadow: "0 4px 12px rgba(113,112,255,0.5), 0 0 0 4px rgba(113,112,255,0.18)",
+            pointerEvents: "none", transition: "left 150ms",
+          }} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--subtle)", marginTop: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+          <span>Flexible</span><span>Firm</span>
+        </div>
+      </div>
+
+      {/* AI Provider */}
+      <div style={{ marginTop: 20 }}>
+        <div style={{ display: "flex", borderRadius: 6, background: "var(--surface)", border: "1px solid var(--card-border)", padding: 2, marginBottom: 14 }}>
+          {(["own-key", "x402"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setLlmMode(m)}
+              style={{
+                flex: 1,
+                height: 30,
+                borderRadius: 4,
+                fontSize: 12,
+                fontWeight: 510,
+                background: llmMode === m ? "var(--surface-hover)" : "transparent",
+                color: llmMode === m ? "var(--primary)" : "var(--muted)",
+                border: "none",
+                cursor: "pointer",
+                transition: "all 150ms",
+              }}
+            >
+              {m === "own-key" ? "Own API key" : "Top up via x402"}
+            </button>
+          ))}
+        </div>
+
+        {llmMode === "own-key" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <FormField label="Provider">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
+                {PROVIDERS.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setProvider(p.id)}
+                    style={{
+                      height: 32,
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 510,
+                      background: provider === p.id ? "rgba(113,112,255,0.1)" : "var(--surface)",
+                      border: `1px solid ${provider === p.id ? "rgba(113,112,255,0.4)" : "var(--card-border)"}`,
+                      color: provider === p.id ? "var(--accent)" : "var(--muted)",
+                      cursor: "pointer",
+                      transition: "all 150ms",
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </FormField>
+            <FormField label="Model">
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                style={{ ...inputCss, appearance: "none" as const }}
+              >
+                {LLM_MODELS[provider].map((m) => (
+                  <option key={m} value={m} style={{ background: "var(--surface)" }}>{m}</option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="API key">
+              <div style={{ position: "relative" }}>
+                <input
+                  type={showKey ? "text" : "password"}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={provider === "anthropic" ? "sk-ant-..." : provider === "openai" ? "sk-..." : "key..."}
+                  style={{ ...inputCss, paddingRight: 40, fontFamily: "ui-monospace, monospace" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--muted)" }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    {showKey
+                      ? <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><line x1="1" y1="1" x2="23" y2="23" /></>
+                      : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></>}
+                  </svg>
+                </button>
+              </div>
+              <p style={{ fontSize: 11, color: "var(--subtle)", marginTop: 4 }}>
+                Stored locally in your browser. Never sent to Sealed servers.
+              </p>
+            </FormField>
+          </div>
+        )}
+
+        {llmMode === "x402" && (
+          <div style={{ padding: 14, borderRadius: 10, background: "var(--surface)", border: "1px solid var(--card-border)", fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
+            <p style={{ color: "var(--accent)", fontWeight: 510, margin: "0 0 6px" }}>x402 pay-as-you-go</p>
+            Top up credits with USDC — no API key needed. Credits are deducted per LLM call via the x402 protocol.
+            {x402Balance > 0 && (
+              <div style={{ marginTop: 8, color: "var(--success)" }}>Current balance: ${(x402Balance / 100).toFixed(2)}</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginTop: 28 }}>
+        <button onClick={onBack} className="btn-ghost" style={{ height: 38, padding: "0 16px", borderRadius: 7, fontSize: 13 }}>
           Back
         </button>
-        <button
-          onClick={onFinish}
-          className="btn-primary h-10 rounded-md text-[13px] flex-1"
-        >
-          {mode === "own-key" && apiKey.trim() ? "Save & continue" : "Continue"}
+        <button onClick={onFinish} className="btn-primary" style={{ flex: 1, height: 38, borderRadius: 7, fontSize: 13 }}>
+          Continue →
         </button>
       </div>
-      <button
-        onClick={onSkip}
-        className="w-full text-center text-[12px] text-subtle hover:text-muted transition-colors"
-      >
-        Skip for now — set up later
-      </button>
     </div>
   );
 }
 
-/* --- x402 top-up panel ---------------------------------------- */
-
-function X402Panel({
-  topUpAmount,
-  setTopUpAmount,
-  x402Model,
-  setX402Model,
-  balance,
-  topping,
-  onTopUp,
-}: {
-  topUpAmount: number;
-  setTopUpAmount: (v: number) => void;
-  x402Model: string;
-  setX402Model: (v: string) => void;
-  balance: number;
-  topping: boolean;
-  onTopUp: () => void;
-}) {
-  const selectedModel = X402_MODELS.find((m) => m.id === x402Model) ?? X402_MODELS[0];
-
+function DonePanel({ onStart, onProfile }: { onStart: () => void; onProfile: () => void }) {
   return (
-    <div className="space-y-4">
-      {/* What is x402 */}
-      <div className="rounded-md bg-surface border border-card-border px-4 py-3 space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="pill-neutral text-accent text-[10px]">x402</span>
-          <p className="text-[12px] text-primary" style={{ fontWeight: 510 }}>
-            Pay-as-you-go via HTTP 402
-          </p>
-        </div>
-        <p className="text-[12px] text-muted leading-relaxed">
-          Top up credits with USDC — no API key needed. Credits are deducted per
-          LLM call, just like OpenRouter. Payment goes directly from your wallet
-          via the x402 protocol.
-        </p>
-      </div>
-
-      {/* Current balance */}
-      {balance > 0 && (
-        <div className="flex items-center justify-between rounded-md bg-success/10 border border-success/20 px-4 py-2.5">
-          <span className="text-[12px] text-muted">Current balance</span>
-          <span className="text-[14px] text-success tabular-nums" style={{ fontWeight: 590 }}>
-            ${(balance / 100).toFixed(2)}
-          </span>
-        </div>
-      )}
-
-      {/* Model selector */}
-      <Field label="Model">
-        <div className="space-y-1.5">
-          {X402_MODELS.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setX402Model(m.id)}
-              className={`w-full flex items-center justify-between px-3 h-10 rounded-md border text-left transition-colors ${
-                x402Model === m.id
-                  ? "border-accent bg-accent/10"
-                  : "border-card-border bg-surface hover:border-card-border"
-              }`}
-            >
-              <span
-                className={`text-[12px] ${x402Model === m.id ? "text-accent" : "text-primary"}`}
-                style={{ fontWeight: 510 }}
-              >
-                {m.label}
-              </span>
-              <span className="text-[11px] text-muted tabular-nums">
-                ~${m.costPer1k}/1k tokens
-              </span>
-            </button>
-          ))}
-        </div>
-      </Field>
-
-      {/* Estimated calls */}
-      {topUpAmount > 0 && (
-        <p className="text-[12px] text-muted text-center">
-          $
-          {topUpAmount} ≈{" "}
-          <span className="text-primary" style={{ fontWeight: 510 }}>
-            {Math.floor((topUpAmount / selectedModel.costPer1k) * 1000).toLocaleString()} tokens
-          </span>{" "}
-          with {selectedModel.label}
-        </p>
-      )}
-
-      {/* Top-up amount selector */}
-      <div>
-        <p className="text-[12px] text-muted mb-2" style={{ fontWeight: 510 }}>
-          Top-up amount
-        </p>
-        <div className="grid grid-cols-4 gap-2">
-          {X402_TOP_UP_AMOUNTS.map((pkg) => (
-            <button
-              key={pkg.usd}
-              onClick={() => setTopUpAmount(pkg.usd)}
-              className={`relative h-10 rounded-md border text-[13px] transition-colors ${
-                topUpAmount === pkg.usd
-                  ? "border-accent bg-accent/10 text-accent"
-                  : "border-card-border bg-surface text-muted hover:text-primary"
-              }`}
-              style={{ fontWeight: 510 }}
-            >
-              {pkg.popular && (
-                <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] bg-accent text-background px-1.5 py-0.5 rounded-full" style={{ fontWeight: 510 }}>
-                  Popular
-                </span>
-              )}
-              {pkg.label}
-            </button>
-          ))}
+    <div style={{ maxWidth: 480, paddingTop: 30 }}>
+      <div style={{ position: "relative", width: 120, height: 120, marginBottom: 22 }}>
+        <div style={{
+          position: "absolute", inset: 0, borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(113,112,255,0.18), transparent 70%)",
+        }} />
+        <div style={{
+          position: "absolute", inset: 12, borderRadius: "50%",
+          background: "var(--surface)", border: "1.5px solid rgba(113,112,255,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <SealedMark size={52} className="text-accent" />
         </div>
       </div>
-
-      {/* Top-up button */}
-      <button
-        onClick={onTopUp}
-        disabled={topping}
-        className="btn-primary w-full h-10 rounded-md text-[13px] flex items-center justify-center gap-2 disabled:opacity-50"
-      >
-        {topping ? (
-          <>
-            <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-            </svg>
-            Processing…
-          </>
-        ) : (
-          <>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-            Top up ${topUpAmount} via x402
-          </>
-        )}
-      </button>
-      <p className="text-center text-[11px] text-subtle">
-        Payment sent via Solana USDC · Powered by{" "}
-        <a
-          href="https://x402.org"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-muted hover:text-accent transition-colors"
-        >
-          x402
-        </a>
+      <h2 style={{ fontSize: 32, fontWeight: 590, letterSpacing: "-0.022em", color: "var(--primary)", margin: 0 }}>
+        Identity sealed.
+      </h2>
+      <p style={{ fontSize: 15, color: "var(--muted)", marginTop: 10, maxWidth: 420, lineHeight: 1.5 }}>
+        Your wallet, profile, and agent are wired up. Counterparties can now find you, and your agent is ready to negotiate on your behalf.
       </p>
+      <div style={{ display: "flex", gap: 10, marginTop: 22 }}>
+        <button onClick={onProfile} className="btn-ghost" style={{ height: 40, padding: "0 16px", borderRadius: 7, fontSize: 13 }}>
+          View profile
+        </button>
+        <button onClick={onStart} className="btn-primary" style={{ height: 40, padding: "0 20px", borderRadius: 7, fontSize: 13 }}>
+          Start your first deal →
+        </button>
+      </div>
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Icons (inline SVG, Lucide-style)                                     */
-/* ------------------------------------------------------------------ */
-
-function XIcon() {
+/* ── Small helpers ── */
+function StepTag({ step }: { step: number }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.259 5.631 5.905-5.631zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-    </svg>
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      background: "transparent",
+      border: "1px solid rgba(113,112,255,0.25)",
+      borderRadius: 9999,
+      padding: "2px 12px",
+      fontSize: 11,
+      fontWeight: 510,
+      color: "var(--accent)",
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)" }} />
+      Step {step} of 4
+    </span>
   );
 }
 
-function TelegramIcon() {
+function FormField({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.820 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
-    </svg>
+    <div>
+      <label style={{ display: "block", fontSize: 12, color: "var(--muted)", fontWeight: 510, marginBottom: 6 }}>
+        {label}
+        {required && <span style={{ color: "var(--danger)", marginLeft: 2 }}>*</span>}
+      </label>
+      {children}
+    </div>
   );
 }
 
-function InstagramIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
-      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
-    </svg>
-  );
-}
-
-function LinkedInIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-    </svg>
-  );
-}
-
-function GlobeIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <line x1="2" y1="12" x2="22" y2="12" />
-      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-    </svg>
-  );
-}
-
-function UploadIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="17 8 12 3 7 8" />
-      <line x1="12" y1="3" x2="12" y2="15" />
-    </svg>
-  );
-}
-
-function FileIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-    </svg>
-  );
-}
-
-function EyeIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
-function EyeOffIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-      <line x1="1" y1="1" x2="23" y2="23" />
-    </svg>
-  );
-}
+const inputCss: React.CSSProperties = {
+  width: "100%",
+  height: 38,
+  borderRadius: 6,
+  padding: "0 12px",
+  background: "var(--surface)",
+  border: "1px solid var(--card-border)",
+  color: "var(--primary)",
+  fontSize: 13,
+  outline: "none",
+};
