@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import { SealedMark } from "@/components/SealedLogo";
-import { decodeInvite, type InvitePayload } from "@/lib/profile-store";
+import { decodeInvite, type InvitePayload, useProfileStore } from "@/lib/profile-store";
 
 type InviterStats = {
   deals_total: number;
@@ -24,6 +24,11 @@ type InviterStats = {
   company_file_name: string | null;
 };
 
+type AccountCheck = {
+  wallet: string;
+  hasAccount: boolean;
+};
+
 const WalletMultiButton = dynamic(
   () =>
     import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
@@ -35,10 +40,16 @@ export default function InvitePage() {
   const { publicKey } = useWallet();
   const router = useRouter();
   const [accepted, setAccepted] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [savingName, setSavingName] = useState(false);
 
   const token = Array.isArray(params.token) ? params.token[0] : params.token;
   const [inviterStats, setInviterStats] = useState<InviterStats | null>(null);
   const [resolvedInviterWallet, setResolvedInviterWallet] = useState<string | null>(null);
+  const [accountCheck, setAccountCheck] = useState<AccountCheck | null>(null);
+  const sellerWallet = publicKey?.toBase58() ?? null;
+  const { updateProfile } = useProfileStore(sellerWallet);
 
   const payload = useMemo(() => {
     if (!token) return null;
@@ -81,6 +92,30 @@ export default function InvitePage() {
       cancelled = true;
     };
   }, [inviterWallet]);
+
+  useEffect(() => {
+    if (!sellerWallet) return;
+
+    let cancelled = false;
+
+    fetch(`/api/users/${encodeURIComponent(sellerWallet)}/public?self=1`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+
+        setAccountCheck({
+          wallet: sellerWallet,
+          hasAccount: Boolean(data?.member_since || data?.handle || data?.display_name),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setAccountCheck({ wallet: sellerWallet, hasAccount: false });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sellerWallet]);
 
   if (!payload) {
     return (
@@ -229,7 +264,61 @@ export default function InvitePage() {
     }, 800);
   }
 
+  async function handleNameContinue() {
+    if (!sellerWallet) return;
+
+    const displayName = nameDraft.trim();
+    if (displayName.length < 2) {
+      setNameError("Enter your name to continue.");
+      return;
+    }
+
+    setSavingName(true);
+    setNameError("");
+
+    const handle = createInviteHandle(displayName, sellerWallet);
+
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(sellerWallet)}/profile`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-wallet": sellerWallet },
+        body: JSON.stringify({
+          handle,
+          display_name: displayName,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? "Failed to create profile");
+      }
+
+      updateProfile({
+        name: displayName,
+        username: handle,
+        bio: "",
+        socials: {
+          twitter: "",
+          telegram: "",
+          instagram: "",
+          linkedin: "",
+          website: "",
+        },
+        onboardingComplete: true,
+      });
+      setAccountCheck({ wallet: sellerWallet, hasAccount: true });
+      await handleAccept();
+    } catch (error) {
+      setAccepted(false);
+      setNameError(error instanceof Error ? error.message : "Failed to create profile");
+    } finally {
+      setSavingName(false);
+    }
+  }
+
   const isConnected = !!publicKey;
+  const isCheckingAccount = isConnected && accountCheck?.wallet !== sellerWallet;
+  const needsName = isConnected && !isCheckingAccount && accountCheck?.hasAccount === false;
 
   return (
     <InviteShell>
@@ -454,6 +543,52 @@ export default function InvitePage() {
             </p>
             <WalletMultiButton />
           </div>
+        ) : isCheckingAccount ? (
+          <div className="flex items-center justify-center gap-2 h-11 rounded-md bg-surface border border-card-border">
+            <span className="h-1.5 w-1.5 rounded-full bg-muted animate-pulse" />
+            <span className="text-[13px] text-muted" style={{ fontWeight: 510 }}>
+              Checking your Sealed profile...
+            </span>
+          </div>
+        ) : needsName ? (
+          <div className="rounded-xl border border-card-border bg-surface px-4 py-4 space-y-3">
+            <div>
+              <p className="text-[13px] text-primary" style={{ fontWeight: 590 }}>
+                Tell the inviter who is joining
+              </p>
+              <p className="text-[12px] text-muted mt-0.5">
+                This creates your Sealed profile for this deal.
+              </p>
+            </div>
+            <label className="block space-y-1.5">
+              <span className="text-[12px] text-muted" style={{ fontWeight: 510 }}>
+                Your name
+              </span>
+              <input
+                value={nameDraft}
+                onChange={(e) => {
+                  setNameDraft(e.target.value);
+                  if (nameError) setNameError("");
+                }}
+                type="text"
+                autoComplete="name"
+                placeholder="e.g. Maya Chen"
+                className="w-full h-10 rounded-md bg-background border border-card-border px-3 text-[14px] text-primary placeholder:text-subtle focus:border-accent focus:outline-none disabled:opacity-60"
+                disabled={savingName || accepted}
+              />
+            </label>
+            {nameError && (
+              <p className="text-[12px] text-danger">{nameError}</p>
+            )}
+            <button
+              type="button"
+              onClick={handleNameContinue}
+              disabled={savingName || accepted}
+              className="btn-primary w-full h-11 rounded-md text-[14px] disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {savingName || accepted ? "Joining deal..." : "Continue to negotiation"}
+            </button>
+          </div>
         ) : accepted ? (
           <div className="flex items-center justify-center gap-2 h-11 rounded-md bg-success/10 border border-success/20">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-success">
@@ -492,6 +627,17 @@ function formatWallet(wallet: string) {
   if (!wallet) return "";
   if (isShortWallet(wallet)) return wallet;
   return `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
+}
+
+function createInviteHandle(name: string, wallet: string) {
+  const base = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24) || "guest";
+
+  return `${base}-${wallet.slice(0, 4).toLowerCase()}${wallet.slice(-4).toLowerCase()}`;
 }
 
 async function resolveInviterWallet(payload: InvitePayload) {
