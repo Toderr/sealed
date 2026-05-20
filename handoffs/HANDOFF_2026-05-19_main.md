@@ -1,6 +1,6 @@
 # HANDOFF 2026-05-19 — branch `main`
 
-- **status**: active
+- **status**: done
 - **branch**: main
 - **goal**: Pasang infrastructure handoff (handoffs/, docs/ARCHITECTURE.md, AGENTS.md) supaya Claude Code ↔ Codex CLI bisa relay tanpa re-explain context.
 
@@ -72,3 +72,33 @@ Working tree pending dari sesi sebelumnya (belum di-commit):
 - Commit SHA:
 - Test command + result:
 - Files final:
+
+### Update 2026-05-20 11:28 oleh Codex
+- Status: partial
+- Yang dikerjakan: Menjalankan workflow apply-grant; export script Bash gagal karena WSL distro tidak terpasang, lalu fallback copy session proof files ke root project untuk aplikasi grant.
+- Files modified: `codex-session.jsonl`, `claude-session.jsonl`, `handoffs/HANDOFF_2026-05-19_main.md`
+- Commit SHA: e811206
+- Test status: Grant prep only; tests tidak dijalankan.
+- Blocker (jika ada): Bundled Bash export tidak bisa jalan di Windows tanpa WSL distro.
+- Next-action untuk agent berikutnya: Original handoff next-action tetap berlaku; review struktur baru dan putuskan file pending kalau ada sebelum commit.
+- Do-Not tambahan: Jangan anggap Bash exporter berhasil di environment ini; gunakan fallback copy latest `~/.codex/sessions/**/*.jsonl` dan `~/.claude/projects/E--Claude-Code-sealed/**/*.jsonl` jika WSL masih belum tersedia.
+
+### Update 2026-05-20 12:05 oleh Codex
+- Status: done
+- Yang dikerjakan: Memperbaiki invite link agar payload menyimpan full inviter wallet, token invite aman untuk URL, dan invite page bisa resolve wallet penuh dari deal untuk link lama sebelum fetch public stats.
+- Files modified: `app/src/app/profile/page.tsx`, `app/src/app/invite/[token]/page.tsx`, `handoffs/HANDOFF_2026-05-19_main.md`
+- Commit SHA: 803986f
+- Test status: Frontend build pass (`npm.cmd run build`); targeted eslint pass untuk `src/app/invite/[token]/page.tsx`; full lint masih fail karena isu lama di file lain.
+- Blocker (jika ada): Tidak ada.
+- Next-action untuk agent berikutnya: Tidak ada untuk task invite stats; perubahan kode sudah commit di `803986f`.
+- Do-Not tambahan: Jangan simpan wallet pendek (`abc...xyz`) di `InvitePayload.inviterWallet`; field ini harus full wallet untuk profile stats dan mirror auth.
+
+### Update 2026-05-20 13:41 oleh Codex
+- Status: done
+- Yang dikerjakan: Menyamakan header invite page dengan header front page untuk logo Sealed Agent: ukuran `SealedMark`, label, container width, dan aria-label.
+- Files modified: `app/src/app/invite/[token]/page.tsx`, `handoffs/HANDOFF_2026-05-19_main.md`
+- Commit SHA: 803986f
+- Test status: Targeted eslint pass (`npx.cmd eslint "src/app/invite/[token]/page.tsx"`).
+- Blocker (jika ada): Tidak ada.
+- Next-action untuk agent berikutnya: Tidak ada untuk task header invite; perubahan kode sudah commit di `803986f`.
+- Do-Not tambahan: Jangan buat variasi logo/header baru untuk invite; pakai pola front page sebagai sumber tampilan brand.
