@@ -204,21 +204,39 @@ export async function dispatchLlm(opts: LlmCallOptions): Promise<string> {
   throw lastErr;
 }
 
+function envSecret(name: string): string | null {
+  const value = process.env[name]?.trim();
+  if (!value || /^your-api-key/i.test(value)) return null;
+  return value;
+}
+
 export function getLlmOptsFromEnv(): { provider: string; model: string; apiKey: string } | null {
-  if (process.env.ANTHROPIC_API_KEY) {
+  const openaiKey = envSecret("OPENAI_API_KEY");
+  if (openaiKey) {
+    return {
+      provider: "openai",
+      model: process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini",
+      apiKey: openaiKey,
+    };
+  }
+
+  const anthropicKey = envSecret("ANTHROPIC_API_KEY");
+  if (anthropicKey) {
     return {
       provider: "anthropic",
-      model: "claude-haiku-4-5-20251001",
-      apiKey: process.env.ANTHROPIC_API_KEY,
+      model: process.env.ANTHROPIC_MODEL?.trim() || "claude-haiku-4-5-20251001",
+      apiKey: anthropicKey,
     };
   }
-  if (process.env.OPENROUTER_API_KEY) {
-    // Prefer an explicit model env var; default to a paid model to avoid free-tier rate limits
+
+  const openRouterKey = envSecret("OPENROUTER_API_KEY");
+  if (openRouterKey) {
     return {
       provider: "openrouter",
-      model: process.env.OPENROUTER_MODEL ?? "anthropic/claude-haiku-4-5",
-      apiKey: process.env.OPENROUTER_API_KEY,
+      model: process.env.OPENROUTER_MODEL?.trim() || "anthropic/claude-haiku-4-5",
+      apiKey: openRouterKey,
     };
   }
+
   return null;
 }

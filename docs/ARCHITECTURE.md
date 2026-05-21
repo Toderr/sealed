@@ -141,3 +141,9 @@ Jangan hapus entry lama. Tambahkan saja.
 - Alasan: SPL Token insufficient funds harus muncul sebagai pesan yang bisa ditindaklanjuti, bukan simulation failure mentah setelah sign.
 - Constraint: Precheck hanya UX guard; on-chain program tetap otoritatif dan Supabase mirror tidak boleh ditulis funded sebelum transaksi confirmed.
 - Tanggal: 2026-05-21
+
+### Seller negotiation avoids free OpenRouter fallback
+- Keputusan: `/api/negotiate` tidak memakai server-side OpenRouter model `:free` untuk simulated seller turn ketika buyer membawa own-key provider seperti OpenAI; seller turn memakai buyer provider dan retry ke buyer provider jika server seller LLM kena 429.
+- Alasan: Error renegotiate terjadi di seller turn dari server OpenRouter/Gemma, bukan dari OpenAI user. Free upstream model tidak cukup stabil untuk flow negosiasi.
+- Constraint: Jangan log API key. Log hanya provider/model. Fallback ini tidak mengubah escrow authority atau fund state.
+- Tanggal: 2026-05-21

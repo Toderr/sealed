@@ -119,7 +119,7 @@ function buildEscalatedProposal({
     status: "escalated",
     summary: {
       pros: ["Renegotiation request captured for both parties"],
-      cons: ["Agent negotiation could not complete automatically"],
+      cons: ["The automated negotiation needs manual review before it can continue"],
       keyConcessions: [],
       riskFlags: [reason],
       confidenceScore: 0.35,
@@ -557,7 +557,7 @@ export default function NegotiateRoom() {
             buyerBoundaries,
             sellerBoundaries,
             renegotiationRequest,
-            reason: "The current LLM provider is rate-limited. The deal is escalated so both parties can review the requested changes while the agent provider recovers.",
+            reason: "The automated negotiation paused before reaching a clear agreement. Both parties should review the requested changes before signing.",
           }),
         });
         return;

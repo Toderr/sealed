@@ -187,7 +187,7 @@ GET  /api/notifications               in-app notification menu synthesized from 
 
 `POST /api/negotiate` accepts an optional `renegotiationRequest` string. This is a human instruction captured from the renegotiation dialog and injected into the next agent negotiation prompt. It must guide the agents only; it does not directly mutate deal terms outside the structured negotiation result.
 
-When renegotiation is requested, the shared off-chain deal status becomes `escalated` so both parties see the same reopened-terms state. If an upstream LLM provider returns a rate-limit error, `/api/negotiate` returns an escalated proposal instead of exposing the raw provider failure to the UI.
+When renegotiation is requested, the shared off-chain deal status becomes `escalated` so both parties see the same reopened-terms state. If the server seller model is an OpenRouter `:free` model, `/api/negotiate` uses the buyer-supplied provider for the simulated seller turn instead of routing through the unstable free model. If an LLM call still cannot complete, the API returns an escalated proposal with user-facing copy instead of exposing raw provider failure details to the UI.
 
 ### Future (Scout update), already shaped compatibly
 
@@ -294,3 +294,4 @@ app/src/
 - **Why notifications are synthesized from deal context**: in-app alerts must work for both parties even when email/Telegram queue rows are absent; `/api/notifications` reads deal state and queue rows without making notifications source-of-truth for funds.
 - **Why `escalated` is an off-chain deal status**: renegotiation intent is coordination context for both parties, not an on-chain fund state. Escrow custody remains controlled only by wallet-signed program instructions.
 - **Why escrow deploy prechecks buyer USDC**: SPL Token insufficient-funds errors happen inside `fund_escrow`; the frontend checks the buyer ATA before signing and logs `SendTransactionError.getLogs()` if the chain still rejects.
+- **Why seller negotiation avoids OpenRouter free models**: a buyer's own OpenAI/Anthropic key is more reliable than server-side OpenRouter `:free` models for simulated seller turns, so `/api/negotiate` routes away from `:free` and retries with buyer LLM on seller-side 429.

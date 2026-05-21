@@ -171,7 +171,7 @@ Seller boundaries are loaded from `sealed_agent_templates` if the seller has con
 
 When a user chooses `Renegotiate`, the UI collects a short natural-language instruction and sends it as `renegotiationRequest` to `/api/negotiate`. The request is prompt context for the next agent run; only the structured negotiated result can become final terms.
 
-Choosing `Renegotiate` also updates the shared off-chain deal status to `escalated`, visible to both parties in the dashboard, profile, notification menu, and negotiation room. If the LLM provider is rate-limited, the API returns an escalated proposal instead of surfacing the raw provider error.
+Choosing `Renegotiate` also updates the shared off-chain deal status to `escalated`, visible to both parties in the dashboard, profile, notification menu, and negotiation room. If the configured seller-side server model is an OpenRouter `:free` model, `/api/negotiate` uses the buyer-supplied provider for the simulated seller turn instead. If an LLM call still cannot complete, the API returns an escalated proposal with user-facing copy instead of surfacing raw provider errors.
 
 #### Verifier Agent (`/api/verify-milestone`)
 
@@ -191,6 +191,8 @@ Unified multi-provider LLM routing. Priority order:
 3. `ANTHROPIC_API_KEY` → Anthropic Claude
 
 Supported providers: `anthropic`, `openai`, `openrouter`, `groq`, `gemini`
+
+Current server-env fallback ignores placeholder keys and resolves `OPENAI_API_KEY`, then `ANTHROPIC_API_KEY`, then `OPENROUTER_API_KEY`. Negotiation avoids OpenRouter `:free` models for simulated seller turns when the buyer supplied a usable own-key provider.
 
 ---
 
@@ -740,8 +742,11 @@ Generated invite handles may stay unique in `sealed_users.handle`, but UI surfac
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon key (client) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase service role (server only) |
+| `OPENAI_API_KEY` | Either/or | OpenAI API key for server-side fallback |
+| `OPENAI_MODEL` | No | Override OpenAI model |
 | `ANTHROPIC_API_KEY` | Either/or | Claude API key |
-| `OPENROUTER_API_KEY` | Either/or | OpenRouter API key (takes priority over Anthropic) |
+| `ANTHROPIC_MODEL` | No | Override Anthropic model |
+| `OPENROUTER_API_KEY` | Either/or | OpenRouter API key for server-side fallback |
 | `OPENROUTER_MODEL` | No | Override OpenRouter model |
 | `ADMIN_WALLETS` | Yes | CSV of admin wallet addresses |
 | `CRON_SECRET` | Yes | Vercel cron job auth secret |
