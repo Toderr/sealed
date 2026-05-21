@@ -93,3 +93,9 @@ Jangan hapus entry lama. Tambahkan saja.
 - Alasan: `Math.random` predictable. Body-trusted rater = spoof identity.
 - Constraint: Setiap endpoint yang mutate user-scoped state wajib derive identity dari auth header, bukan body.
 - Tanggal: 2026-05-10
+
+### Completed deal reviews update public rating immediately
+- Keputusan: Review bintang 1-5 hanya bisa dibuat oleh buyer/seller setelah deal completed, lalu langsung `revealed` dan masuk aggregate `avg_rating` ratee.
+- Alasan: Profile dan invite page harus menampilkan rating yang baru diberikan tanpa menunggu counterparty ikut review.
+- Constraint: Ratings API tetap derive rater dari `x-wallet`, menolak self-rating, memverifikasi caller adalah party deal, dan memverifikasi deal sudah completed sebelum insert.
+- Tanggal: 2026-05-21

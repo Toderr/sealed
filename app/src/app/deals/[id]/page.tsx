@@ -44,6 +44,18 @@ type Deliverable = {
   milestone_index: number;
   created_at: string;
 };
+type RatingLookup = {
+  rating: {
+    id: string;
+    stars: number;
+    review_text: string;
+    revealed: boolean;
+    submitted_at: string;
+    ratee_wallet: string;
+  } | null;
+  canRate: boolean;
+  ratee_wallet: string;
+};
 
 export default function ActiveDealPage() {
   const params = useParams();
@@ -64,6 +76,12 @@ export default function ActiveDealPage() {
   const [sealedModalShown, setSealedModalShown] = useState(false);
   const [showSealedModal, setShowSealedModal] = useState(false);
   const [confirmModal, setConfirmModal] = useState<number | null>(null);
+  const [ratingLookup, setRatingLookup] = useState<RatingLookup | null>(null);
+  const [ratingLoading, setRatingLoading] = useState(false);
+  const [ratingStars, setRatingStars] = useState(0);
+  const [ratingText, setRatingText] = useState("");
+  const [ratingError, setRatingError] = useState<string | null>(null);
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMsgCount = useRef(0);
   const fileInputRefs = useRef<{ [k: number]: HTMLInputElement | null }>({});
@@ -233,6 +251,84 @@ export default function ActiveDealPage() {
       setShowSealedModal(true);
     }
   }, [isComplete, sealedModalShown]);
+
+  useEffect(() => {
+    if (!isComplete || !wallet || role === "observer") {
+      setRatingLookup(null);
+      return;
+    }
+
+    let cancelled = false;
+    setRatingLoading(true);
+    setRatingError(null);
+
+    fetch(`/api/ratings?deal_id=${encodeURIComponent(dealId)}`, {
+      headers: { "x-wallet": wallet },
+    })
+      .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (cancelled) return;
+        if (!ok) throw new Error(data?.error ?? "Failed to load review status");
+        setRatingLookup(data as RatingLookup);
+        const submittedStars = (data as RatingLookup).rating?.stars ?? 0;
+        setRatingStars(submittedStars);
+        setRatingText((data as RatingLookup).rating?.review_text ?? "");
+      })
+      .catch((error) => {
+        if (!cancelled) setRatingError(error instanceof Error ? error.message : "Failed to load review status");
+      })
+      .finally(() => {
+        if (!cancelled) setRatingLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dealId, isComplete, role, wallet]);
+
+  async function handleSubmitRating(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!wallet || !ratingLookup?.ratee_wallet || ratingSubmitting) return;
+    if (ratingStars < 1 || ratingStars > 5) {
+      setRatingError("Choose a rating from 1 to 5 stars.");
+      return;
+    }
+
+    setRatingSubmitting(true);
+    setRatingError(null);
+
+    try {
+      const res = await fetch("/api/ratings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-wallet": wallet },
+        body: JSON.stringify({
+          deal_id: dealId,
+          ratee_wallet: ratingLookup.ratee_wallet,
+          stars: ratingStars,
+          review_text: ratingText.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? "Failed to submit review");
+
+      setRatingLookup({
+        ...ratingLookup,
+        canRate: false,
+        rating: {
+          id: data?.id ?? "submitted",
+          stars: ratingStars,
+          review_text: ratingText.trim(),
+          revealed: true,
+          submitted_at: new Date().toISOString(),
+          ratee_wallet: ratingLookup.ratee_wallet,
+        },
+      });
+    } catch (error) {
+      setRatingError(error instanceof Error ? error.message : "Failed to submit review");
+    } finally {
+      setRatingSubmitting(false);
+    }
+  }
 
   if (!wallet) {
     return (
@@ -530,6 +626,23 @@ export default function ActiveDealPage() {
               </div>
             </div>
 
+            {isComplete && role !== "observer" && (
+              <CounterpartyReviewCard
+                loading={ratingLoading}
+                lookup={ratingLookup}
+                stars={ratingStars}
+                reviewText={ratingText}
+                error={ratingError}
+                submitting={ratingSubmitting}
+                onStarsChange={(stars) => {
+                  setRatingStars(stars);
+                  if (ratingError) setRatingError(null);
+                }}
+                onReviewTextChange={setRatingText}
+                onSubmit={handleSubmitRating}
+              />
+            )}
+
             {/* Activity / chat */}
             <div
               className="surface-card"
@@ -698,6 +811,172 @@ function PartyRow({ label, wallet, isYou }: { label: string; wallet: string; isY
         </div>
         <div style={{ fontSize: 11, color: "var(--muted)" }}>{label}</div>
       </div>
+    </div>
+  );
+}
+
+function CounterpartyReviewCard({
+  loading,
+  lookup,
+  stars,
+  reviewText,
+  error,
+  submitting,
+  onStarsChange,
+  onReviewTextChange,
+  onSubmit,
+}: {
+  loading: boolean;
+  lookup: RatingLookup | null;
+  stars: number;
+  reviewText: string;
+  error: string | null;
+  submitting: boolean;
+  onStarsChange: (stars: number) => void;
+  onReviewTextChange: (text: string) => void;
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  const submitted = lookup?.rating;
+
+  return (
+    <div className="surface-card" style={{ borderRadius: 12, padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <p style={{ fontSize: 13, color: "var(--primary)", fontWeight: 590, margin: 0 }}>
+          Counterparty review
+        </p>
+        {submitted && <MiniPill tone="success">Submitted</MiniPill>}
+      </div>
+
+      {loading ? (
+        <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+          <div style={{ height: 12, width: "70%", borderRadius: 999, background: "var(--surface)", animation: "sealed-pulse 1.2s infinite ease-in-out" }} />
+          <div style={{ height: 40, borderRadius: 8, background: "var(--surface)", animation: "sealed-pulse 1.2s 120ms infinite ease-in-out" }} />
+        </div>
+      ) : submitted ? (
+        <div style={{ marginTop: 12 }}>
+          <StarRatingPicker value={submitted.stars} onChange={() => {}} disabled />
+          {submitted.review_text && (
+            <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--foreground)", lineHeight: 1.5 }}>
+              {submitted.review_text}
+            </p>
+          )}
+          <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--muted)" }}>
+            This rating is included in their public profile.
+          </p>
+        </div>
+      ) : lookup?.canRate ? (
+        <form onSubmit={onSubmit} style={{ marginTop: 12 }} aria-busy={submitting}>
+          <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+            <legend style={{ fontSize: 12, color: "var(--muted)", fontWeight: 510, marginBottom: 8 }}>
+              Rating
+            </legend>
+            <StarRatingPicker value={stars} onChange={onStarsChange} disabled={submitting} />
+          </fieldset>
+
+          <label htmlFor="counterparty-review-text" style={{ display: "block", marginTop: 12 }}>
+            <span style={{ display: "block", fontSize: 12, color: "var(--muted)", fontWeight: 510, marginBottom: 6 }}>
+              Review note
+            </span>
+            <textarea
+              id="counterparty-review-text"
+              value={reviewText}
+              onChange={(e) => onReviewTextChange(e.target.value)}
+              rows={3}
+              maxLength={500}
+              placeholder="Share a short note"
+              disabled={submitting}
+              aria-invalid={error ? "true" : undefined}
+              aria-describedby={error ? "counterparty-review-error" : undefined}
+              style={{
+                width: "100%",
+                resize: "vertical",
+                minHeight: 82,
+                borderRadius: 8,
+                background: "var(--surface)",
+                border: "1px solid var(--card-border)",
+                color: "var(--primary)",
+                padding: "9px 10px",
+                fontSize: 12,
+                lineHeight: 1.5,
+                outline: "none",
+              }}
+            />
+          </label>
+
+          {error && (
+            <p id="counterparty-review-error" style={{ margin: "8px 0 0", fontSize: 11, color: "var(--danger)" }}>
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="btn-primary"
+            style={{
+              marginTop: 12,
+              width: "100%",
+              minHeight: 40,
+              borderRadius: 8,
+              fontSize: 12,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+            }}
+          >
+            {submitting ? "Submitting..." : "Submit review"}
+          </button>
+        </form>
+      ) : (
+        <div style={{ marginTop: 12, padding: 12, borderRadius: 8, border: "1px solid var(--card-border)", color: "var(--muted)", fontSize: 12 }}>
+          {error ?? "Review opens when this deal is completed."}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StarRatingPicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 4 }}>
+      {[1, 2, 3, 4, 5].map((star) => {
+        const filled = star <= value;
+        return (
+          <button
+            key={star}
+            type="button"
+            onClick={() => onChange(star)}
+            disabled={disabled}
+            aria-label={`${star} star${star === 1 ? "" : "s"}`}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 8,
+              border: `1px solid ${filled ? "rgba(245,158,11,0.4)" : "var(--card-border)"}`,
+              background: filled ? "rgba(245,158,11,0.08)" : "var(--surface)",
+              color: filled ? "var(--warning)" : "var(--muted)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: disabled ? "default" : "pointer",
+              opacity: disabled && !filled ? 0.65 : 1,
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+          </button>
+        );
+      })}
     </div>
   );
 }

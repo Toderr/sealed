@@ -546,6 +546,12 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   [DealStatus.Disputed]: { label: "Disputed", color: "text-danger" },
 };
 
+function localDealHref(deal: Deal) {
+  return deal.status === DealStatus.Created
+    ? `/negotiate/${deal.dealId}`
+    : `/deals/${deal.dealId}`;
+}
+
 function DealRow({
   deal,
   profile,
@@ -558,8 +564,7 @@ function DealRow({
   const [copied, setCopied] = useState(false);
   const status = STATUS_LABEL[deal.status] ?? { label: "Unknown", color: "text-muted" };
   const amountUsdc = deal.totalAmount / 1_000_000;
-  const needsCounterparty =
-    deal.status === DealStatus.Created || deal.status === DealStatus.Funded;
+  const needsCounterparty = deal.status === DealStatus.Created;
 
   function copyInvite() {
     const payload = {
@@ -582,6 +587,10 @@ function DealRow({
 
   return (
     <div className="surface-card rounded-lg px-4 py-3 flex items-center justify-between gap-4 hover:bg-surface-hover/50 transition-colors">
+      <Link
+        href={localDealHref(deal)}
+        className="min-w-0 flex-1 flex items-center justify-between gap-4 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+      >
       <div className="min-w-0">
         <p className="text-[13px] text-primary truncate" style={{ fontWeight: 510 }}>
           {deal.dealId}
@@ -594,14 +603,16 @@ function DealRow({
           </span>
         </div>
       </div>
-      <div className="flex items-center gap-3 flex-shrink-0">
-        <span className="text-[13px] text-primary tabular-nums" style={{ fontWeight: 590 }}>
+        <span className="text-[13px] text-primary tabular-nums flex-shrink-0" style={{ fontWeight: 590 }}>
           ${amountUsdc.toLocaleString()} USDC
         </span>
+      </Link>
+      <div className="flex items-center gap-3 flex-shrink-0">
         {needsCounterparty && (
           <button
+            type="button"
             onClick={copyInvite}
-            className={`text-[11px] px-2.5 h-7 rounded border transition-colors flex items-center gap-1 ${
+            className={`text-[11px] px-3 h-10 rounded border transition-colors flex items-center gap-1 ${
               copied
                 ? "border-success/40 text-success"
                 : "border-card-border text-muted hover:text-primary hover:border-accent/40"

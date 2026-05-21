@@ -31,6 +31,29 @@ interface SupabaseDeal {
   created_at?: string;
 }
 
+function isMilestoneDone(status: string | undefined) {
+  return status === "Released" || status === "Completed";
+}
+
+function inferDealStatus(deal: SupabaseDeal) {
+  const raw = (deal.status ?? "").toLowerCase();
+  const milestones = deal.milestones ?? [];
+  if (milestones.length > 0 && milestones.every((m) => isMilestoneDone(m.status))) {
+    return "completed";
+  }
+  if (raw === "inprogress") return "in_progress";
+  if (raw === "created") return "draft";
+  return raw;
+}
+
+function dealHref(deal: SupabaseDeal) {
+  const status = inferDealStatus(deal);
+  if (status === "draft" || status === "seller-ready" || status === "seller-agreed" || status === "proposed") {
+    return `/negotiate/${deal.deal_id}`;
+  }
+  return `/deals/${deal.deal_id}`;
+}
+
 export default function Home() {
   const [view, setView] = useState<View>("deals");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -282,7 +305,6 @@ function AppHeader({
 function DealsBoldBoard() {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
-  const router = useRouter();
 
   const [deals, setDeals] = useState<SupabaseDeal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -315,15 +337,16 @@ function DealsBoldBoard() {
   function needsYourAction(deal: SupabaseDeal): boolean {
     if (!wallet) return false;
     const isBuyer = deal.buyer_wallet === wallet;
-    if (deal.status === "draft") return isBuyer; // buyer needs to invite
+    const status = inferDealStatus(deal);
+    if (status === "draft") return isBuyer; // buyer needs to invite
     const hasReview = deal.milestones.some((m) => m.status === "In Review");
     if (hasReview && isBuyer) return true;
     return false;
   }
 
-  const youLane = filtered.filter((d) => needsYourAction(d) && d.status !== "completed");
-  const themLane = filtered.filter((d) => !needsYourAction(d) && d.status !== "completed");
-  const doneLane = filtered.filter((d) => d.status === "completed");
+  const youLane = filtered.filter((d) => needsYourAction(d) && inferDealStatus(d) !== "completed");
+  const themLane = filtered.filter((d) => !needsYourAction(d) && inferDealStatus(d) !== "completed");
+  const doneLane = filtered.filter((d) => inferDealStatus(d) === "completed");
 
   const lanes: { id: string; title: string; color: string; caption: string; deals: SupabaseDeal[] }[] = [
     { id: "you",  title: "Waiting on you",  color: "var(--warning)", caption: "Action pending — these need your input", deals: youLane },
@@ -402,7 +425,7 @@ function DealsBoldBoard() {
                       laneColor={lane.color}
                       youAction={lane.id === "you"}
                       myWallet={wallet}
-                      onClick={() => router.push(`/negotiate/${d.deal_id}`)}
+                      href={dealHref(d)}
                     />
                   ))}
                   {lane.deals.length === 0 && (
@@ -433,13 +456,13 @@ function DealCardBold({
   laneColor,
   youAction,
   myWallet,
-  onClick,
+  href,
 }: {
   deal: SupabaseDeal;
   laneColor: string;
   youAction: boolean;
   myWallet: string | null;
-  onClick: () => void;
+  href: string;
 }) {
   const isBuyer = deal.buyer_wallet === myWallet;
   const counterparty = isBuyer ? deal.seller_wallet : deal.buyer_wallet;
@@ -449,30 +472,43 @@ function DealCardBold({
   const cpInitials = counterparty ? counterparty.slice(0, 2).toUpperCase() : "?";
 
   const totalMs = (deal.milestones ?? []).length;
-  const doneMs = (deal.milestones ?? []).filter(
-    (m) => m.status === "Released" || m.status === "Completed"
-  ).length;
+  const doneMs = (deal.milestones ?? []).filter((m) => isMilestoneDone(m.status)).length;
 
   const inReview = (deal.milestones ?? []).some((m) => m.status === "In Review");
+  const displayStatus = inferDealStatus(deal);
 
   const statusLabel: Record<string, string> = {
-    draft:     "Awaiting counterparty",
-    funded:    "In progress",
-    completed: "Completed",
-    disputed:  "Disputed",
+    draft:          "Awaiting counterparty",
+    "seller-ready": "Counterparty reviewing",
+    "seller-agreed":"Ready to fund",
+    proposed:       "Ready to sign",
+    funded:         "Funded",
+    in_progress:    "In progress",
+    completed:      "Completed",
+    refunded:       "Refunded",
+    disputed:       "Disputed",
   };
   const statusTone: Record<string, string> = {
-    draft:     "warning",
-    funded:    "accent",
-    completed: "success",
-    disputed:  "danger",
+    draft:          "warning",
+    "seller-ready": "warning",
+    "seller-agreed":"accent",
+    proposed:       "accent",
+    funded:         "accent",
+    in_progress:    "accent",
+    completed:      "success",
+    refunded:       "danger",
+    disputed:       "danger",
   };
-  const tone = statusTone[deal.status] ?? "neutral";
+  const tone = statusTone[displayStatus] ?? "neutral";
 
   return (
-    <div
-      onClick={onClick}
+    <Link
+      href={href}
+      className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
       style={{
+        display: "block",
+        color: "inherit",
+        textDecoration: "none",
         borderRadius: 12,
         padding: 14,
         cursor: "pointer",
@@ -484,12 +520,12 @@ function DealCardBold({
         transition: "transform 150ms, border-color 150ms",
       }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(113,112,255,0.25)";
-        (e.currentTarget as HTMLDivElement).style.transform = "translateY(-1px)";
+        (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(113,112,255,0.25)";
+        (e.currentTarget as HTMLAnchorElement).style.transform = "translateY(-1px)";
       }}
       onMouseLeave={(e) => {
-        (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(255, 255, 255, 0.14)";
-        (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)";
+        (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(255, 255, 255, 0.14)";
+        (e.currentTarget as HTMLAnchorElement).style.transform = "translateY(0)";
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
@@ -501,7 +537,7 @@ function DealCardBold({
             {deal.deal_id.slice(0, 18)}
           </p>
         </div>
-        <StatusPill tone={tone}>{statusLabel[deal.status] ?? deal.status}</StatusPill>
+        <StatusPill tone={tone}>{statusLabel[displayStatus] ?? deal.status}</StatusPill>
       </div>
 
       {/* Counterparty + role */}
@@ -574,7 +610,7 @@ function DealCardBold({
           </span>
         </div>
       )}
-    </div>
+    </Link>
   );
 }
 

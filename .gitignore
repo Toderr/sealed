@@ -6,6 +6,7 @@ target/
 .next/
 out/
 dist/
+app/dev-server*.log
 
 # Environment
 .env

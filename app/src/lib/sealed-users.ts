@@ -3,6 +3,55 @@ import { supabase, table } from "@/lib/supabase";
 import type { SealedUser, NotificationPrefs, PublicProfile } from "@/lib/types";
 import { getReputation } from "@/lib/reputation";
 
+type ProfileDeal = {
+  status: string;
+  milestones: Array<{ status?: string }> | null;
+};
+
+function isSuccessfulDeal(deal: ProfileDeal) {
+  return (
+    deal.status === "completed" ||
+    (Array.isArray(deal.milestones) &&
+      deal.milestones.length > 0 &&
+      deal.milestones.every((m) => m.status === "Released" || m.status === "Completed"))
+  );
+}
+
+async function getReputationFallback(wallet: string) {
+  const [{ data: deals }, { data: ratings }] = await Promise.all([
+    supabase
+      .from(table("deals"))
+      .select("status, milestones")
+      .or(`buyer_wallet.eq.${wallet},seller_wallet.eq.${wallet}`),
+    supabase
+      .from(table("ratings"))
+      .select("stars")
+      .eq("ratee_wallet", wallet)
+      .eq("revealed", true),
+  ]);
+
+  const dealRows = (deals ?? []) as ProfileDeal[];
+  const dealsSuccessful = dealRows.filter(isSuccessfulDeal).length;
+  const dealsFailed = dealRows.filter(
+    (d) => d.status === "refunded" || d.status === "disputed"
+  ).length;
+  const ratingRows = (ratings ?? []) as { stars: number }[];
+  const avgRating =
+    ratingRows.length > 0
+      ? Math.round(
+          (ratingRows.reduce((sum, rating) => sum + rating.stars, 0) /
+            ratingRows.length) *
+            100
+        ) / 100
+      : 0;
+
+  return {
+    deals_total: dealsSuccessful + dealsFailed,
+    deals_successful: dealsSuccessful,
+    avg_rating: avgRating,
+  };
+}
+
 export async function upsertUser(
   wallet: string,
   handle: string
@@ -57,12 +106,13 @@ export async function getPublicProfile(
   if (!user) return null;
 
   const rep = await getReputation(wallet);
+  const fallback = await getReputationFallback(wallet);
 
   return {
     handle: user.handle,
-    deals_total: rep?.deals_total ?? 0,
-    deals_successful: rep?.deals_successful ?? 0,
-    avg_rating: rep?.avg_rating ?? 0,
+    deals_total: Math.max(rep?.deals_total ?? 0, fallback.deals_total),
+    deals_successful: Math.max(rep?.deals_successful ?? 0, fallback.deals_successful),
+    avg_rating: fallback.avg_rating > 0 ? fallback.avg_rating : rep?.avg_rating ?? 0,
     is_verified: !!user.verified_at,
     member_since: user.member_since,
     display_name: user.display_name ?? null,

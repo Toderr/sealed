@@ -40,11 +40,14 @@ export async function recalculateAvgRating(wallet: string): Promise<void> {
 
   await supabase
     .from(table("reputation"))
-    .update({
-      avg_rating: Math.round(avg * 100) / 100,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("wallet", wallet);
+    .upsert(
+      {
+        wallet,
+        avg_rating: Math.round(avg * 100) / 100,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "wallet" }
+    );
 }
 
 export async function submitRating(
@@ -60,29 +63,9 @@ export async function submitRating(
     ratee_wallet: rateeWallet,
     stars,
     review_text: reviewText,
-    revealed: false,
+    revealed: true,
   });
 
-  // Check if the other party has already rated
-  const { data: counterRating } = await supabase
-    .from(table("ratings"))
-    .select("id")
-    .eq("deal_id", dealId)
-    .eq("rater_wallet", rateeWallet)
-    .eq("ratee_wallet", raterWallet)
-    .single();
-
-  if (counterRating) {
-    // Both submitted — reveal all ratings for this deal
-    await supabase
-      .from(table("ratings"))
-      .update({ revealed: true })
-      .eq("deal_id", dealId);
-
-    await recalculateAvgRating(raterWallet);
-    await recalculateAvgRating(rateeWallet);
-    return { revealed: true };
-  }
-
-  return { revealed: false };
+  await recalculateAvgRating(rateeWallet);
+  return { revealed: true };
 }
