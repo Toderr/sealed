@@ -67,6 +67,21 @@ type EscalatedProposalArgs = {
   reason: string;
 };
 
+type RenegotiationNotice = {
+  content: string;
+  wallet: string | null;
+  created_at: string | null;
+};
+
+type DbMsg = {
+  id: string;
+  role: string;
+  content: string;
+  wallet: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+};
+
 function isRateLimitedNegotiationError(message: string) {
   return /429|rate.?limit|temporarily rate-limited|quota/i.test(message);
 }
@@ -133,6 +148,25 @@ function buildEscalatedProposal({
   };
 }
 
+function renegotiationNoticeFromMessages(messages: DbMsg[]): RenegotiationNotice | null {
+  const requestMessages = messages.filter(
+    (message) => message.metadata?.type === "renegotiation_request"
+  );
+  const latest = requestMessages.at(-1);
+  if (!latest) return null;
+
+  const request =
+    typeof latest.metadata?.request === "string"
+      ? latest.metadata.request.trim()
+      : latest.content.trim();
+
+  return {
+    content: request || latest.content,
+    wallet: latest.wallet ?? null,
+    created_at: latest.created_at ?? null,
+  };
+}
+
 export default function NegotiateRoom() {
   const params = useParams();
   const dealId = Array.isArray(params.dealId) ? params.dealId[0] : params.dealId;
@@ -158,6 +192,7 @@ export default function NegotiateRoom() {
   const [renegotiateOpen, setRenegotiateOpen] = useState(false);
   const [renegotiateRequest, setRenegotiateRequest] = useState("");
   const [renegotiateError, setRenegotiateError] = useState<string | null>(null);
+  const [renegotiationNotice, setRenegotiationNotice] = useState<RenegotiationNotice | null>(null);
   // Seller's chosen negotiation mode ("choice" = not decided yet)
   const [sellerView, setSellerView] = useState<"choice" | "manual" | "agent-waiting">("choice");
 
@@ -357,6 +392,35 @@ export default function NegotiateRoom() {
     return () => window.removeEventListener("storage", handleStorage);
   }, [dealId]);
 
+  // Load the shared renegotiation request so the counterparty sees why the
+  // terms were reopened, even on a different device.
+  useEffect(() => {
+    if (!dealId || deal?.status !== "escalated") {
+      setRenegotiationNotice(null);
+      return;
+    }
+
+    let cancelled = false;
+    async function loadNotice() {
+      try {
+        const res = await fetch(`/api/messages?deal_id=${dealId}`);
+        const data = (await res.json()) as { messages?: DbMsg[] };
+        if (cancelled) return;
+        const next = renegotiationNoticeFromMessages(data.messages ?? []);
+        if (next) setRenegotiationNotice(next);
+      } catch {}
+    }
+
+    loadNotice();
+    const retry = window.setTimeout(loadNotice, 1200);
+    const interval = window.setInterval(loadNotice, 4000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(retry);
+      window.clearInterval(interval);
+    };
+  }, [dealId, deal?.status]);
+
   // Redirect both parties once escrow is funded or deal is in any post-negotiate state.
   // Covers the case where the mirror call failed silently and Supabase still has
   // "seller-agreed" when the seller refreshes — they should never land back on negotiate.
@@ -392,6 +456,19 @@ export default function NegotiateRoom() {
 
   const counterpartyWallet =
     role === "buyer" ? deal?.seller_wallet : deal?.buyer_wallet;
+
+  // A deal moving back to escalated reopens the negotiation room for both
+  // parties. Without this, a counterparty sitting on an old "agreed" result
+  // keeps seeing the stale funding/waiting state.
+  useEffect(() => {
+    if (!deal || deal.status !== "escalated") return;
+    setNegState((prev) => {
+      if (prev.kind === "running") return prev;
+      if (prev.kind === "done" && prev.proposal.status === "escalated") return prev;
+      return { kind: "idle" };
+    });
+    if (role === "seller") setSellerView("manual");
+  }, [deal, role]);
 
   // Initialize sellerView from deal status on load (handles page refresh)
   useEffect(() => {
@@ -481,14 +558,43 @@ export default function NegotiateRoom() {
   const markDealEscalated = useCallback(async (requestText: string) => {
     if (!deal || !wallet) return false;
     const previousStatus = deal.status;
+    const createdAt = new Date().toISOString();
+    const requestedByRole =
+      deal.buyer_wallet === wallet ? "buyer" : deal.seller_wallet === wallet ? "seller" : "party";
+    const requestLabel = requestedByRole === "buyer" ? "Buyer" : requestedByRole === "seller" ? "Seller" : "Counterparty";
 
     try {
       localStorage.setItem(`sealed:deal-escalated:${deal.deal_id}`, requestText || "1");
     } catch {}
 
+    setRenegotiationNotice({ content: requestText, wallet, created_at: createdAt });
     setDeal((prev) => (prev ? { ...prev, status: "escalated" } : prev));
 
     try {
+      try {
+        const messageRes = await fetch("/api/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            deal_id: deal.deal_id,
+            role: "system",
+            content: `${requestLabel} requested renegotiation:\n\n${requestText}`,
+            wallet,
+            metadata: {
+              type: "renegotiation_request",
+              request: requestText,
+              requested_by: wallet,
+              requested_by_role: requestedByRole,
+            },
+          }),
+        });
+        if (!messageRes.ok) {
+          console.warn("[renegotiate] Could not persist request message", await messageRes.text());
+        }
+      } catch (error) {
+        console.warn("[renegotiate] Could not persist request message", error);
+      }
+
       const res = await fetch(`/api/deals/${deal.deal_id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-wallet": wallet },
@@ -503,6 +609,7 @@ export default function NegotiateRoom() {
       try {
         localStorage.removeItem(`sealed:deal-escalated:${deal.deal_id}`);
       } catch {}
+      setRenegotiationNotice(null);
       setDeal((prev) => (prev ? { ...prev, status: previousStatus } : prev));
       throw error;
     }
@@ -568,6 +675,24 @@ export default function NegotiateRoom() {
       });
     }
   }, [deal, wallet, memory, role, dealParams]);
+
+  // If the seller requests renegotiation, the buyer's room should actively
+  // restart the agent flow instead of staying on a stale result.
+  useEffect(() => {
+    if (!deal || deal.status !== "escalated") return;
+    if (role !== "buyer" || negState.kind !== "idle" || !memory) return;
+    if (!renegotiationNotice?.content || renegotiationNotice.wallet === wallet) return;
+    startNegotiation(renegotiationNotice.content);
+  }, [
+    deal,
+    role,
+    negState.kind,
+    memory,
+    renegotiationNotice?.content,
+    renegotiationNotice?.wallet,
+    wallet,
+    startNegotiation,
+  ]);
 
   function getDeployErrorMessage(err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -916,7 +1041,7 @@ export default function NegotiateRoom() {
                   )}
 
                   {/* ── SELLER — choose negotiation mode ── */}
-                  {role === "seller" && sellerView === "choice" && (
+                  {role === "seller" && sellerView === "choice" && deal.status !== "escalated" && (
                     <div className="p-5 space-y-4">
                       <div>
                         <p className="text-[13px] text-primary" style={labelStyle}>
@@ -1130,13 +1255,20 @@ export default function NegotiateRoom() {
                     </div>
                   )}
 
-                  {deal.status === "escalated" && (
-                    <div className="p-5 space-y-3">
-                      <p className="text-[13px] text-primary" style={labelStyle}>Renegotiation escalated</p>
-                      <p className="text-[12px] text-muted">
-                        Terms have been reopened. Both parties can review the request here before accepting or continuing negotiation.
-                      </p>
-                    </div>
+                  {deal.status === "escalated" && !(role === "seller" && sellerView === "manual") && (
+                    <EscalatedRenegotiationPanel
+                      role={role}
+                      notice={renegotiationNotice}
+                      isOwnRequest={!!wallet && renegotiationNotice?.wallet === wallet}
+                      memoryReady={!!memory}
+                      onOpenChat={() => setSellerView("manual")}
+                      onStartAgent={() =>
+                        startNegotiation(
+                          renegotiationNotice?.content || "Counterparty requested renegotiation."
+                        )
+                      }
+                      onAddRequest={() => setRenegotiateOpen(true)}
+                    />
                   )}
                 </>
               )}
@@ -1421,6 +1553,73 @@ function RenegotiateModal({
   );
 }
 
+function EscalatedRenegotiationPanel({
+  role,
+  notice,
+  isOwnRequest,
+  memoryReady,
+  onOpenChat,
+  onStartAgent,
+  onAddRequest,
+}: {
+  role: "buyer" | "seller" | "observer";
+  notice: RenegotiationNotice | null;
+  isOwnRequest: boolean;
+  memoryReady: boolean;
+  onOpenChat: () => void;
+  onStartAgent: () => void;
+  onAddRequest: () => void;
+}) {
+  const requestLabel = isOwnRequest ? "Your request" : "Counterparty request";
+
+  return (
+    <div className="p-5 space-y-4">
+      <div className="space-y-1">
+        <p className="text-[13px] text-primary" style={labelStyle}>Renegotiation reopened</p>
+        <p className="text-[12px] text-muted">
+          The deal is back in negotiation. Continue here before accepting or deploying escrow.
+        </p>
+      </div>
+
+      {notice?.content && (
+        <div className="rounded-lg border border-warning/25 bg-warning/5 px-3 py-2.5 space-y-1">
+          <p className="text-[11px] text-warning uppercase tracking-[0.06em]" style={{ fontWeight: 510 }}>
+            {requestLabel}
+          </p>
+          <p className="text-[13px] text-foreground whitespace-pre-wrap">{notice.content}</p>
+        </div>
+      )}
+
+      {role === "seller" && (
+        <button onClick={onOpenChat} className="btn-primary h-10 px-4 rounded-md text-[13px]">
+          Respond in negotiation chat
+        </button>
+      )}
+
+      {role === "buyer" && (
+        <div className="flex flex-col sm:flex-row gap-2">
+          <button
+            onClick={onStartAgent}
+            disabled={!memoryReady}
+            className="btn-primary h-10 px-4 rounded-md text-[13px] disabled:opacity-50"
+          >
+            Run agent renegotiation
+          </button>
+          <button onClick={onAddRequest} className="btn-ghost h-10 px-4 rounded-md text-[13px]">
+            Add request
+          </button>
+        </div>
+      )}
+
+      {role === "buyer" && !memoryReady && (
+        <p className="text-[12px] text-warning">
+          Complete agent setup before running the next negotiation round.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function PartyCard({
   label,
   wallet,
@@ -1647,8 +1846,6 @@ function NegotiationResult({
 
 /* ── Shared conversation view ───────────────────────────────────────────── */
 
-type DbMsg = { id: string; role: string; content: string; wallet: string; created_at: string };
-
 function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: boolean }) {
   const [msgs, setMsgs] = useState<DbMsg[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -1703,6 +1900,16 @@ function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: bo
 
       <div className="px-4 py-4 space-y-3 max-h-72 overflow-y-auto">
         {msgs.map((m) => {
+          if (m.role === "system") {
+            return (
+              <div key={m.id} className="flex justify-center">
+                <div className="max-w-[88%] rounded-xl border border-warning/25 bg-warning/5 px-3.5 py-2.5 text-[12px] text-foreground leading-relaxed">
+                  <p className="text-[10px] text-warning uppercase tracking-[0.06em] mb-1">Renegotiation</p>
+                  <div className="whitespace-pre-wrap">{renderMarkdown(m.content)}</div>
+                </div>
+              </div>
+            );
+          }
           const isAgent = m.role === "assistant";
           return (
             <div key={m.id} className={`flex ${isAgent ? "justify-start" : "justify-end"}`}>
@@ -1732,7 +1939,7 @@ function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: bo
 
 /* ── Manual negotiation panel (seller without agent) ───────────────────── */
 
-type ChatMsg = { role: "user" | "assistant"; content: string };
+type ChatMsg = { role: "user" | "assistant" | "system"; content: string };
 
 type NegotiatedTerms = { totalAmount: number; milestones: Array<{ description: string; amount: number }> };
 
@@ -1764,7 +1971,7 @@ function ManualNegotiationPanel({
         const dbMsgs: Array<{ role: string; content: string }> = data.messages ?? [];
         if (dbMsgs.length > 0) {
           setMessages(dbMsgs.map((m) => ({
-            role: m.role === "assistant" ? "assistant" : "user",
+            role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
             content: m.content,
           })));
         }
@@ -1886,17 +2093,26 @@ function ManualNegotiationPanel({
       ) : (
         <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
           {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div
-                className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
-                  m.role === "user"
-                    ? "bg-brand text-white"
-                    : "surface-card text-foreground"
-                }`}
-              >
-                <div className="whitespace-pre-wrap">{renderMarkdown(m.content)}</div>
+            m.role === "system" ? (
+              <div key={i} className="flex justify-center">
+                <div className="max-w-[88%] rounded-xl border border-warning/25 bg-warning/5 px-3.5 py-2.5 text-[12px] text-foreground leading-relaxed">
+                  <p className="text-[10px] text-warning uppercase tracking-[0.06em] mb-1">Renegotiation</p>
+                  <div className="whitespace-pre-wrap">{renderMarkdown(m.content)}</div>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
+                    m.role === "user"
+                      ? "bg-brand text-white"
+                      : "surface-card text-foreground"
+                  }`}
+                >
+                  <div className="whitespace-pre-wrap">{renderMarkdown(m.content)}</div>
+                </div>
+              </div>
+            )
           ))}
           {loading && (
             <div className="flex justify-start">

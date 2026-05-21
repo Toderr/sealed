@@ -189,6 +189,8 @@ GET  /api/notifications               in-app notification menu synthesized from 
 
 When renegotiation is requested, the shared off-chain deal status becomes `escalated` so both parties see the same reopened-terms state. If the server seller model is an OpenRouter `:free` model, `/api/negotiate` uses the buyer-supplied provider for the simulated seller turn instead of routing through the unstable free model. If an LLM call still cannot complete, the API returns an escalated proposal with user-facing copy instead of exposing raw provider failure details to the UI.
 
+The human renegotiation request is also written to `sealed_messages` as a `system` message with `metadata.type = "renegotiation_request"`. The negotiation room reads that shared message log when a deal becomes `escalated`, resets stale agreed/funding views, and opens an actionable renegotiation path for the counterparty.
+
 ### Future (Scout update), already shaped compatibly
 
 ```
@@ -293,5 +295,6 @@ app/src/
 - **Why generated handle suffixes are hidden in UI**: invite-created users may retain unique DB handles like `name-xxxxxxxx`, but display surfaces normalize them to `@name` while lookup still resolves the unique stored handle.
 - **Why notifications are synthesized from deal context**: in-app alerts must work for both parties even when email/Telegram queue rows are absent; `/api/notifications` reads deal state and queue rows without making notifications source-of-truth for funds.
 - **Why `escalated` is an off-chain deal status**: renegotiation intent is coordination context for both parties, not an on-chain fund state. Escrow custody remains controlled only by wallet-signed program instructions.
+- **Why renegotiation requests are stored in `sealed_messages`**: the request text must be visible to the counterparty across devices. Status alone can reopen the room, but the message log carries the human instruction that agents/manual chat use for the next negotiation step.
 - **Why escrow deploy prechecks buyer USDC**: SPL Token insufficient-funds errors happen inside `fund_escrow`; the frontend checks the buyer ATA before signing and logs `SendTransactionError.getLogs()` if the chain still rejects.
 - **Why seller negotiation avoids OpenRouter free models**: a buyer's own OpenAI/Anthropic key is more reliable than server-side OpenRouter `:free` models for simulated seller turns, so `/api/negotiate` routes away from `:free` and retries with buyer LLM on seller-side 429.

@@ -147,3 +147,9 @@ Jangan hapus entry lama. Tambahkan saja.
 - Alasan: Error renegotiate terjadi di seller turn dari server OpenRouter/Gemma, bukan dari OpenAI user. Free upstream model tidak cukup stabil untuk flow negosiasi.
 - Constraint: Jangan log API key. Log hanya provider/model. Fallback ini tidak mengubah escrow authority atau fund state.
 - Tanggal: 2026-05-21
+
+### Renegotiation request persisted in message log
+- Keputusan: Instruksi Renegotiate disimpan ke `sealed_messages` sebagai `role = 'system'` dengan `metadata.type = 'renegotiation_request'`, lalu negotiation room membaca message log saat status deal menjadi `escalated`.
+- Alasan: Status `escalated` saja tidak membawa konteks permintaan user ke counterparty, terutama beda device. Message log membuat counterparty dan manual negotiation agent melihat instruksi yang sama.
+- Constraint: Message log tetap off-chain context. Jangan gunakan request ini untuk langsung mutate final terms atau fund state; final terms tetap lewat hasil negosiasi terstruktur dan escrow tetap wallet-signed/on-chain.
+- Tanggal: 2026-05-21

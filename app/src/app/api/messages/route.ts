@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabase
     .from(table("messages"))
-    .select("id, role, content, wallet, created_at")
+    .select("id, role, content, wallet, metadata, created_at")
     .eq("deal_id", dealId)
     .order("created_at", { ascending: true });
 
@@ -17,15 +17,24 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { deal_id, role, content, wallet } = body;
+  const { deal_id, role, content, wallet, metadata } = body;
 
   if (!deal_id || !role || !content) {
     return Response.json({ error: "Missing fields" }, { status: 400 });
   }
 
+  if (!["user", "assistant", "system", "tool"].includes(role)) {
+    return Response.json({ error: "Invalid role" }, { status: 400 });
+  }
+
+  const safeMetadata =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? metadata
+      : {};
+
   const { data, error } = await supabase
     .from(table("messages"))
-    .insert({ deal_id, role, content, wallet })
+    .insert({ deal_id, role, content, wallet, metadata: safeMetadata })
     .select()
     .single();
 

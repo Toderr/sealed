@@ -173,6 +173,8 @@ When a user chooses `Renegotiate`, the UI collects a short natural-language inst
 
 Choosing `Renegotiate` also updates the shared off-chain deal status to `escalated`, visible to both parties in the dashboard, profile, notification menu, and negotiation room. If the configured seller-side server model is an OpenRouter `:free` model, `/api/negotiate` uses the buyer-supplied provider for the simulated seller turn instead. If an LLM call still cannot complete, the API returns an escalated proposal with user-facing copy instead of surfacing raw provider errors.
 
+The renegotiation instruction is persisted to `sealed_messages` as a `system` message with `metadata.type = "renegotiation_request"`. The counterparty's negotiation room reads this shared log, clears stale agreed/funding UI, and enters an actionable renegotiation path instead of showing only a passive escalated status.
+
 #### Verifier Agent (`/api/verify-milestone`)
 
 **Role:** Reviews milestone completion proof and recommends approval or rejection.
@@ -345,6 +347,8 @@ wallet          TEXT                     -- which wallet sent (if user)
 metadata        JSONB
 created_at      TIMESTAMPTZ
 ```
+
+Renegotiation requests use `role = 'system'` and `metadata.type = 'renegotiation_request'` so both parties and the manual negotiation agent can recover the request text across devices.
 
 ### `sealed_users`
 

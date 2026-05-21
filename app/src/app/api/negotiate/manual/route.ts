@@ -37,7 +37,7 @@ async function saveMessage(dealId: string, role: string, content: string, wallet
 export async function POST(request: NextRequest) {
   const body = await request.json() as {
     dealId: string;
-    messages: Array<{ role: "user" | "assistant"; content: string }>;
+    messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
     isOpening?: boolean;
     sellerWallet?: string;
     // Client passes deal context directly so server doesn't need to re-fetch
@@ -112,7 +112,11 @@ Be concise and professional. Respond in the same language the seller uses.`;
   // Opening message: agent introduces itself and summarizes the contract
   const callMessages = isOpening
     ? [{ role: "user" as const, content: "Please introduce yourself and summarize the deal terms clearly so I can review them." }]
-    : messages;
+    : messages.map((message) =>
+        message.role === "system"
+          ? { role: "user" as const, content: `Shared negotiation context: ${message.content}` }
+          : { role: message.role, content: message.content }
+      );
 
   try {
     const response = await dispatchLlm({
