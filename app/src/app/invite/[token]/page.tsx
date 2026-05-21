@@ -7,6 +7,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import { SealedMark } from "@/components/SealedLogo";
 import { decodeInvite, type InvitePayload, useProfileStore } from "@/lib/profile-store";
+import { atDisplayHandle } from "@/lib/user-display";
 
 type InviterStats = {
   deals_total: number;
@@ -319,6 +320,7 @@ export default function InvitePage() {
   const isConnected = !!publicKey;
   const isCheckingAccount = isConnected && accountCheck?.wallet !== sellerWallet;
   const needsName = isConnected && !isCheckingAccount && accountCheck?.hasAccount === false;
+  const inviterHandle = atDisplayHandle(inviterStats?.handle);
 
   return (
     <InviteShell>
@@ -342,8 +344,8 @@ export default function InvitePage() {
             <p className="text-[20px] text-primary" style={{ fontWeight: 590 }}>
               {inviterStats?.display_name ?? payload.inviterName}
             </p>
-            {inviterStats?.handle && (
-              <p className="text-[13px] text-muted">@{inviterStats.handle}</p>
+            {inviterHandle && (
+              <p className="text-[13px] text-muted">{inviterHandle}</p>
             )}
             <p className="text-[12px] text-subtle">{formatWallet(inviterWallet)}</p>
           </div>

@@ -5,6 +5,7 @@ import {
   TransactionInstruction,
   Transaction,
   Connection,
+  SendTransactionError,
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
@@ -20,6 +21,7 @@ import {
   DealParams,
   USDC_DEVNET_MINT,
   USDC_MAINNET_MINT,
+  lamportsToUsdc,
   usdcToLamports,
 } from "./types";
 
@@ -236,19 +238,51 @@ export async function sendTx(
   ixs: TransactionInstruction | TransactionInstruction[],
   signTransaction: (tx: Transaction) => Promise<Transaction>
 ): Promise<string> {
-  const instructions = Array.isArray(ixs) ? ixs : [ixs];
-  const tx = new Transaction();
-  instructions.forEach((ix) => tx.add(ix));
-  tx.feePayer = instructions[0].keys[0].pubkey;
-  const latestBlockhash = await connection.getLatestBlockhash();
-  tx.recentBlockhash = latestBlockhash.blockhash;
-  const signed = await signTransaction(tx);
-  const sig = await connection.sendRawTransaction(signed.serialize());
-  await connection.confirmTransaction(
-    { signature: sig, ...latestBlockhash },
-    "confirmed"
-  );
-  return sig;
+  try {
+    const instructions = Array.isArray(ixs) ? ixs : [ixs];
+    const tx = new Transaction();
+    instructions.forEach((ix) => tx.add(ix));
+    tx.feePayer = instructions[0].keys[0].pubkey;
+    const latestBlockhash = await connection.getLatestBlockhash();
+    tx.recentBlockhash = latestBlockhash.blockhash;
+    const signed = await signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize());
+    await connection.confirmTransaction(
+      { signature: sig, ...latestBlockhash },
+      "confirmed"
+    );
+    return sig;
+  } catch (error) {
+    if (error instanceof SendTransactionError) {
+      try {
+        const logs = await error.getLogs(connection);
+        console.error("SendTransactionError logs:", logs);
+      } catch (logsError) {
+        console.error("Failed to read SendTransactionError logs:", logsError);
+      }
+    }
+    throw error;
+  }
+}
+
+export async function getUsdcBalance(
+  connection: Connection,
+  owner: PublicKey,
+  mint = getUsdcMint()
+): Promise<number> {
+  const ata = await getAssociatedTokenAddress(mint, owner);
+  try {
+    const account = await getAccount(connection, ata);
+    return lamportsToUsdc(Number(account.amount));
+  } catch (error) {
+    if (
+      error instanceof TokenAccountNotFoundError ||
+      error instanceof TokenInvalidAccountOwnerError
+    ) {
+      return 0;
+    }
+    throw error;
+  }
 }
 
 // --- Multi-sig partial-sign handoff (used for mutual refund) ---
@@ -292,4 +326,4 @@ export async function coSignAndSend(
 }
 
 // Helper re-exports so consumers don't need @solana/spl-token directly
-export { getAccount, TokenAccountNotFoundError, TokenInvalidAccountOwnerError };
+export { getAccount, getAssociatedTokenAddress, TokenAccountNotFoundError, TokenInvalidAccountOwnerError };

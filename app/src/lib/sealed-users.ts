@@ -134,10 +134,21 @@ export async function getUserByHandle(
     .from(table("users"))
     .select("*")
     .ilike("handle", normalized)
-    .single();
+    .maybeSingle();
 
-  if (error || !data) return null;
-  return data as SealedUser;
+  if (error) return null;
+  if (data) return data as SealedUser;
+
+  const { data: generated } = await supabase
+    .from(table("users"))
+    .select("*")
+    .ilike("handle", `${normalized}-%`)
+    .order("member_since", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (!generated) return null;
+  return generated as SealedUser;
 }
 
 export async function getPublicProfile(

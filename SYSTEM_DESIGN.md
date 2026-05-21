@@ -113,6 +113,7 @@ Sealed is a B2B escrow platform built on Solana. It uses AI agents to help users
 | `DealDashboard.tsx` | Deal list with status filters |
 | `DealDetail.tsx` | Active deal management view |
 | `NegotiationView.tsx` | Real-time negotiation interface |
+| `NotificationMenu.tsx` | In-app notifications for both parties, backed by `/api/notifications` |
 | `WalletProvider.tsx` | Wallet adapter context wrapper |
 | `SelfProfilePage.tsx` | Profile dashboard, deals, friends, agent setup |
 | `AiProviderPanel` | LLM provider + model config inside Agent Setup |
@@ -127,6 +128,8 @@ All Solana transactions are signed by the user's connected wallet in-browser. Th
 - `refund` — requires both buyer AND seller signatures
 
 `sendTx` signs in-browser, submits the raw transaction, then confirms with `{ signature, blockhash, lastValidBlockHeight }` from the latest blockhash response. This keeps the post-sign UI from waiting on stale confirmation semantics.
+
+Before `fund_escrow`, the client checks the buyer's USDC ATA balance and blocks the flow with a clear insufficient-USDC message when the wallet cannot cover the deal. If submission still fails, `sendTx` catches `SendTransactionError` and calls `getLogs(connection)` for full program logs.
 
 ---
 
@@ -167,6 +170,8 @@ Sealed has three distinct AI agents:
 Seller boundaries are loaded from `sealed_agent_templates` if the seller has configured an agent.
 
 When a user chooses `Renegotiate`, the UI collects a short natural-language instruction and sends it as `renegotiationRequest` to `/api/negotiate`. The request is prompt context for the next agent run; only the structured negotiated result can become final terms.
+
+Choosing `Renegotiate` also updates the shared off-chain deal status to `escalated`, visible to both parties in the dashboard, profile, notification menu, and negotiation room. If the LLM provider is rate-limited, the API returns an escalated proposal instead of surfacing the raw provider error.
 
 #### Verifier Agent (`/api/verify-milestone`)
 
@@ -246,6 +251,7 @@ The smart contract manages:
    - Dashboard places the deal in "Waiting on you" for the buyer
    |
 8. Buyer accepts and deploys escrow:
+   - Frontend prechecks buyer USDC balance
    - Frontend builds create_deal + fund_escrow in one wallet-signed transaction
    - User signs with wallet
    - Transaction submitted and confirmed on Solana
@@ -321,9 +327,10 @@ created_at      TIMESTAMPTZ
 updated_at      TIMESTAMPTZ
 ```
 
-**Status enum:** `draft` → `seller-ready` → `seller-agreed` → `proposed` → `funded` → `in_progress` → `completed` | `refunded` | `disputed`
+**Status enum:** `draft` → `seller-ready` → `seller-agreed` → `escalated` → `proposed` → `funded` → `in_progress` → `completed` | `refunded` | `disputed`
 
 Dashboard action ownership treats `seller-agreed` / "Ready to fund" as a buyer action, so it appears under "Waiting on you" for the buyer.
+`escalated` is a shared off-chain coordination state for reopened terms; it does not imply any on-chain escrow state change.
 
 ### `sealed_messages`
 
@@ -436,6 +443,8 @@ status          TEXT DEFAULT 'pending'   -- pending | sent | failed
 created_at      TIMESTAMPTZ
 sent_at         TIMESTAMPTZ
 ```
+
+The in-app notification menu does not depend only on this queue. `GET /api/notifications` also synthesizes current notifications from `sealed_deals` so counterparty joined, ready-to-fund, escalated, and review-needed states are visible even when no email or Telegram channel is configured.
 
 ### `sealed_friends`
 
@@ -618,6 +627,7 @@ pub struct Reputation {
 
 | Method | Route | Auth | Description |
 |---|---|---|---|
+| GET | `/api/notifications` | `x-wallet` | In-app notification menu from deal context + queue rows |
 | POST | `/api/notify/process` | `CRON_SECRET` | Process notification queue |
 | POST | `/api/upload` | `x-wallet` | Upload deliverable file |
 | GET | `/api/upload/signed` | `x-wallet` | Get signed download URL |
@@ -691,6 +701,7 @@ LLM provider/model configuration lives in Agent Setup next to these templates, b
 | Overfunding prevention | `funded_amount + amount <= total_amount` check |
 | Double-release prevention | Milestone status checked: must be `Pending` to release |
 | No rug pull | `release_milestone` can only transfer to the deal's registered seller |
+| Funding precheck | Frontend checks buyer USDC balance before building `fund_escrow`; on-chain program remains authoritative |
 
 ### API / Off-Chain Security
 
@@ -708,6 +719,8 @@ LLM provider/model configuration lives in Agent Setup next to these templates, b
 ### Profile Trust UI
 
 The self-profile page surfaces public rating aggregates from `sealed_reputation` / `sealed_ratings` and shows a verified-account banner when `PublicProfile.is_verified` is false. Verification is a trust signal and template-limit unlock; it does not grant authority over escrow funds.
+
+Generated invite handles may stay unique in `sealed_users.handle`, but UI surfaces normalize display handles by hiding the generated suffix. Username lookup still resolves the stored unique handle.
 
 ### Known Limitations (Future Hardening)
 

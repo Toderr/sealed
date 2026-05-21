@@ -5,6 +5,8 @@ import type { DealParams } from "@/lib/types";
 import type { NegotiationBoundaries, NegotiationStyle } from "@/memory/types";
 import { dispatchLlm, getLlmOptsFromEnv } from "@/lib/llm-dispatch";
 import { supabase, table } from "@/lib/supabase";
+import { AgentRole } from "@/agents/types";
+import type { Proposal } from "@/negotiation/types";
 
 interface NegotiateRequest {
   proposalId: string;
@@ -24,9 +26,62 @@ function getLlmOpts(request: NextRequest) {
   return getLlmOptsFromEnv();
 }
 
+function isRateLimitedNegotiationError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /429|rate.?limit|temporarily rate-limited|quota/i.test(message);
+}
+
+function buildEscalatedProposal(body: NegotiateRequest, reason: string): Proposal {
+  const now = Date.now();
+  const requestText =
+    typeof body.renegotiationRequest === "string"
+      ? body.renegotiationRequest.trim()
+      : typeof body.overrideInstructions === "string"
+      ? body.overrideInstructions.trim()
+      : "";
+
+  return {
+    id: `${body.proposalId}-escalated`,
+    origin: "manual",
+    buyerWallet: body.buyerWallet,
+    sellerWallet: body.initialTerms.sellerWallet,
+    initialTerms: body.initialTerms,
+    revisions: [
+      {
+        round: 1,
+        by: AgentRole.Negotiator,
+        onBehalfOf: "buyer",
+        action: "counter",
+        proposedTerms: body.initialTerms,
+        reasoning: requestText || "Renegotiation requested.",
+        concessions: [],
+        asks: requestText ? [requestText] : ["Review renegotiated terms manually."],
+        timestamp: now,
+      },
+    ],
+    status: "escalated",
+    summary: {
+      pros: ["Renegotiation request captured for both parties"],
+      cons: ["Agent negotiation could not complete because the LLM provider was rate-limited"],
+      keyConcessions: [],
+      riskFlags: [reason],
+      confidenceScore: 0.35,
+      recommendation: "renegotiate",
+      recommendationReasoning:
+        "The deal is escalated so both parties can review the requested change while the agent provider recovers.",
+    },
+    buyerBoundaries: body.buyerBoundaries,
+    sellerBoundaries: body.sellerBoundaries ?? defaultSellerBoundaries(),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export async function POST(request: NextRequest) {
+  let body: NegotiateRequest | null = null;
+
   try {
-    const body = (await request.json()) as NegotiateRequest;
+    body = (await request.json()) as NegotiateRequest;
     if (
       !body?.proposalId ||
       !body?.buyerWallet ||
@@ -95,6 +150,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ proposal });
   } catch (err) {
     console.error("Negotiation failed:", err);
+    if (body?.initialTerms && isRateLimitedNegotiationError(err)) {
+      return NextResponse.json({
+        proposal: buildEscalatedProposal(
+          body,
+          "The selected LLM provider is temporarily rate-limited."
+        ),
+      });
+    }
+
     return NextResponse.json(
       {
         error: err instanceof Error ? err.message : "Unknown negotiation error",

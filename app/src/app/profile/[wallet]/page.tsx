@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
+import { NotificationMenu } from "@/components/NotificationMenu";
+import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import type { PublicProfile } from "@/lib/types";
 import { SelfProfilePage } from "../SelfProfilePage";
 
@@ -86,10 +88,11 @@ export default function PublicProfilePage() {
 
   if (isSelf) return <SelfProfilePage />;
 
+  const displayUsername = atDisplayHandle(profile?.handle);
   const profileDisplayName =
-    profile?.display_name?.trim() || (profile?.handle ? `@${profile.handle}` : "Sealed user");
-  const profileUsername = profile?.handle ? `@${profile.handle}` : null;
-  const initialsSource = profile?.display_name?.trim() || profile?.handle || "SU";
+    profile?.display_name?.trim() || displayUsername || "Sealed user";
+  const profileUsername = displayUsername;
+  const initialsSource = profile?.display_name?.trim() || displayHandle(profile?.handle) || "SU";
   const initials = initialsSource
     .replace(/^@/, "")
     .split(" ")
@@ -120,15 +123,7 @@ export default function PublicProfilePage() {
           <SealedMark size={22} />
           <span style={{ fontSize: 13, fontWeight: 510 }}>Sealed Agent</span>
         </Link>
-        {isSelf && (
-          <Link
-            href="/onboarding?edit=1"
-            className="btn-ghost"
-            style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", textDecoration: "none" }}
-          >
-            Edit profile
-          </Link>
-        )}
+        <NotificationMenu wallet={myWallet} />
       </header>
 
       {loading ? (

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import { SealedMark } from "@/components/SealedLogo";
+import { NotificationMenu } from "@/components/NotificationMenu";
 import {
   useProfileStore,
   encodeInvite,
@@ -15,6 +16,7 @@ import {
   type LLMProvider,
 } from "@/lib/profile-store";
 import { useDealsStore } from "@/lib/deals-store";
+import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import type { Deal, AgentTemplate, NotificationPrefs, PublicProfile } from "@/lib/types";
 
 const WalletMultiButton = dynamic(
@@ -174,6 +176,7 @@ function profileDealStatusRank(deal: ProfileDealRowData) {
     draft: 0,
     "seller-ready": 1,
     "seller-agreed": 2,
+    escalated: 3,
     proposed: 3,
     funded: 4,
     in_progress: 5,
@@ -200,7 +203,8 @@ function getProfileDealCounterpartyWallet(deal: ProfileDealRowData, wallet: stri
 function counterpartyDisplayName(profile?: CounterpartyProfile | null) {
   const displayName = profile?.display_name?.trim();
   if (displayName) return displayName;
-  if (profile?.handle) return `@${profile.handle}`;
+  const handle = atDisplayHandle(profile?.handle);
+  if (handle) return handle;
   return "Counterparty joined";
 }
 
@@ -483,7 +487,9 @@ export function SelfProfilePageContent() {
                     <p className="text-[16px] text-primary" style={{ fontWeight: 590 }}>
                       {profile.name}
                     </p>
-                    <p className="text-[13px] text-muted">@{profile.username}</p>
+                    <p className="text-[13px] text-muted">
+                      {atDisplayHandle(profile.username) ?? ""}
+                    </p>
                   </div>
                 </div>
 
@@ -733,7 +739,10 @@ function ProfileHeader({ activeTab }: { activeTab: SelfProfileTab }) {
           </NavLink>
         </nav>
       </div>
-      <WalletMultiButton />
+      <div className="flex items-center gap-2">
+        <NotificationMenu wallet={wallet} />
+        <WalletMultiButton />
+      </div>
     </header>
   );
 }
@@ -895,6 +904,7 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   draft: { label: "Awaiting counterparty", color: "text-warning" },
   "seller-ready": { label: "Counterparty reviewing", color: "text-warning" },
   "seller-agreed": { label: "Ready to fund", color: "text-accent" },
+  escalated: { label: "Escalated", color: "text-warning" },
   proposed: { label: "Ready to sign", color: "text-accent" },
   funded: { label: "Funded", color: "text-accent" },
   in_progress: { label: "In progress", color: "text-success" },
@@ -905,7 +915,7 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
 
 function localDealHref(deal: ProfileDealRowData) {
   const status = profileDealStatusKey(deal);
-  return status === "draft" || status === "seller-ready" || status === "seller-agreed" || status === "proposed"
+  return status === "draft" || status === "seller-ready" || status === "seller-agreed" || status === "proposed" || status === "escalated"
     ? `/negotiate/${deal.dealId}`
     : `/deals/${deal.dealId}`;
 }
@@ -2099,9 +2109,9 @@ function FriendCard({
 }) {
   const cp = entry.counterpartyWallet;
   const p = entry.profile;
-  const displayName = p?.display_name?.trim() || (p?.handle ? `@${p.handle}` : "Sealed user");
-  const username = p?.handle ? `@${p.handle}` : null;
-  const initialsSource = p?.display_name?.trim() || p?.handle || "SU";
+  const username = atDisplayHandle(p?.handle);
+  const displayName = p?.display_name?.trim() || username || "Sealed user";
+  const initialsSource = p?.display_name?.trim() || displayHandle(p?.handle) || "SU";
   const initials = initialsSource
     .replace(/^@/, "")
     .split(" ")

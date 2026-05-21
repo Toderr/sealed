@@ -6,7 +6,9 @@ import Link from "next/link";
 import ChatInterface, { PartialDeal } from "@/components/ChatInterface";
 import SettingsModal from "@/components/SettingsModal";
 import { useToast } from "@/components/Toast";
+import { NotificationMenu } from "@/components/NotificationMenu";
 import { useProfileStore } from "@/lib/profile-store";
+import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import { formatUsdc, type DealParams, type PublicProfile } from "@/lib/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { SealedMark } from "@/components/SealedLogo";
@@ -51,7 +53,7 @@ function inferDealStatus(deal: SupabaseDeal) {
 
 function dealHref(deal: SupabaseDeal) {
   const status = inferDealStatus(deal);
-  if (status === "draft" || status === "seller-ready" || status === "seller-agreed" || status === "proposed") {
+  if (status === "draft" || status === "seller-ready" || status === "seller-agreed" || status === "proposed" || status === "escalated") {
     return `/negotiate/${deal.deal_id}`;
   }
   return `/deals/${deal.deal_id}`;
@@ -65,12 +67,13 @@ function getCounterpartyWallet(deal: SupabaseDeal, wallet: string | null) {
 function counterpartyDisplayName(profile?: CounterpartyProfile | null) {
   const displayName = profile?.display_name?.trim();
   if (displayName) return displayName;
-  if (profile?.handle) return `@${profile.handle}`;
+  const handle = atDisplayHandle(profile?.handle);
+  if (handle) return handle;
   return "Counterparty joined";
 }
 
 function counterpartyInitials(profile?: CounterpartyProfile | null) {
-  const source = profile?.display_name?.trim() || profile?.handle || "CP";
+  const source = profile?.display_name?.trim() || displayHandle(profile?.handle) || "CP";
   return source
     .replace(/^@/, "")
     .split(" ")
@@ -240,7 +243,7 @@ function AppHeader({
   const initials = profile?.name
     ? profile.name.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase()
     : null;
-  const profileLabel = profile?.username ? `@${profile.username}` : profile?.name ?? "Profile";
+  const profileLabel = atDisplayHandle(profile?.username) ?? profile?.name ?? "Profile";
 
   const tabs: { id: string; label: string; href?: string; view?: View }[] = [
     { id: "deals", label: "Deals", view: "deals" },
@@ -301,6 +304,7 @@ function AppHeader({
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <NotificationMenu wallet={wallet} />
         <button
           onClick={onOpenSettings}
           style={{
@@ -427,6 +431,7 @@ function DealsBoldBoard() {
     const status = inferDealStatus(deal);
     if (status === "draft") return isBuyer; // buyer needs to invite
     if (status === "seller-agreed") return isBuyer; // buyer needs to fund
+    if (status === "escalated") return true; // both sides should review reopened terms
     const hasReview = deal.milestones.some((m) => m.status === "In Review");
     if (hasReview && isBuyer) return true;
     return false;
@@ -576,6 +581,7 @@ function DealCardBold({
     draft:          counterparty ? "Counterparty joined" : "Awaiting counterparty",
     "seller-ready": "Counterparty reviewing",
     "seller-agreed":"Ready to fund",
+    escalated:      "Escalated",
     proposed:       "Ready to sign",
     funded:         "Funded",
     in_progress:    "In progress",
@@ -587,6 +593,7 @@ function DealCardBold({
     draft:          "warning",
     "seller-ready": "warning",
     "seller-agreed":"accent",
+    escalated:      "warning",
     proposed:       "accent",
     funded:         "accent",
     in_progress:    "accent",

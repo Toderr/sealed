@@ -6,10 +6,12 @@ import Link from "next/link";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import { SealedMark } from "@/components/SealedLogo";
+import { NotificationMenu } from "@/components/NotificationMenu";
 import { useBusinessMemory } from "@/memory/localstorage-store";
 import { getLlmHeaders } from "@/lib/llm-headers";
 import { useProfileStore, encodeInvite } from "@/lib/profile-store";
 import { useDealsStore } from "@/lib/deals-store";
+import { atDisplayHandle } from "@/lib/user-display";
 import {
   DealParams,
   DealStatus,
@@ -21,10 +23,13 @@ import {
 import type { Deal } from "@/lib/types";
 import type { Proposal } from "@/negotiation/types";
 import { defaultSellerBoundaries } from "@/negotiation/types";
-import { buildCreateDealIx, buildFundEscrowIx, buildEnsureAtaIx, getUsdcMint, sendTx } from "@/lib/escrow-client";
+import { buildCreateDealIx, buildFundEscrowIx, buildEnsureAtaIx, getUsdcMint, getUsdcBalance, sendTx } from "@/lib/escrow-client";
 import { PublicKey } from "@solana/web3.js";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import type { NegotiationBoundaries } from "@/memory/types";
+import { AgentRole } from "@/agents/types";
+import { ArrowLeft } from "lucide-react";
 
 const WalletMultiButton = dynamic(
   () =>
@@ -51,6 +56,82 @@ type NegState =
   | { kind: "running" }
   | { kind: "done"; proposal: Proposal }
   | { kind: "error"; message: string };
+
+type EscalatedProposalArgs = {
+  deal: SupabaseDeal;
+  dealParams: DealParams;
+  role: "buyer" | "seller" | "observer";
+  buyerBoundaries: NegotiationBoundaries;
+  sellerBoundaries: NegotiationBoundaries;
+  renegotiationRequest: string;
+  reason: string;
+};
+
+function isRateLimitedNegotiationError(message: string) {
+  return /429|rate.?limit|temporarily rate-limited|quota/i.test(message);
+}
+
+function dealStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    draft: "Draft",
+    "seller-ready": "Counterparty reviewing",
+    "seller-agreed": "Ready to fund",
+    escalated: "Escalated",
+    proposed: "Ready to sign",
+    funded: "Funded",
+    in_progress: "In progress",
+    completed: "Sealed",
+    refunded: "Refunded",
+    disputed: "Disputed",
+  };
+  return labels[status] ?? status;
+}
+
+function buildEscalatedProposal({
+  deal,
+  dealParams,
+  role,
+  buyerBoundaries,
+  sellerBoundaries,
+  renegotiationRequest,
+  reason,
+}: EscalatedProposalArgs): Proposal {
+  const now = Date.now();
+  return {
+    id: `${deal.deal_id}-escalated-${now}`,
+    origin: "manual",
+    buyerWallet: deal.buyer_wallet,
+    sellerWallet: dealParams.sellerWallet ?? "",
+    initialTerms: dealParams,
+    revisions: [
+      {
+        round: 1,
+        by: AgentRole.Negotiator,
+        onBehalfOf: role === "seller" ? "seller" : "buyer",
+        action: "counter",
+        proposedTerms: dealParams,
+        reasoning: renegotiationRequest,
+        concessions: [],
+        asks: [renegotiationRequest],
+        timestamp: now,
+      },
+    ],
+    status: "escalated",
+    summary: {
+      pros: ["Renegotiation request captured for both parties"],
+      cons: ["Agent negotiation could not complete automatically"],
+      keyConcessions: [],
+      riskFlags: [reason],
+      confidenceScore: 0.35,
+      recommendation: "renegotiate",
+      recommendationReasoning: reason,
+    },
+    buyerBoundaries,
+    sellerBoundaries,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
 
 export default function NegotiateRoom() {
   const params = useParams();
@@ -195,6 +276,13 @@ export default function NegotiateRoom() {
             return { ...prev, status: "seller-agreed" };
           });
         }
+        const escalated = localStorage.getItem(`sealed:deal-escalated:${dealId}`);
+        if (escalated) {
+          setDeal((prev) => {
+            if (!prev || prev.status === "escalated") return prev;
+            return { ...prev, status: "escalated" };
+          });
+        }
       } catch {}
 
       // Also poll Supabase for cross-device sync
@@ -258,6 +346,12 @@ export default function NegotiateRoom() {
           return { ...prev, status: "seller-agreed" };
         });
       }
+      if (e.key === `sealed:deal-escalated:${dealId}` && e.newValue) {
+        setDeal((prev) => {
+          if (!prev || prev.status === "escalated") return prev;
+          return { ...prev, status: "escalated" };
+        });
+      }
     }
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
@@ -283,7 +377,7 @@ export default function NegotiateRoom() {
       .then((r) => r.json())
       .then((data: PublicProfile) => {
         setCpProfile(data);
-        setCpHandle(data.handle ?? null);
+        setCpHandle(atDisplayHandle(data.handle));
       })
       .catch(() => {});
   }, [deal, wallet]);
@@ -384,6 +478,38 @@ export default function NegotiateRoom() {
       }
     : { dealId: "", sellerWallet: "", totalAmount: 0, milestones: [] };
 
+  const markDealEscalated = useCallback(async (requestText: string) => {
+    if (!deal || !wallet) return false;
+    const previousStatus = deal.status;
+
+    try {
+      localStorage.setItem(`sealed:deal-escalated:${deal.deal_id}`, requestText || "1");
+    } catch {}
+
+    setDeal((prev) => (prev ? { ...prev, status: "escalated" } : prev));
+
+    try {
+      const res = await fetch(`/api/deals/${deal.deal_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-wallet": wallet },
+        body: JSON.stringify({ status: "escalated" }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? "Could not update deal status");
+      }
+    } catch (error) {
+      try {
+        localStorage.removeItem(`sealed:deal-escalated:${deal.deal_id}`);
+      } catch {}
+      setDeal((prev) => (prev ? { ...prev, status: previousStatus } : prev));
+      throw error;
+    }
+
+    return true;
+  }, [deal, wallet]);
+
   const startNegotiation = useCallback(async (renegotiationRequest?: string) => {
     if (!deal || !wallet || !memory) return;
     setDeployError(null);
@@ -416,10 +542,29 @@ export default function NegotiateRoom() {
 
       const data = (await res.json()) as { proposal: Proposal };
       setNegState({ kind: "done", proposal: data.proposal });
+      if (data.proposal.status === "escalated") {
+        setDeal((prev) => (prev ? { ...prev, status: "escalated" } : prev));
+      }
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Negotiation failed";
+      if (renegotiationRequest && isRateLimitedNegotiationError(message)) {
+        setNegState({
+          kind: "done",
+          proposal: buildEscalatedProposal({
+            deal,
+            dealParams,
+            role,
+            buyerBoundaries,
+            sellerBoundaries,
+            renegotiationRequest,
+            reason: "The current LLM provider is rate-limited. The deal is escalated so both parties can review the requested changes while the agent provider recovers.",
+          }),
+        });
+        return;
+      }
       setNegState({
         kind: "error",
-        message: err instanceof Error ? err.message : "Negotiation failed",
+        message,
       });
     }
   }, [deal, wallet, memory, role, dealParams]);
@@ -429,10 +574,13 @@ export default function NegotiateRoom() {
     if (/reject|cancel/i.test(message)) {
       return "Transaction was cancelled in your wallet.";
     }
+    if (/insufficient funds/i.test(message)) {
+      return "Insufficient devnet USDC in this wallet. Add USDC, then try deploying escrow again.";
+    }
     return message || "Escrow deployment failed. Please try again.";
   }
 
-  function submitRenegotiation(event: React.FormEvent<HTMLFormElement>) {
+  async function submitRenegotiation(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextRequest = renegotiateRequest.trim();
     if (!nextRequest) {
@@ -444,9 +592,14 @@ export default function NegotiateRoom() {
       return;
     }
     setRenegotiateError(null);
-    setRenegotiateOpen(false);
-    setRenegotiateRequest("");
-    startNegotiation(nextRequest);
+    try {
+      await markDealEscalated(nextRequest);
+      setRenegotiateOpen(false);
+      setRenegotiateRequest("");
+      startNegotiation(nextRequest);
+    } catch (error) {
+      setRenegotiateError(error instanceof Error ? error.message : "Could not escalate the deal.");
+    }
   }
 
   async function handleAcceptAndDeploy(finalTerms: DealParams) {
@@ -459,6 +612,15 @@ export default function NegotiateRoom() {
 
     try {
       const mint = getUsdcMint();
+      const balance = await getUsdcBalance(connection, publicKey, mint);
+      if (balance < finalTerms.totalAmount) {
+        setDeployError(
+          `Insufficient devnet USDC. This wallet has ${formatUsdc(balance)} USDC but escrow needs ${formatUsdc(finalTerms.totalAmount)} USDC.`
+        );
+        setDeploying(false);
+        return;
+      }
+
       const ensureAtaIx = await buildEnsureAtaIx(publicKey, publicKey, mint);
       const createIx = await buildCreateDealIx(publicKey, finalTerms);
       const fundIx = await buildFundEscrowIx(publicKey, finalTerms.dealId, finalTerms.totalAmount);
@@ -618,6 +780,8 @@ export default function NegotiateRoom() {
     );
   }
 
+  const roomStatusLabel = dealStatusLabel(deal.status);
+
   return (
     <Shell>
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
@@ -633,9 +797,9 @@ export default function NegotiateRoom() {
             <p className="text-[12px] text-subtle font-mono mt-1">{deal.deal_id}</p>
           </div>
           <span className={`pill-neutral mt-1 flex-shrink-0 ${
-            deal.status === "draft" ? "text-warning" : "text-accent"
+            deal.status === "draft" || deal.status === "escalated" ? "text-warning" : "text-accent"
           }`}>
-            {deal.status === "draft" ? "Draft" : deal.status}
+            {roomStatusLabel}
           </span>
         </div>
 
@@ -965,6 +1129,15 @@ export default function NegotiateRoom() {
                       <p className="text-[12px] text-muted">Seller is using their agent. Starting your agent now.</p>
                     </div>
                   )}
+
+                  {deal.status === "escalated" && (
+                    <div className="p-5 space-y-3">
+                      <p className="text-[13px] text-primary" style={labelStyle}>Renegotiation escalated</p>
+                      <p className="text-[12px] text-muted">
+                        Terms have been reopened. Both parties can review the request here before accepting or continuing negotiation.
+                      </p>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -1169,13 +1342,13 @@ function RenegotiateModal({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-black/70">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-black">
       <form
         onSubmit={onSubmit}
         role="dialog"
         aria-modal="true"
         aria-labelledby="renegotiate-title"
-        className="surface-card w-full max-w-lg rounded-xl border border-card-border p-5 space-y-4 shadow-2xl"
+        className="surface-card w-full max-w-lg rounded-xl border border-card-border bg-panel p-5 space-y-4 shadow-2xl"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
@@ -1262,7 +1435,8 @@ function PartyCard({
   handle: string | null;
 }) {
   const shortWallet = wallet ? `${wallet.slice(0, 4)}…${wallet.slice(-4)}` : "—";
-  const displayName = wallet ? (handle ?? shortWallet) : "Not assigned yet";
+  const profileName = profile?.display_name?.trim() || atDisplayHandle(profile?.handle);
+  const displayName = wallet ? (profileName ?? handle ?? shortWallet) : "Not assigned yet";
   const cardClass = "surface-card rounded-xl p-4 space-y-3 block hover:border-accent/30 transition-colors";
 
   const content = (
@@ -1862,14 +2036,31 @@ function FriendInviteSection({ wallet, inviteLink }: { wallet: string | null; in
 /* ── Shell ──────────────────────────────────────────────────────────────── */
 
 function Shell({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const { publicKey } = useWallet();
+  const wallet = publicKey?.toBase58() ?? null;
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="flex items-center justify-between px-6 h-14 border-b border-card-border-subtle bg-panel">
-        <Link href="/app" className="flex items-center gap-2 text-primary">
-          <SealedMark size={24} title="Sealed" />
-          <span className="text-[14px] tracking-tight" style={{ fontWeight: 510 }}>Sealed</span>
-        </Link>
-        <WalletMultiButton />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            aria-label="Go back"
+            className="h-9 w-9 rounded-md text-muted hover:text-primary hover:bg-surface-hover transition-colors flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <Link href="/app" className="flex items-center gap-2 text-primary">
+            <SealedMark size={28} title="Sealed Agent" />
+            <span className="text-[15px] tracking-tight" style={{ fontWeight: 510 }}>Sealed Agent</span>
+          </Link>
+        </div>
+        <div className="flex items-center gap-2">
+          <NotificationMenu wallet={wallet} />
+          <WalletMultiButton />
+        </div>
       </header>
       <main className="flex-1">{children}</main>
     </div>

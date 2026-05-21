@@ -117,3 +117,27 @@ Jangan hapus entry lama. Tambahkan saja.
 - Alasan: Target user business owner membutuhkan trust signal yang mudah dibaca, bukan wallet address sebagai identitas utama.
 - Constraint: Wallet tetap identity primitive untuk auth dan on-chain instruction; verified account tidak memberi authority atas escrow funds.
 - Tanggal: 2026-05-21
+
+### Generated handle suffix hidden in display
+- Keputusan: UI menampilkan handle invite-created seperti `@michael-hjwwnqcw` sebagai `@michael`, sementara DB tetap menyimpan handle unik dan lookup username tetap bisa resolve handle bersuffix.
+- Alasan: Suffix dibuat untuk uniqueness teknis, bukan identitas publik yang harus dibaca counterparty.
+- Constraint: Jangan menghapus uniqueness constraint `sealed_users.handle`; normalisasi display tidak boleh mengubah wallet identity atau stored handle.
+- Tanggal: 2026-05-21
+
+### Escalated renegotiation status
+- Keputusan: Ketika user memilih Renegotiate, `sealed_deals.status` berubah menjadi `escalated` dan `/api/negotiate` mengembalikan proposal escalated ketika provider LLM rate-limited.
+- Alasan: Kedua pihak perlu melihat state reopened terms yang sama tanpa menampilkan raw provider error 429 sebagai kegagalan produk.
+- Constraint: `escalated` adalah konteks off-chain; tidak boleh dianggap state on-chain escrow atau bukti dana.
+- Tanggal: 2026-05-21
+
+### In-app notification menu from deal context
+- Keputusan: `GET /api/notifications` menyintesis notifikasi dari `sealed_deals` dan menggabungkannya dengan `sealed_notification_queue`, lalu `NotificationMenu` dipasang di header utama/profile/negotiation.
+- Alasan: User dan counterparty harus bisa melihat notification menu meski belum punya email/Telegram channel.
+- Constraint: Notification bukan source of truth dana; semua fund movement tetap wallet-signed dan on-chain.
+- Tanggal: 2026-05-21
+
+### Funding precheck and SendTransactionError logs
+- Keputusan: Frontend mengecek saldo USDC buyer sebelum deploy escrow dan `sendTx` menangkap `SendTransactionError` untuk memanggil `getLogs(connection)`.
+- Alasan: SPL Token insufficient funds harus muncul sebagai pesan yang bisa ditindaklanjuti, bukan simulation failure mentah setelah sign.
+- Constraint: Precheck hanya UX guard; on-chain program tetap otoritatif dan Supabase mirror tidak boleh ditulis funded sebelum transaksi confirmed.
+- Tanggal: 2026-05-21

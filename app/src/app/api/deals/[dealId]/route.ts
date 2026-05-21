@@ -12,6 +12,7 @@ const DEAL_STATUSES = new Set([
   "draft",
   "seller-ready",
   "seller-agreed",
+  "escalated",
   "proposed",
   "funded",
   "in_progress",
