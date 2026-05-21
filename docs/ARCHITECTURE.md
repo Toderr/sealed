@@ -99,3 +99,21 @@ Jangan hapus entry lama. Tambahkan saja.
 - Alasan: Profile dan invite page harus menampilkan rating yang baru diberikan tanpa menunggu counterparty ikut review.
 - Constraint: Ratings API tetap derive rater dari `x-wallet`, menolak self-rating, memverifikasi caller adalah party deal, dan memverifikasi deal sudah completed sebelum insert.
 - Tanggal: 2026-05-21
+
+### Renegotiation request is prompt-scoped
+- Keputusan: Tombol Renegotiate membuka dialog instruksi user dan mengirim `renegotiationRequest` ke `/api/negotiate` sebagai konteks prompt agent.
+- Alasan: User perlu menyatakan target negosiasi ulang tanpa langsung menulis ulang terms secara arbitrary.
+- Constraint: Terms final tetap hanya boleh berasal dari structured `Proposal.finalTerms`; instruksi renegotiate tidak boleh langsung mutate deal/fund state.
+- Tanggal: 2026-05-21
+
+### Escrow post-sign mirror is best-effort
+- Keputusan: Setelah buyer sign deploy escrow, UI update local funded state setelah konfirmasi on-chain, lalu sync Supabase mirror via `/api/deals/mirror` dengan fallback PATCH.
+- Alasan: On-chain adalah source of truth untuk dana; kegagalan mirror Supabase tidak boleh membuat user terlihat stuck setelah transaksi sukses.
+- Constraint: Jangan pernah treat Supabase sebagai bukti dana terkunci; mirror hanya konteks off-chain dan harus bisa diretry.
+- Tanggal: 2026-05-21
+
+### Profile trust uses username display and verified banner
+- Keputusan: Profile/friends/invite UI menampilkan display name/username dan public rating aggregate; self-profile menampilkan banner verified account ketika belum verified.
+- Alasan: Target user business owner membutuhkan trust signal yang mudah dibaca, bukan wallet address sebagai identitas utama.
+- Constraint: Wallet tetap identity primitive untuk auth dan on-chain instruction; verified account tidak memberi authority atas escrow funds.
+- Tanggal: 2026-05-21

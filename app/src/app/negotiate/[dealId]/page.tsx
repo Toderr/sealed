@@ -63,7 +63,7 @@ export default function NegotiateRoom() {
 
   const { memory } = useBusinessMemory(publicKey ?? null);
   const { profile } = useProfileStore(wallet);
-  const { addDeal } = useDealsStore(publicKey ?? null);
+  const { deals, addDeal, updateDeal } = useDealsStore(publicKey ?? null);
 
   const [deal, setDeal] = useState<SupabaseDeal | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -72,7 +72,11 @@ export default function NegotiateRoom() {
   const [negState, setNegState] = useState<NegState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
   const [deploying, setDeploying] = useState(false);
+  const [deployError, setDeployError] = useState<string | null>(null);
   const [dealSealedId, setDealSealedId] = useState<string | null>(null);
+  const [renegotiateOpen, setRenegotiateOpen] = useState(false);
+  const [renegotiateRequest, setRenegotiateRequest] = useState("");
+  const [renegotiateError, setRenegotiateError] = useState<string | null>(null);
   // Seller's chosen negotiation mode ("choice" = not decided yet)
   const [sellerView, setSellerView] = useState<"choice" | "manual" | "agent-waiting">("choice");
 
@@ -380,8 +384,9 @@ export default function NegotiateRoom() {
       }
     : { dealId: "", sellerWallet: "", totalAmount: 0, milestones: [] };
 
-  const startNegotiation = useCallback(async () => {
+  const startNegotiation = useCallback(async (renegotiationRequest?: string) => {
     if (!deal || !wallet || !memory) return;
+    setDeployError(null);
     setNegState({ kind: "running" });
 
     const buyerBoundaries = role === "buyer" ? memory.boundaries : defaultSellerBoundaries();
@@ -400,6 +405,7 @@ export default function NegotiateRoom() {
           initialTerms: dealParams,
           buyerBoundaries,
           sellerBoundaries,
+          renegotiationRequest,
         }),
       });
 
@@ -418,34 +424,38 @@ export default function NegotiateRoom() {
     }
   }, [deal, wallet, memory, role, dealParams]);
 
+  function getDeployErrorMessage(err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/reject|cancel/i.test(message)) {
+      return "Transaction was cancelled in your wallet.";
+    }
+    return message || "Escrow deployment failed. Please try again.";
+  }
+
+  function submitRenegotiation(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextRequest = renegotiateRequest.trim();
+    if (!nextRequest) {
+      setRenegotiateError("Tell your agent what you want to change.");
+      return;
+    }
+    if (!deal || !wallet || !memory) {
+      setRenegotiateError("Agent setup is still loading. Try again in a moment.");
+      return;
+    }
+    setRenegotiateError(null);
+    setRenegotiateOpen(false);
+    setRenegotiateRequest("");
+    startNegotiation(nextRequest);
+  }
+
   async function handleAcceptAndDeploy(finalTerms: DealParams) {
-    if (!publicKey || !signTransaction) return;
+    if (!publicKey || !signTransaction) {
+      setDeployError("Connect a wallet that can sign this transaction.");
+      return;
+    }
     setDeploying(true);
-
-    const now = Math.floor(Date.now() / 1000);
-    const newDeal: Deal = {
-      dealId: finalTerms.dealId,
-      buyer: publicKey,
-      seller: new PublicKey(finalTerms.sellerWallet),
-      mint: PublicKey.default,
-      escrowTokenAccount: PublicKey.default,
-      totalAmount: usdcToLamports(finalTerms.totalAmount),
-      fundedAmount: 0,
-      releasedAmount: 0,
-      status: DealStatus.Created,
-      milestones: finalTerms.milestones.map((m) => ({
-        description: m.description,
-        amount: usdcToLamports(m.amount),
-        status: MilestoneStatus.Pending,
-        confirmedBy: null,
-        confirmedAt: null,
-      })),
-      createdAt: now,
-      updatedAt: now,
-      bump: 0,
-    };
-
-    addDeal(newDeal);
+    setDeployError(null);
 
     try {
       const mint = getUsdcMint();
@@ -454,35 +464,115 @@ export default function NegotiateRoom() {
       const fundIx = await buildFundEscrowIx(publicKey, finalTerms.dealId, finalTerms.totalAmount);
       const sig = await sendTx(connection, [ensureAtaIx, createIx, fundIx], signTransaction);
 
+      const now = Math.floor(Date.now() / 1000);
+      const fundedAmount = usdcToLamports(finalTerms.totalAmount);
+      const fundedDeal: Deal = {
+        dealId: finalTerms.dealId,
+        buyer: publicKey,
+        seller: new PublicKey(finalTerms.sellerWallet),
+        mint,
+        escrowTokenAccount: PublicKey.default,
+        totalAmount: fundedAmount,
+        fundedAmount,
+        releasedAmount: 0,
+        status: DealStatus.Funded,
+        milestones: finalTerms.milestones.map((m) => ({
+          description: m.description,
+          amount: usdcToLamports(m.amount),
+          status: MilestoneStatus.Pending,
+          confirmedBy: null,
+          confirmedAt: null,
+        })),
+        createdAt: now,
+        updatedAt: now,
+        bump: 0,
+      };
+
+      if (deals.some((d) => d.dealId === finalTerms.dealId)) {
+        updateDeal(finalTerms.dealId, () => fundedDeal);
+      } else {
+        addDeal(fundedDeal);
+      }
+
+      const mirroredDeal = {
+        deal_id: finalTerms.dealId,
+        seller_wallet: finalTerms.sellerWallet,
+        title: deal?.title || finalTerms.title || finalTerms.dealId,
+        description: finalTerms.milestones.map((m) => m.description).join(" | "),
+        total_amount_usdc: finalTerms.totalAmount,
+        milestones: finalTerms.milestones.map((m) => ({
+          description: m.description,
+          amount: m.amount,
+          status: "Pending",
+        })),
+        tx_signature: sig,
+        status: "funded",
+      };
+      const mirrorHeaders = {
+        "Content-Type": "application/json",
+        "x-wallet": publicKey.toBase58(),
+      };
+      const mirrorPatch = {
+        seller_wallet: mirroredDeal.seller_wallet,
+        title: mirroredDeal.title,
+        description: mirroredDeal.description,
+        total_amount_usdc: mirroredDeal.total_amount_usdc,
+        milestones: mirroredDeal.milestones,
+        status: mirroredDeal.status,
+      };
+
+      setDeal((prev) =>
+        prev
+          ? {
+              ...prev,
+              seller_wallet: finalTerms.sellerWallet,
+              title: mirroredDeal.title,
+              description: mirroredDeal.description,
+              total_amount_usdc: finalTerms.totalAmount,
+              milestones: mirroredDeal.milestones,
+              status: "funded",
+            }
+          : prev
+      );
       try {
-        await fetch("/api/deals/mirror", {
+        sessionStorage.setItem(`deal:${finalTerms.dealId}`, JSON.stringify({
+          buyer_wallet: publicKey.toBase58(),
+          ...mirroredDeal,
+        }));
+      } catch {}
+
+      try {
+        const mirrorRes = await fetch("/api/deals/mirror", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-wallet": publicKey.toBase58(),
-          },
-          body: JSON.stringify({
-            deal_id: finalTerms.dealId,
-            seller_wallet: finalTerms.sellerWallet,
-            title: finalTerms.dealId,
-            description: finalTerms.milestones.map((m) => m.description).join(" | "),
-            total_amount_usdc: finalTerms.totalAmount,
-            milestones: finalTerms.milestones.map((m) => ({
-              description: m.description,
-              amount: m.amount,
-              status: "Pending",
-            })),
-            tx_signature: sig,
-            status: "funded",
-          }),
+          headers: mirrorHeaders,
+          body: JSON.stringify(mirroredDeal),
         });
+        if (!mirrorRes.ok) {
+          const mirrorErr = await mirrorRes.json().catch(() => ({}));
+          console.error("Mirror sync failed:", mirrorErr);
+          await fetch(`/api/deals/${finalTerms.dealId}`, {
+            method: "PATCH",
+            headers: mirrorHeaders,
+            body: JSON.stringify(mirrorPatch),
+          });
+        }
       } catch {
-        // non-fatal
+        try {
+          await fetch(`/api/deals/${finalTerms.dealId}`, {
+            method: "PATCH",
+            headers: mirrorHeaders,
+            body: JSON.stringify(mirrorPatch),
+          });
+        } catch {
+          // non-fatal
+        }
       }
 
       setDealSealedId(finalTerms.dealId);
+      setDeploying(false);
     } catch (err) {
       console.error("On-chain deploy failed:", err);
+      setDeployError(getDeployErrorMessage(err));
       setDeploying(false);
     }
   }
@@ -848,8 +938,9 @@ export default function NegotiateRoom() {
                       }}
                       role={role}
                       deploying={deploying}
+                      deployError={deployError}
                       onAccept={handleAcceptAndDeploy}
-                      onRenegotiate={() => {}}
+                      onRenegotiate={() => setRenegotiateOpen(true)}
                     />
                   )}
 
@@ -915,8 +1006,9 @@ export default function NegotiateRoom() {
                   proposal={negState.proposal}
                   role={role}
                   deploying={deploying}
+                  deployError={deployError}
                   onAccept={handleAcceptAndDeploy}
-                  onRenegotiate={() => setNegState({ kind: "idle" })}
+                  onRenegotiate={() => setRenegotiateOpen(true)}
                 />
               )}
             </div>
@@ -944,6 +1036,21 @@ export default function NegotiateRoom() {
 
       {dealSealedId && (
         <DealSealedModal onClose={() => router.push(`/deals/${dealSealedId}`)} />
+      )}
+      {renegotiateOpen && (
+        <RenegotiateModal
+          value={renegotiateRequest}
+          error={renegotiateError}
+          running={negState.kind === "running"}
+          onChange={(value) => {
+            setRenegotiateRequest(value);
+            if (renegotiateError) setRenegotiateError(null);
+          }}
+          onClose={() => {
+            if (negState.kind !== "running") setRenegotiateOpen(false);
+          }}
+          onSubmit={submitRenegotiation}
+        />
       )}
     </Shell>
   );
@@ -1038,6 +1145,109 @@ function DealSealedModal({ onClose }: { onClose: () => void }) {
 
 /* ── Party card with credibility ────────────────────────────────────────── */
 
+function RenegotiateModal({
+  value,
+  error,
+  running,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  value: string;
+  error: string | null;
+  running: boolean;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-black/70">
+      <form
+        onSubmit={onSubmit}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="renegotiate-title"
+        className="surface-card w-full max-w-lg rounded-xl border border-card-border p-5 space-y-4 shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <h2 id="renegotiate-title" className="text-[18px] text-primary" style={headingStyle}>
+              Renegotiate terms
+            </h2>
+            <p className="text-[13px] text-muted leading-relaxed">
+              Tell your agent what you want changed before it talks to the counterparty again.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={running}
+            aria-label="Close renegotiation dialog"
+            className="h-10 w-10 rounded-md text-muted hover:text-primary hover:bg-surface-hover transition-colors disabled:opacity-50 flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <label className="space-y-1.5 block">
+          <span className="block text-[12px] text-primary" style={labelStyle}>
+            What do you want?
+          </span>
+          <textarea
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="Example: lower the first milestone payment and extend delivery by one week."
+            rows={5}
+            disabled={running}
+            aria-invalid={error ? "true" : undefined}
+            aria-describedby={error ? "renegotiate-error" : "renegotiate-help"}
+            className="w-full resize-none rounded-lg border border-card-border bg-surface px-3 py-2.5 text-[13px] text-primary outline-none transition-colors placeholder:text-subtle focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-60"
+          />
+        </label>
+        {error ? (
+          <p id="renegotiate-error" className="text-[12px] text-danger">
+            {error}
+          </p>
+        ) : (
+          <p id="renegotiate-help" className="text-[12px] text-muted">
+            Your agent will use this as the instruction for the next negotiation round.
+          </p>
+        )}
+
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={running}
+            className="btn-ghost h-10 px-4 rounded-md text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={running}
+            aria-busy={running}
+            className="btn-primary h-10 px-4 rounded-md text-[13px] flex items-center justify-center gap-2 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+          >
+            {running ? "Sending..." : "Send to agent"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function PartyCard({
   label,
   wallet,
@@ -1127,12 +1337,14 @@ function NegotiationResult({
   proposal,
   role,
   deploying,
+  deployError,
   onAccept,
   onRenegotiate,
 }: {
   proposal: Proposal;
   role: "buyer" | "seller" | "observer";
   deploying: boolean;
+  deployError?: string | null;
   onAccept: (terms: DealParams) => void;
   onRenegotiate: () => void;
 }) {
@@ -1215,7 +1427,8 @@ function NegotiationResult({
           <button
             onClick={() => onAccept(finalTerms)}
             disabled={deploying}
-            className="btn-primary flex-1 h-10 rounded-md text-[13px] flex items-center justify-center gap-2"
+            aria-busy={deploying}
+            className="btn-primary flex-1 h-10 rounded-md text-[13px] flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {deploying ? (
               <>
@@ -1231,11 +1444,16 @@ function NegotiationResult({
           <button
             onClick={onRenegotiate}
             disabled={deploying}
-            className="btn-ghost h-10 px-4 rounded-md text-[13px]"
+            className="btn-ghost h-10 px-4 rounded-md text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             Renegotiate
           </button>
         </div>
+      )}
+      {isBuyer && agreed && finalTerms && deployError && (
+        <p className="text-[12px] text-danger" role="alert">
+          {deployError}
+        </p>
       )}
 
       {!isBuyer && agreed && (
@@ -1574,7 +1792,10 @@ function FriendInviteSection({ wallet, inviteLink }: { wallet: string | null; in
   const [copiedWallet, setCopiedWallet] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!wallet) { setLoading(false); return; }
+    if (!wallet) {
+      const timer = window.setTimeout(() => setLoading(false), 0);
+      return () => window.clearTimeout(timer);
+    }
     fetch("/api/friends", { headers: { "x-wallet": wallet } })
       .then((r) => r.json())
       .then((data) => setFriends(data.friends ?? []))

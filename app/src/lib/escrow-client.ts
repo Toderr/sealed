@@ -240,10 +240,14 @@ export async function sendTx(
   const tx = new Transaction();
   instructions.forEach((ix) => tx.add(ix));
   tx.feePayer = instructions[0].keys[0].pubkey;
-  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+  const latestBlockhash = await connection.getLatestBlockhash();
+  tx.recentBlockhash = latestBlockhash.blockhash;
   const signed = await signTransaction(tx);
   const sig = await connection.sendRawTransaction(signed.serialize());
-  await connection.confirmTransaction(sig, "confirmed");
+  await connection.confirmTransaction(
+    { signature: sig, ...latestBlockhash },
+    "confirmed"
+  );
   return sig;
 }
 

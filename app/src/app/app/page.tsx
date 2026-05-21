@@ -426,6 +426,7 @@ function DealsBoldBoard() {
     const isBuyer = deal.buyer_wallet === wallet;
     const status = inferDealStatus(deal);
     if (status === "draft") return isBuyer; // buyer needs to invite
+    if (status === "seller-agreed") return isBuyer; // buyer needs to fund
     const hasReview = deal.milestones.some((m) => m.status === "In Review");
     if (hasReview && isBuyer) return true;
     return false;

@@ -12,6 +12,8 @@ interface NegotiateRequest {
   initialTerms: DealParams;
   buyerBoundaries: NegotiationBoundaries;
   sellerBoundaries?: NegotiationBoundaries;
+  renegotiationRequest?: string;
+  overrideInstructions?: string;
 }
 
 function getLlmOpts(request: NextRequest) {
@@ -63,6 +65,12 @@ export async function POST(request: NextRequest) {
     // Seller's simulated agent always uses the server's LLM so it doesn't
     // compete with the buyer's quota (avoids 429 on free-tier models)
     const sellerLlm = getLlmOptsFromEnv() ?? buyerLlm;
+    const renegotiationRequest =
+      typeof body.renegotiationRequest === "string"
+        ? body.renegotiationRequest.trim()
+        : typeof body.overrideInstructions === "string"
+        ? body.overrideInstructions.trim()
+        : "";
 
     const buyerCallLlm = (system: string, user: string) =>
       dispatchLlm({ ...buyerLlm, system, messages: [{ role: "user", content: user }], maxTokens: 1024 });
@@ -78,6 +86,7 @@ export async function POST(request: NextRequest) {
         initialTerms: body.initialTerms,
         buyerBoundaries: body.buyerBoundaries,
         sellerBoundaries: body.sellerBoundaries ?? defaultSellerBoundaries(),
+        renegotiationRequest: renegotiationRequest || undefined,
       },
       buyerCallLlm,
       sellerCallLlm

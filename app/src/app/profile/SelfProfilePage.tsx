@@ -561,6 +561,10 @@ export function SelfProfilePageContent() {
 
             {/* Right: Dashboard */}
             <main className="flex-1 min-w-0 space-y-6">
+              {publicProfile && !publicProfile.is_verified && (
+                <VerifiedAccountBanner />
+              )}
+
               {/* Tab bar */}
               <div className="flex gap-0.5 border-b border-card-border-subtle">
                 {(["overview", "agent", "friends", "settings"] as const).map((tab) => (
@@ -829,6 +833,27 @@ function DealListControls({
           </select>
         </label>
       </div>
+    </div>
+  );
+}
+
+function VerifiedAccountBanner() {
+  return (
+    <div className="surface-card rounded-xl border border-warning/25 bg-warning/10 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="space-y-1">
+        <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>
+          Become a verified account
+        </p>
+        <p className="text-[12px] text-muted leading-relaxed">
+          Add account verification to raise trust signals on your profile and unlock more agent templates.
+        </p>
+      </div>
+      <Link
+        href="/profile/verify"
+        className="btn-primary h-10 px-4 rounded-md text-[13px] flex items-center justify-center flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+      >
+        Get verified
+      </Link>
     </div>
   );
 }

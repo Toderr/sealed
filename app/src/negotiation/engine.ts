@@ -60,7 +60,8 @@ function validateTurn(out: AgentTurnOutput, initial: DealParams): AgentTurnOutpu
 
 function buildTurnPrompt(
   latestProposal: DealParams,
-  transcript: Revision[]
+  transcript: Revision[],
+  renegotiationRequest?: string
 ): string {
   const history = transcript
     .map(
@@ -75,6 +76,8 @@ ${JSON.stringify(latestProposal, null, 2)}
 Negotiation history so far:
 ${history || "(you are the first responder)"}
 
+${renegotiationRequest ? `Human renegotiation request:\n${renegotiationRequest}\n` : ""}
+
 Respond with your JSON decision now.`;
 }
 
@@ -86,6 +89,7 @@ export async function runNegotiation(
     initialTerms: DealParams;
     buyerBoundaries: NegotiationBoundaries;
     sellerBoundaries: NegotiationBoundaries;
+    renegotiationRequest?: string;
   },
   buyerCallLlm: LlmCaller,
   sellerCallLlm?: LlmCaller  // falls back to buyerCallLlm if not provided
@@ -124,7 +128,11 @@ export async function runNegotiation(
         ? params.buyerBoundaries
         : params.sellerBoundaries;
     const system = buildNegotiatorPrompt(currentSide, boundaries);
-    const user = buildTurnPrompt(latestProposal, revisions);
+    const user = buildTurnPrompt(
+      latestProposal,
+      revisions,
+      params.renegotiationRequest
+    );
 
     const caller = currentSide === "buyer" ? buyerCallLlm : (sellerCallLlm ?? buyerCallLlm);
     let raw: string;

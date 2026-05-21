@@ -59,7 +59,7 @@ type Proposal = {
   buyerWallet: string;
   sellerWallet: string;
   revisions: Revision[];
-  status: "negotiating" | "agreed" | "rejected" | "expired";
+  status: "negotiating" | "agreed" | "rejected" | "expired" | "escalated";
   finalTerms?: DealParams;
   summary?: NegotiationSummary;
 };
@@ -95,6 +95,26 @@ type MilestoneProof = {
   };
 };
 ```
+
+### Identity, Reputation, and Discovery
+
+```ts
+type PublicProfile = {
+  handle: string | null;              // public username, preferred over wallet display
+  display_name: string | null;
+  deals_total: number;
+  deals_successful: number;
+  avg_rating: number;                 // aggregate from sealed_ratings
+  is_verified: boolean;               // trust signal, not escrow authority
+};
+
+type FriendLookup = {
+  query: string;                       // username/handle, not wallet address
+  counterpartyWallet: string;          // resolved server-side
+};
+```
+
+Profiles use usernames and display names in the UI. Wallet addresses remain the identity primitive for authorization and on-chain actions, but user-facing friend discovery should resolve by username.
 
 ### Forward-Compat (Scout update)
 
@@ -159,7 +179,12 @@ POST /api/negotiate          NEW, runs Negotiator ↔ Negotiator rounds
 POST /api/verify-milestone   NEW, Verifier reviews proof
 GET  /api/memory/:wallet     NEW, retrieve BusinessMemory
 POST /api/memory/:wallet     NEW, update BusinessMemory
+GET  /api/users/:wallet/public        public profile + reputation aggregate
+POST /api/ratings                     completed-deal star review
+GET  /api/friends                     friend graph for current wallet
 ```
+
+`POST /api/negotiate` accepts an optional `renegotiationRequest` string. This is a human instruction captured from the renegotiation dialog and injected into the next agent negotiation prompt. It must guide the agents only; it does not directly mutate deal terms outside the structured negotiation result.
 
 ### Future (Scout update), already shaped compatibly
 
@@ -247,7 +272,7 @@ app/src/
 │   ├── interface.ts          MemoryStore
 │   ├── localstorage-store.ts Step 1
 │   └── supabase-store.ts     FUTURE
-└── lib/escrow-client.ts      unchanged
+└── lib/escrow-client.ts      client transaction builders + confirmation helpers
 ```
 
 ## Decision Log
@@ -257,3 +282,8 @@ app/src/
 - **Why MemoryStore interface now**: localStorage is fine for demo, but Scout discovery needs a shared backend. Interface swap = one line.
 - **Why `origin` on Proposal**: distinguishes human-initiated vs scout-initiated negotiations for UX + analytics.
 - **Why not build Scout now**: out of hackathon scope. But every current decision is checked against "will this break when Scout lands?"
+- **Why renegotiation request stays prompt-scoped**: the human can tell the agent what outcome they want, but final terms still come from the structured `Proposal.finalTerms` flow before any wallet signature.
+- **Why escrow mirror is best-effort after signing**: on-chain state remains authoritative for funds. Supabase mirrors are updated after transaction confirmation and may be retried or patched without changing custody state.
+- **Why profile URLs are wallet-keyed but display is username-keyed**: `/profile/[wallet]` is stable and authorization-friendly, while names/usernames avoid exposing wallet addresses as the primary user-facing identity.
+- **Why ratings are off-chain aggregate with on-chain anchor**: per-deal reviews need fast profile reads and invite-page stats, while the on-chain reputation PDA remains the tamper-proof anchor for public trust.
+- **Why AI provider config lives in Agent Setup**: provider/model choice affects agent behavior, so it belongs beside agent templates instead of general profile settings.

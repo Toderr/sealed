@@ -275,7 +275,7 @@ export default function ChatInterface({
                   className="text-[34px] sm:text-[44px] text-primary leading-tight"
                   style={{ ...headingStyle, letterSpacing: "-0.024em" }}
                 >
-                  Structure a deal in plain English
+                  Structure a deal in plain language
                 </h1>
                 <p className="text-[14px] sm:text-[15px] text-muted leading-relaxed max-w-2xl mx-auto">
                   Describe the scope, amount, timeline, and deliverables. Sealed
