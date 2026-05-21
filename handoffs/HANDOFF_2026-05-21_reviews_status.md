@@ -53,7 +53,7 @@ Implemented UI flow:
 
 ## Evidence
 
-- Commit SHA: not committed.
+- Commit SHA: 6e792cc
 - Test command + result:
   - `npx.cmd eslint "src/app/api/deals/[dealId]/route.ts" "src/app/api/ratings/route.ts" "src/lib/reputation.ts" "src/lib/sealed-users.ts" "src/app/deals/[id]/page.tsx" "src/app/app/page.tsx"` — pass
   - `npm.cmd run build` — pass
@@ -64,7 +64,7 @@ Implemented UI flow:
 - Status: done
 - Yang dikerjakan: Invite/profile stats fallback, completed-deal review flow, rating aggregate update, deal completion status persistence, clickable deal cards/rows.
 - Files modified: `.gitignore`, `app/src/app/api/deals/[dealId]/route.ts`, `app/src/app/api/ratings/route.ts`, `app/src/app/app/page.tsx`, `app/src/app/deals/[id]/page.tsx`, `app/src/app/profile/page.tsx`, `app/src/lib/reputation.ts`, `app/src/lib/sealed-users.ts`, `docs/ARCHITECTURE.md`, `handoffs/HANDOFF_2026-05-21_reviews_status.md`
-- Commit SHA: not committed
+- Commit SHA: 6e792cc
 - Test status: frontend build pass; targeted lint pass excluding old unrelated `profile/page.tsx` lint errors.
 - Blocker (jika ada): Tidak ada.
 - Next-action untuk agent berikutnya: Browser smoke test dan deploy.
