@@ -8,7 +8,6 @@ import dynamic from "next/dynamic";
 import { SealedMark } from "@/components/SealedLogo";
 import { useProfileStore, encodeInvite, X402_MODELS, X402_TOP_UP_AMOUNTS } from "@/lib/profile-store";
 import { useDealsStore } from "@/lib/deals-store";
-import { DealStatus } from "@/lib/types";
 import type { Deal, AgentTemplate, NotificationPrefs, PublicProfile } from "@/lib/types";
 
 const WalletMultiButton = dynamic(
@@ -44,6 +43,24 @@ type ProfileDealRowData = {
   milestones: ProfileMilestone[];
   createdAt?: string;
 };
+
+type DealFilter = "all" | "active" | "sealed" | "needs_invite";
+type DealSort = "newest" | "oldest" | "value_desc" | "value_asc" | "status";
+
+const DEAL_FILTERS: { value: DealFilter; label: string }[] = [
+  { value: "all", label: "All deals" },
+  { value: "active", label: "Active" },
+  { value: "sealed", label: "Sealed" },
+  { value: "needs_invite", label: "Needs invite" },
+];
+
+const DEAL_SORTS: { value: DealSort; label: string }[] = [
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "value_desc", label: "Highest value" },
+  { value: "value_asc", label: "Lowest value" },
+  { value: "status", label: "Status" },
+];
 
 function isDoneMilestone(status: string | undefined) {
   const normalized = status?.toLowerCase();
@@ -131,6 +148,34 @@ function mergeProfileDeals(...sources: ProfileDealRowData[][]) {
   });
 }
 
+function profileDealTimestamp(deal: ProfileDealRowData) {
+  if (!deal.createdAt) return 0;
+  const timestamp = new Date(deal.createdAt).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function profileDealStatusRank(deal: ProfileDealRowData) {
+  const order: Record<string, number> = {
+    draft: 0,
+    "seller-ready": 1,
+    "seller-agreed": 2,
+    proposed: 3,
+    funded: 4,
+    in_progress: 5,
+    completed: 6,
+    refunded: 7,
+    disputed: 8,
+  };
+  return order[profileDealStatusKey(deal)] ?? 99;
+}
+
+function profileDealMatchesFilter(deal: ProfileDealRowData, filter: DealFilter) {
+  if (filter === "all") return true;
+  if (filter === "active") return isProfileDealActive(deal);
+  if (filter === "sealed") return isProfileDealSealed(deal);
+  return profileDealStatusKey(deal) === "draft";
+}
+
 export default function ProfilePage() {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
@@ -141,12 +186,35 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<"overview" | "agent" | "friends" | "settings">("overview");
   const [mirrorDeals, setMirrorDeals] = useState<ProfileDealRowData[]>([]);
   const [sessionDeals, setSessionDeals] = useState<ProfileDealRowData[]>([]);
+  const [publicProfile, setPublicProfile] = useState<PublicProfile | null>(null);
+  const [dealSearch, setDealSearch] = useState("");
+  const [dealFilter, setDealFilter] = useState<DealFilter>("all");
+  const [dealSort, setDealSort] = useState<DealSort>("newest");
 
   const localDeals = useMemo(() => deals.map(fromLocalDeal), [deals]);
   const profileDeals = useMemo(
     () => mergeProfileDeals(localDeals, sessionDeals, mirrorDeals),
     [localDeals, sessionDeals, mirrorDeals]
   );
+  const visibleProfileDeals = useMemo(() => {
+    const query = dealSearch.trim().toLowerCase();
+    const next = profileDeals.filter((deal) => {
+      const matchesQuery =
+        !query ||
+        deal.dealId.toLowerCase().includes(query) ||
+        deal.title.toLowerCase().includes(query) ||
+        deal.description.toLowerCase().includes(query);
+      return matchesQuery && profileDealMatchesFilter(deal, dealFilter);
+    });
+
+    return next.sort((a, b) => {
+      if (dealSort === "oldest") return profileDealTimestamp(a) - profileDealTimestamp(b);
+      if (dealSort === "value_desc") return b.totalAmountUsdc - a.totalAmountUsdc;
+      if (dealSort === "value_asc") return a.totalAmountUsdc - b.totalAmountUsdc;
+      if (dealSort === "status") return profileDealStatusRank(a) - profileDealStatusRank(b);
+      return profileDealTimestamp(b) - profileDealTimestamp(a);
+    });
+  }, [dealFilter, dealSearch, dealSort, profileDeals]);
 
   useEffect(() => {
     if (!loaded || !wallet) return;
@@ -175,6 +243,28 @@ export default function ProfilePage() {
       })
       .catch(() => {
         if (!cancelled) setMirrorDeals([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!wallet) {
+      setPublicProfile(null);
+      return;
+    }
+
+    fetch(`/api/users/${wallet}/public?self=1`)
+      .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!cancelled && ok) setPublicProfile(data as PublicProfile);
+      })
+      .catch(() => {
+        if (!cancelled) setPublicProfile(null);
       });
 
     return () => {
@@ -212,6 +302,7 @@ export default function ProfilePage() {
     (sum, d) => sum + d.totalAmountUsdc,
     0
   );
+  const averageRating = publicProfile?.avg_rating ?? 0;
 
   const shortWallet = wallet.slice(0, 4) + "..." + wallet.slice(-4);
   const initials = profile.name
@@ -370,9 +461,6 @@ export default function ProfilePage() {
                   Edit profile
                 </Link>
               </div>
-
-              {/* Invite counterparty card */}
-              <InviteCard profile={profile} wallet={wallet} deals={deals} />
             </aside>
 
             {/* Right: Dashboard */}
@@ -399,10 +487,15 @@ export default function ProfilePage() {
               {activeTab === "overview" && (
                 <>
                   {/* Stats row */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                     <StatCard label="Total deals" value={profileDeals.length} />
                     <StatCard label="Active" value={activeDealCount} accent />
                     <StatCard label="Sealed" value={sealedDealCount} />
+                    <StatCard
+                      label="Avg rating"
+                      value={averageRating > 0 ? averageRating.toFixed(1) : "-"}
+                      star={averageRating > 0}
+                    />
                     <StatCard
                       label="Volume (USDC)"
                       value={`$${totalVolumeUsdc.toLocaleString()}`}
@@ -433,11 +526,31 @@ export default function ProfilePage() {
                     {profileDeals.length === 0 ? (
                       <EmptyDeals />
                     ) : (
-                      <div className="space-y-2">
-                        {profileDeals.map((deal) => (
-                          <DealRow key={deal.dealId} deal={deal} profile={profile} wallet={wallet} />
-                        ))}
-                      </div>
+                      <>
+                        <DealListControls
+                          search={dealSearch}
+                          filter={dealFilter}
+                          sort={dealSort}
+                          onSearchChange={setDealSearch}
+                          onFilterChange={setDealFilter}
+                          onSortChange={setDealSort}
+                        />
+                        {visibleProfileDeals.length === 0 ? (
+                          <EmptyFilteredDeals
+                            onReset={() => {
+                              setDealSearch("");
+                              setDealFilter("all");
+                              setDealSort("newest");
+                            }}
+                          />
+                        ) : (
+                          <div className="space-y-2">
+                            {visibleProfileDeals.map((deal) => (
+                              <DealRow key={deal.dealId} deal={deal} profile={profile} wallet={wallet} />
+                            ))}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </>
@@ -522,159 +635,109 @@ function NavLink({
 }
 
 /* ------------------------------------------------------------------ */
-/* Invite counterparty card                                            */
+/* Small components                                                    */
 /* ------------------------------------------------------------------ */
 
-function InviteCard({
-  profile,
-  wallet,
-  deals,
+function DealListControls({
+  search,
+  filter,
+  sort,
+  onSearchChange,
+  onFilterChange,
+  onSortChange,
 }: {
-  profile: { name: string; bio: string };
-  wallet: string;
-  deals: Deal[];
+  search: string;
+  filter: DealFilter;
+  sort: DealSort;
+  onSearchChange: (value: string) => void;
+  onFilterChange: (value: DealFilter) => void;
+  onSortChange: (value: DealSort) => void;
 }) {
-  const [copied, setCopied] = useState(false);
-  const [selectedDealId, setSelectedDealId] = useState(
-    deals[0]?.dealId ?? ""
-  );
-
-  const eligibleDeals = deals.filter(
-    (d) =>
-      d.status === DealStatus.Created ||
-      d.status === DealStatus.Funded ||
-      d.status === DealStatus.InProgress
-  );
-
-  function generateLink() {
-    const deal = eligibleDeals.find((d) => d.dealId === selectedDealId) ?? eligibleDeals[0];
-    if (!deal) return "";
-    const payload = {
-      dealId: deal.dealId,
-      dealTitle: deal.dealId.replace(/-/g, " "),
-      inviterName: profile.name,
-      inviterWallet: wallet,
-      amount: deal.totalAmount / 1_000_000,
-      currency: "USDC",
-      milestoneCount: deal.milestones.length,
-      milestones: deal.milestones.map((m) => ({ description: m.description, amount: m.amount / 1_000_000 })),
-      description: profile.bio,
-    };
-    const token = encodeInvite(payload);
-    return `${window.location.origin}/invite/${encodeURIComponent(token)}`;
-  }
-
-  function handleCopy() {
-    const link = generateLink();
-    if (!link) return;
-    navigator.clipboard.writeText(link);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  function handleShareX() {
-    const link = generateLink();
-    if (!link) return;
-    const text = encodeURIComponent(
-      `Hey! I'm using Sealed Agent to secure our deal on-chain. Click this link to review the terms and join — no bank or lawyer needed:\n${link}`
-    );
-    window.open(`https://x.com/intent/tweet?text=${text}`, "_blank");
-  }
+  const controlClass =
+    "h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none transition-colors focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60";
 
   return (
-    <div className="surface-card rounded-xl p-5 space-y-3">
-      <div>
-        <p className="text-[13px] text-primary" style={{ fontWeight: 590 }}>
-          Invite your counterparty
-        </p>
-        <p className="text-[12px] text-muted mt-0.5">
-          Share a link for your counterparty to join a deal — works via X DM, WhatsApp, or email.
-        </p>
+    <div className="surface-card rounded-xl p-3 mb-3">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_150px_170px] gap-3">
+        <label className="space-y-1">
+          <span className="block text-[11px] text-muted" style={{ fontWeight: 510 }}>
+            Search
+          </span>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Title, description, or deal ID"
+            autoComplete="off"
+            className={`${controlClass} w-full`}
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="block text-[11px] text-muted" style={{ fontWeight: 510 }}>
+            Filter
+          </span>
+          <select
+            value={filter}
+            onChange={(e) => onFilterChange(e.target.value as DealFilter)}
+            className={`${controlClass} w-full cursor-pointer`}
+          >
+            {DEAL_FILTERS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="block text-[11px] text-muted" style={{ fontWeight: 510 }}>
+            Sort
+          </span>
+          <select
+            value={sort}
+            onChange={(e) => onSortChange(e.target.value as DealSort)}
+            className={`${controlClass} w-full cursor-pointer`}
+          >
+            {DEAL_SORTS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
-
-      {eligibleDeals.length === 0 ? (
-        <p className="text-[12px] text-subtle">
-          Create a deal first, then invite your counterparty here.
-        </p>
-      ) : (
-        <>
-          {eligibleDeals.length > 1 && (
-            <select
-              className="w-full h-9 rounded-md bg-surface border border-card-border px-3 text-[12px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
-              value={selectedDealId}
-              onChange={(e) => setSelectedDealId(e.target.value)}
-            >
-              {eligibleDeals.map((d) => (
-                <option key={d.dealId} value={d.dealId} className="bg-surface">
-                  {d.dealId}
-                </option>
-              ))}
-            </select>
-          )}
-          <div className="flex gap-2">
-            <button
-              onClick={handleCopy}
-              className={`btn-ghost flex-1 h-9 rounded-md text-[12px] flex items-center justify-center gap-1.5 transition-all ${
-                copied ? "text-success border-success/30" : ""
-              }`}
-            >
-              {copied ? (
-                <>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                  Copied!
-                </>
-              ) : (
-                <>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
-                  Copy link
-                </>
-              )}
-            </button>
-            <button
-              onClick={handleShareX}
-              className="btn-ghost h-9 w-9 rounded-md flex items-center justify-center text-muted hover:text-primary flex-shrink-0"
-              title="Share on X"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.259 5.631 5.905-5.631zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-              </svg>
-            </button>
-          </div>
-        </>
-      )}
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/* Small components                                                    */
-/* ------------------------------------------------------------------ */
 
 function StatCard({
   label,
   value,
   accent,
+  star,
 }: {
   label: string;
   value: number | string;
   accent?: boolean;
+  star?: boolean;
 }) {
   return (
     <div className="surface-card rounded-xl p-4">
       <p className="text-[11px] text-muted mb-1" style={{ fontWeight: 510 }}>
         {label}
       </p>
-      <p
-        className={`text-[22px] ${accent ? "text-accent" : "text-primary"}`}
-        style={{ fontWeight: 590 }}
-      >
-        {value}
-      </p>
+      <div className="flex items-baseline gap-1.5">
+        <p
+          className={`text-[22px] ${accent ? "text-accent" : "text-primary"}`}
+          style={{ fontWeight: 590 }}
+        >
+          {value}
+        </p>
+        {star && (
+          <span className="text-[13px] text-warning" aria-label="stars">
+            ★
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -803,6 +866,34 @@ function EmptyDeals() {
         </svg>
         Create your first deal
       </Link>
+    </div>
+  );
+}
+
+function EmptyFilteredDeals({ onReset }: { onReset: () => void }) {
+  return (
+    <div className="surface-card rounded-xl flex flex-col items-center justify-center py-12 gap-3 text-center">
+      <div className="w-10 h-10 rounded-full bg-surface-hover flex items-center justify-center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-muted">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+      </div>
+      <div>
+        <p className="text-[14px] text-primary" style={{ fontWeight: 510 }}>
+          No matching deals
+        </p>
+        <p className="text-[13px] text-muted mt-0.5">
+          Adjust the search, filter, or sort controls to see more deals.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onReset}
+        className="btn-ghost h-9 px-4 rounded-md text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+      >
+        Reset filters
+      </button>
     </div>
   );
 }
