@@ -99,3 +99,13 @@ Implemented UI flow:
 - Blocker (jika ada): Tidak ada.
 - Next-action untuk agent berikutnya: Browser smoke test add friend pakai `@username`, buka invite link lama/baru dan cek About the inviter stats, lalu coba invitee name gate pada schema tanpa `display_name`.
 - Do-Not tambahan: Jangan kembalikan add friend ke wallet-address input; public profile button boleh tetap pakai wallet karena sudah berada di profile wallet tersebut.
+
+### Update 2026-05-21 13:27 oleh Codex
+- Status: done
+- Yang dikerjakan: Canonical profile sekarang `/profile/<wallet>`; `/profile` redirect ke wallet route setelah connect. Wallet route menampilkan dashboard profile lengkap untuk self, public profile menampilkan display name + username tanpa wallet address, Your deals dan `/app` deal board menampilkan nama counterparty jika seller/buyer sudah ada, dan menu Agent diarahkan ke tab Agent profile. Route `/app/agent` dibuat redirect ringan agar tidak lagi import Supabase dari TSX.
+- Files modified: `app/src/app/app/agent/page.tsx`, `app/src/app/app/page.tsx`, `app/src/app/profile/SelfProfilePage.tsx`, `app/src/app/profile/[wallet]/page.tsx`, `app/src/app/profile/page.tsx`, `handoffs/HANDOFF_2026-05-21_reviews_status.md`
+- Commit SHA: c93051e
+- Test status: targeted lint pass untuk file yang berubah; frontend build pass (`npm.cmd run build`).
+- Blocker (jika ada): Tidak ada.
+- Next-action untuk agent berikutnya: Browser smoke test `/app` deal board counterparty names, `/profile/<wallet>` self dashboard tabs termasuk `?tab=agent`, `/profile` redirect, dan public profile non-self identity display.
+- Do-Not tambahan: Jangan reintroduce `/app/agent` sebagai client page yang import Supabase langsung; gunakan profile Agent tab atau API route.
