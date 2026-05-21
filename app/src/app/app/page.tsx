@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useMemo, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import ChatInterface, { PartialDeal } from "@/components/ChatInterface";
 import SettingsModal from "@/components/SettingsModal";
@@ -99,7 +99,16 @@ async function fetchCounterpartyProfileMap(wallets: string[]) {
 }
 
 export default function Home() {
-  const [view, setView] = useState<View>("deals");
+  return (
+    <Suspense fallback={null}>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+function HomeContent() {
+  const searchParams = useSearchParams();
+  const view: View = searchParams.get("view") === "chat" ? "chat" : "deals";
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [livePartial, setLivePartial] = useState<PartialDeal | null>(null);
 
@@ -174,6 +183,12 @@ export default function Home() {
     router.push(`/negotiate/${params.dealId}`);
   }
 
+  function handleViewChange(nextView: View) {
+    router.replace(nextView === "chat" ? "/app?view=chat" : "/app", {
+      scroll: false,
+    });
+  }
+
   return (
     <div className="flex flex-col h-screen" style={{ position: "relative", background: "var(--background)" }}>
       {view === "deals" && <SealedBackdrop />}
@@ -181,7 +196,7 @@ export default function Home() {
       {/* App Header */}
       <AppHeader
         activeView={view}
-        onViewChange={setView}
+        onViewChange={handleViewChange}
         onOpenSettings={() => setSettingsOpen(true)}
       />
 

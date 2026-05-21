@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { Paperclip, Send, Sparkles } from "lucide-react";
 import { ChatMessage, DealParams, formatUsdc } from "@/lib/types";
 import { SealedMark } from "@/components/SealedLogo";
 import { getLlmHeaders } from "@/lib/llm-headers";
@@ -98,6 +99,14 @@ interface WizardPrefill {
 const labelStyle: React.CSSProperties = { fontWeight: 510, letterSpacing: "-0.006em" };
 const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.014em" };
 
+const NEW_DEAL_SUGGESTIONS = [
+  "Draft a vendor deal for 100 units at $5,000 with two delivery milestones",
+  "Create a website project agreement with design, build, and launch payments",
+  "Set up a service contract with a 30% deposit and final approval milestone",
+  "Prepare an escrow for a monthly retainer with weekly deliverables",
+  "Turn my rough scope into a clean deal both sides can review",
+];
+
 export default function ChatInterface({
   onDealCreated,
   onPartialDeal,
@@ -122,6 +131,13 @@ export default function ChatInterface({
   async function handleWizardComplete(prompt: string) {
     setShowWizard(false);
     await sendMessage(prompt);
+  }
+
+  function openWizard() {
+    setShowWizard(true);
+    setMessages([]);
+    setWizardPrefill(undefined);
+    setWizardStartStep(undefined);
   }
 
   async function sendMessage(overrideText?: string) {
@@ -220,67 +236,147 @@ export default function ChatInterface({
     }
   }
 
+  const showEmptyPrompt = messages.length === 0 && !showWizard;
+
   return (
-    <div className="flex flex-col h-full max-w-3xl mx-auto">
+    <div className="flex flex-col h-full w-full max-w-5xl mx-auto">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-8 space-y-4">
-        {messages.length === 0 && (
-          showWizard ? (
-            <div className="flex items-center justify-center h-full py-8">
-              <ContractWizard
-                onComplete={handleWizardComplete}
-                onClose={() => setShowWizard(false)}
-                wallet={wallet}
-                initialData={wizardPrefill}
-                initialStepId={wizardStartStep}
-              />
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center gap-4">
-              <div className="text-primary/90">
-                <SealedMark size={56} />
+      <div
+        className={`flex-1 overflow-y-auto ${
+          showEmptyPrompt ? "px-4 sm:px-6 py-0" : "px-4 sm:px-6 py-8 space-y-4"
+        }`}
+      >
+        {messages.length === 0 && showWizard && (
+          <div className="flex items-center justify-center h-full py-8">
+            <ContractWizard
+              onComplete={handleWizardComplete}
+              onClose={() => setShowWizard(false)}
+              wallet={wallet}
+              initialData={wizardPrefill}
+              initialStepId={wizardStartStep}
+            />
+          </div>
+        )}
+
+        {showEmptyPrompt && (
+          <div className="min-h-full flex flex-col items-center justify-center py-10 text-center">
+            <div className="w-full max-w-3xl space-y-6">
+              <div className="flex justify-center">
+                <div className="inline-flex items-center gap-2 rounded-full border border-card-border bg-surface px-3 py-1.5 text-[12px] text-muted">
+                  <span className="text-accent" aria-hidden="true">
+                    <SealedMark size={16} />
+                  </span>
+                  Sealed Deal Agent
+                </div>
               </div>
-              <h2
-                className="text-[22px] text-primary"
-                style={{ ...headingStyle, letterSpacing: "-0.022em" }}
+
+              <div className="space-y-3">
+                <h1
+                  className="text-[34px] sm:text-[44px] text-primary leading-tight"
+                  style={{ ...headingStyle, letterSpacing: "-0.024em" }}
+                >
+                  Structure a deal in plain English
+                </h1>
+                <p className="text-[14px] sm:text-[15px] text-muted leading-relaxed max-w-2xl mx-auto">
+                  Describe the scope, amount, timeline, and deliverables. Sealed
+                  turns it into reviewable terms before anyone signs.
+                </p>
+              </div>
+
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  sendMessage();
+                }}
+                className="w-full"
               >
-                Start a new deal
-              </h2>
-              <p className="text-muted max-w-md text-[14px] leading-relaxed">
-                Describe your business deal in natural language, or use the wizard
-                to fill in details step by step.
-              </p>
-              {/* Wizard trigger */}
-              <button
-                onClick={() => { setShowWizard(true); setWizardPrefill(undefined); setWizardStartStep(undefined); }}
-                disabled={!connected}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-accent/30 text-accent hover:bg-accent/5 hover:border-accent/60 transition-colors text-[13px] disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ fontWeight: 510 }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                  <path d="M2 17l10 5 10-5" />
-                  <path d="M2 12l10 5 10-5" />
-                </svg>
-                Use wizard
-              </button>
-              <div className="flex flex-col sm:flex-row flex-wrap gap-2 justify-center w-full max-w-xl">
-                {[
-                  "I want to buy 100 units of product X for $5,000 USDC",
-                  "Set up a service contract with 3 payment milestones",
-                  "Create an escrow for a website development project",
-                ].map((suggestion) => (
+                <div className="surface-card rounded-[28px] border border-card-border p-2.5 flex items-end gap-1.5 text-left">
+                  <button
+                    type="button"
+                    onClick={openWizard}
+                    disabled={!connected}
+                    title="Open guided setup"
+                    aria-label="Open guided setup"
+                    className="h-11 w-11 shrink-0 rounded-full text-muted hover:text-accent hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                  >
+                    <Paperclip size={18} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openWizard}
+                    disabled={!connected}
+                    title="Use guided setup"
+                    aria-label="Use guided setup"
+                    className="h-11 w-11 shrink-0 rounded-full text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                  >
+                    <Sparkles size={18} aria-hidden="true" />
+                  </button>
+                  <label htmlFor="new-deal-prompt" className="sr-only">
+                    Describe your deal
+                  </label>
+                  <textarea
+                    id="new-deal-prompt"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={
+                      connected
+                        ? "Tell Sealed what deal you want to create..."
+                        : "Connect wallet to start..."
+                    }
+                    disabled={!connected}
+                    rows={1}
+                    className="min-h-11 max-h-36 flex-1 resize-none bg-transparent px-2 py-3 text-[14px] text-foreground placeholder:text-subtle outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                    onInput={(e) => {
+                      const target = e.target as HTMLTextAreaElement;
+                      target.style.height = "auto";
+                      target.style.height = Math.min(target.scrollHeight, 144) + "px";
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!input.trim() || loading || !connected}
+                    aria-label="Send message"
+                    className="btn-primary h-11 min-w-11 rounded-full px-4 text-[13px] shrink-0 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                  >
+                    {loading ? (
+                      <svg
+                        className="animate-spin"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        aria-hidden="true"
+                      >
+                        <path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round" />
+                      </svg>
+                    ) : (
+                      <>
+                        <span className="hidden sm:inline">Send</span>
+                        <Send size={15} aria-hidden="true" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+
+              <div className="flex flex-wrap justify-center gap-2 pt-3">
+                {NEW_DEAL_SUGGESTIONS.map((suggestion) => (
                   <button
                     key={suggestion}
+                    type="button"
                     onClick={() => setInput(suggestion)}
-                    className="flex-1 min-w-0 px-3.5 py-2.5 text-[13px] text-muted surface-card-subtle rounded-lg hover:bg-[rgba(255,255,255,0.04)] hover:text-primary hover:border-[rgba(255,255,255,0.12)] transition-colors text-left"
+                    disabled={!connected}
+                    className="min-h-10 rounded-full border border-card-border bg-surface px-4 py-2 text-[12px] text-muted hover:text-primary hover:border-accent/40 hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
                   >
                     {suggestion}
                   </button>
                 ))}
               </div>
             </div>
-          )
+          </div>
         )}
 
         {messages.map((msg) => (
@@ -339,22 +435,24 @@ export default function ChatInterface({
       </div>
 
       {/* Input */}
+      {!showEmptyPrompt && (
       <div className="border-t border-card-border-subtle px-4 sm:px-6 py-4 bg-panel">
         <div className="flex gap-2 items-end">
           {/* Wizard shortcut button */}
           <button
-            onClick={() => { setShowWizard(true); setMessages([]); setWizardPrefill(undefined); setWizardStartStep(undefined); }}
+            onClick={openWizard}
             disabled={!connected}
             title="Use wizard"
-            className="shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border border-card-border text-subtle hover:text-accent hover:border-accent/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label="Use wizard"
+            className="shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border border-card-border text-subtle hover:text-accent hover:border-accent/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-              <path d="M2 17l10 5 10-5" />
-              <path d="M2 12l10 5 10-5" />
-            </svg>
+            <Sparkles size={16} aria-hidden="true" />
           </button>
+          <label htmlFor="deal-chat-input" className="sr-only">
+            Describe your deal
+          </label>
           <textarea
+            id="deal-chat-input"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -365,7 +463,7 @@ export default function ChatInterface({
             }
             disabled={!connected}
             rows={1}
-            className="flex-1 resize-none bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-3.5 py-2.5 text-[14px] text-foreground placeholder:text-subtle focus:outline-none hover:border-[rgba(255,255,255,0.14)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 resize-none bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-3.5 py-2.5 text-[14px] text-foreground placeholder:text-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 hover:border-[rgba(255,255,255,0.14)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ minHeight: "40px", maxHeight: "140px" }}
             onInput={(e) => {
               const target = e.target as HTMLTextAreaElement;
@@ -376,7 +474,7 @@ export default function ChatInterface({
           <button
             onClick={() => sendMessage()}
             disabled={!input.trim() || loading || !connected}
-            className="btn-primary rounded-lg px-4 h-10 text-[13px] shrink-0 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary rounded-lg px-4 h-10 text-[13px] shrink-0 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             aria-label="Send message"
           >
             {loading ? (
@@ -395,25 +493,13 @@ export default function ChatInterface({
             ) : (
               <>
                 Send
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M5 12h14" />
-                  <path d="m12 5 7 7-7 7" />
-                </svg>
+                <Send size={13} aria-hidden="true" />
               </>
             )}
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 }

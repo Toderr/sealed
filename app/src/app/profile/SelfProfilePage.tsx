@@ -6,7 +6,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import { SealedMark } from "@/components/SealedLogo";
-import { useProfileStore, encodeInvite, X402_MODELS, X402_TOP_UP_AMOUNTS } from "@/lib/profile-store";
+import {
+  useProfileStore,
+  encodeInvite,
+  LLM_MODELS,
+  X402_MODELS,
+  X402_TOP_UP_AMOUNTS,
+  type LLMProvider,
+} from "@/lib/profile-store";
 import { useDealsStore } from "@/lib/deals-store";
 import type { Deal, AgentTemplate, NotificationPrefs, PublicProfile } from "@/lib/types";
 
@@ -435,7 +442,7 @@ export function SelfProfilePageContent() {
     profile.llmConfig?.mode === "x402" ? profile.llmConfig.balance : null;
 
   return (
-    <Shell>
+    <Shell activeTab={activeTab}>
       <div className="flex-1 overflow-auto">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
           <div className="flex flex-col lg:flex-row gap-6">
@@ -519,7 +526,7 @@ export function SelfProfilePageContent() {
                     </div>
                   ) : (
                     <Link
-                      href="/onboarding?edit=1"
+                      href={`/profile/${wallet}?tab=agent`}
                       className="text-[12px] text-warning hover:text-accent transition-colors"
                     >
                       No LLM configured — set up now →
@@ -527,7 +534,7 @@ export function SelfProfilePageContent() {
                   )}
                   {profile.llmConfig?.mode === "x402" && (
                     <Link
-                      href="/onboarding?edit=1"
+                      href={`/profile/${wallet}?tab=agent`}
                       className="flex items-center gap-1 text-[11px] text-muted hover:text-accent transition-colors"
                     >
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -677,33 +684,48 @@ export function SelfProfilePageContent() {
 /* Shell                                                                */
 /* ------------------------------------------------------------------ */
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({
+  children,
+  activeTab = "overview",
+}: {
+  children: React.ReactNode;
+  activeTab?: SelfProfileTab;
+}) {
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <ProfileHeader />
+      <ProfileHeader activeTab={activeTab} />
       <div className="flex-1 flex flex-col">{children}</div>
     </div>
   );
 }
 
-function ProfileHeader() {
+function ProfileHeader({ activeTab }: { activeTab: SelfProfileTab }) {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
+  const profileHref = wallet ? `/profile/${wallet}` : "/profile";
+  const agentHref = wallet ? `/profile/${wallet}?tab=agent` : "/profile";
+
   return (
     <header className="flex items-center justify-between px-4 sm:px-6 h-14 border-b border-card-border-subtle bg-panel">
       <div className="flex items-center gap-6">
-        <Link href="/" className="flex items-center gap-2 text-primary">
+        <Link href="/app" className="flex items-center gap-2 text-primary">
           <SealedMark size={24} title="Sealed" />
           <span className="text-[14px] tracking-tight" style={{ fontWeight: 510 }}>
             Sealed Agent
           </span>
         </Link>
         <nav className="flex items-center gap-0.5">
-          <NavLink href={wallet ? `/profile/${wallet}` : "/profile"} active>
-            Profile
-          </NavLink>
           <NavLink href="/app">
             Deals
+          </NavLink>
+          <NavLink href="/app?view=chat">
+            New Deal
+          </NavLink>
+          <NavLink href={agentHref} active={activeTab === "agent"}>
+            Agent
+          </NavLink>
+          <NavLink href={profileHref} active={activeTab !== "agent"}>
+            Profile
           </NavLink>
         </nav>
       </div>
@@ -724,7 +746,7 @@ function NavLink({
   return (
     <Link
       href={href}
-      className={`px-3 h-8 text-[13px] rounded-md transition-colors flex items-center ${
+      className={`px-3 h-8 text-[13px] rounded-md transition-colors flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
         active
           ? "bg-[rgba(255,255,255,0.05)] text-primary"
           : "text-muted hover:text-primary"
@@ -1064,6 +1086,308 @@ const STYLE_LABELS: Record<string, string> = {
   collaborative: "Collaborative",
 };
 
+type LlmMode = "own-key" | "x402";
+
+const LLM_PROVIDERS: { id: LLMProvider; label: string; hint: string }[] = [
+  { id: "anthropic", label: "Anthropic", hint: "sk-ant-..." },
+  { id: "openai", label: "OpenAI", hint: "sk-..." },
+  { id: "groq", label: "Groq", hint: "gsk_..." },
+  { id: "gemini", label: "Gemini", hint: "AIza..." },
+  { id: "openrouter", label: "OpenRouter", hint: "sk-or-..." },
+  { id: "deepseek", label: "DeepSeek", hint: "sk-..." },
+];
+
+function isLlmProvider(value: string | undefined): value is LLMProvider {
+  return Boolean(value && value in LLM_MODELS);
+}
+
+function AiProviderPanel({ wallet }: { wallet: string }) {
+  const { profile, updateProfile } = useProfileStore(wallet);
+  const [llmMode, setLlmMode] = useState<LlmMode>("own-key");
+  const [llmProvider, setLlmProvider] = useState<LLMProvider>("anthropic");
+  const [llmModel, setLlmModel] = useState("claude-sonnet-4-6");
+  const [llmKey, setLlmKey] = useState("");
+  const [showLlmKey, setShowLlmKey] = useState(false);
+  const [llmSaved, setLlmSaved] = useState(false);
+  const [x402Model, setX402Model] = useState(X402_MODELS[0].id);
+  const [x402TopUpAmount, setX402TopUpAmount] = useState(10);
+  const [topping, setTopping] = useState(false);
+
+  useEffect(() => {
+    if (profile?.llmConfig?.mode === "own-key") {
+      const provider = isLlmProvider(profile.llmConfig.provider)
+        ? profile.llmConfig.provider
+        : "anthropic";
+      setLlmMode("own-key");
+      setLlmProvider(provider);
+      setLlmModel(profile.llmConfig.model || LLM_MODELS[provider][0]);
+      setLlmKey(profile.llmConfig.apiKey);
+    } else if (profile?.llmConfig?.mode === "x402") {
+      setLlmMode("x402");
+      setX402Model(profile.llmConfig.model);
+    }
+  }, [profile]);
+
+  function saveLlmConfig() {
+    const existingBalance =
+      profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0;
+    updateProfile({
+      llmConfig:
+        llmMode === "x402"
+          ? { mode: "x402", balance: existingBalance, model: x402Model }
+          : {
+              mode: "own-key",
+              provider: llmProvider,
+              model: llmModel,
+              apiKey: llmKey.trim(),
+            },
+    });
+    setLlmSaved(true);
+    setTimeout(() => setLlmSaved(false), 2000);
+  }
+
+  async function handleX402TopUp() {
+    setTopping(true);
+    try {
+      const res = await fetch("/api/topup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet, usd: x402TopUpAmount }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const currentBalance =
+          profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0;
+        const newBalance =
+          currentBalance + (data.credits ?? x402TopUpAmount * 100);
+        updateProfile({
+          llmConfig: { mode: "x402", balance: newBalance, model: x402Model },
+        });
+      }
+    } catch {
+      // ignore
+    }
+    setTopping(false);
+  }
+
+  const selectedProvider = LLM_PROVIDERS.find((p) => p.id === llmProvider);
+
+  return (
+    <div className="surface-card rounded-xl p-5 space-y-4">
+      <div>
+        <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>
+          AI Provider
+        </p>
+        <p className="text-[12px] text-muted mt-0.5">
+          Choose the model your agent uses to structure deals and negotiate.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2" role="group" aria-label="AI provider mode">
+        {(["own-key", "x402"] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => setLlmMode(mode)}
+            className={`h-9 rounded-md text-[12px] border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
+              llmMode === mode
+                ? "border-accent bg-accent/10 text-accent"
+                : "border-card-border bg-surface text-muted hover:text-primary"
+            }`}
+            style={{ fontWeight: 510 }}
+          >
+            {mode === "own-key" ? "Own API Key" : "Buy via x402"}
+          </button>
+        ))}
+      </div>
+
+      {llmMode === "own-key" ? (
+        <>
+          <div className="space-y-1.5">
+            <p className="text-[12px] text-muted" style={{ fontWeight: 510 }}>
+              Provider
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {LLM_PROVIDERS.map((provider) => (
+                <button
+                  key={provider.id}
+                  type="button"
+                  onClick={() => {
+                    setLlmProvider(provider.id);
+                    setLlmModel(LLM_MODELS[provider.id][0]);
+                  }}
+                  className={`h-9 rounded-md text-[12px] border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
+                    llmProvider === provider.id
+                      ? "border-accent bg-accent/10 text-accent"
+                      : "border-card-border bg-surface text-muted hover:text-primary"
+                  }`}
+                  style={{ fontWeight: 510 }}
+                >
+                  {provider.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label
+              htmlFor="agent-llm-model"
+              className="text-[12px] text-muted"
+              style={{ fontWeight: 510 }}
+            >
+              Model
+            </label>
+            <select
+              id="agent-llm-model"
+              value={llmModel}
+              onChange={(e) => setLlmModel(e.target.value)}
+              className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60 transition-colors cursor-pointer"
+            >
+              {LLM_MODELS[llmProvider].map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label
+              htmlFor="agent-llm-key"
+              className="text-[12px] text-muted"
+              style={{ fontWeight: 510 }}
+            >
+              API Key
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="agent-llm-key"
+                type={showLlmKey ? "text" : "password"}
+                value={llmKey}
+                onChange={(e) => setLlmKey(e.target.value)}
+                placeholder={selectedProvider?.hint ?? "sk-..."}
+                autoComplete="off"
+                spellCheck={false}
+                className="flex-1 h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60 transition-colors font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowLlmKey(!showLlmKey)}
+                className="btn-ghost h-10 px-3 rounded-md text-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+              >
+                {showLlmKey ? "Hide" : "Show"}
+              </button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex items-center justify-between rounded-md bg-surface border border-card-border px-4 py-3">
+            <div>
+              <p className="text-[12px] text-muted" style={{ fontWeight: 510 }}>
+                Current balance
+              </p>
+              <p
+                className="text-[18px] text-primary tabular-nums"
+                style={{ fontWeight: 590 }}
+              >
+                $
+                {(
+                  (profile?.llmConfig?.mode === "x402"
+                    ? profile.llmConfig.balance
+                    : 0) / 100
+                ).toFixed(2)}
+              </p>
+            </div>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-accent"
+              aria-hidden="true"
+            >
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          </div>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="agent-x402-model"
+              className="text-[12px] text-muted"
+              style={{ fontWeight: 510 }}
+            >
+              Model
+            </label>
+            <select
+              id="agent-x402-model"
+              value={x402Model}
+              onChange={(e) => setX402Model(e.target.value)}
+              className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60 transition-colors cursor-pointer"
+            >
+              {X402_MODELS.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label} - ${model.costPer1k.toFixed(2)}/1k tokens
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <p className="text-[12px] text-muted" style={{ fontWeight: 510 }}>
+              Top up
+            </p>
+            <div className="grid grid-cols-4 gap-2">
+              {X402_TOP_UP_AMOUNTS.map((amount) => (
+                <button
+                  key={amount.usd}
+                  type="button"
+                  onClick={() => setX402TopUpAmount(amount.usd)}
+                  className={`h-9 rounded-md text-[12px] border relative transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
+                    x402TopUpAmount === amount.usd
+                      ? "border-accent bg-accent/10 text-accent"
+                      : "border-card-border bg-surface text-muted hover:text-primary"
+                  }`}
+                  style={{ fontWeight: 510 }}
+                >
+                  {amount.label}
+                  {"popular" in amount && amount.popular && (
+                    <span
+                      className="absolute -top-1.5 -right-1.5 text-[9px] bg-accent text-background rounded-full px-1"
+                      style={{ fontWeight: 590 }}
+                    >
+                      popular
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={handleX402TopUp}
+              disabled={topping}
+              className="btn-primary w-full h-9 rounded-md text-[12px] mt-2 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+            >
+              {topping ? "Processing..." : `Buy $${x402TopUpAmount} of tokens`}
+            </button>
+          </div>
+        </>
+      )}
+
+      <button
+        type="button"
+        onClick={saveLlmConfig}
+        disabled={llmMode === "own-key" && !llmKey.trim()}
+        className="btn-primary h-9 px-5 rounded-md text-[13px] disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+      >
+        {llmSaved ? "Saved" : "Save"}
+      </button>
+    </div>
+  );
+}
+
 function AgentSetupTab({ wallet }: { wallet: string }) {
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [limit, setLimit] = useState(1);
@@ -1154,6 +1478,8 @@ function AgentSetupTab({ wallet }: { wallet: string }) {
 
   return (
     <div className="space-y-4">
+      <AiProviderPanel wallet={wallet} />
+
       {/* Verification banner */}
       <div className={`rounded-xl px-4 py-3 flex items-center justify-between gap-4 ${
         limit === 10
@@ -1344,19 +1670,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 /* ── Settings Tab ─────────────────────────────────────────────────────────── */
 
 function SettingsTab({ wallet }: { wallet: string }) {
-  const { profile, updateProfile } = useProfileStore(wallet);
-
-  // AI provider state
-  const [llmMode, setLlmMode] = useState<"own-key" | "x402">("own-key");
-  const [llmProvider, setLlmProvider] = useState<"openai" | "anthropic" | "groq" | "gemini" | "openrouter" | "deepseek">("anthropic");
-  const [llmModel, setLlmModel] = useState("claude-sonnet-4-6");
-  const [llmKey, setLlmKey] = useState("");
-  const [showLlmKey, setShowLlmKey] = useState(false);
-  const [llmSaved, setLlmSaved] = useState(false);
-  const [x402Model, setX402Model] = useState(X402_MODELS[0].id);
-  const [x402TopUpAmount, setX402TopUpAmount] = useState(10);
-  const [topping, setTopping] = useState(false);
-
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
@@ -1371,67 +1684,6 @@ function SettingsTab({ wallet }: { wallet: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
-
-  useEffect(() => {
-    if (profile?.llmConfig?.mode === "own-key") {
-      setLlmMode("own-key");
-      setLlmProvider(profile.llmConfig.provider as typeof llmProvider);
-      setLlmModel(profile.llmConfig.model);
-      setLlmKey(profile.llmConfig.apiKey);
-    } else if (profile?.llmConfig?.mode === "x402") {
-      setLlmMode("x402");
-      setX402Model(profile.llmConfig.model);
-    }
-  }, [profile]);
-
-  const PROVIDERS: { id: typeof llmProvider; label: string; hint: string }[] = [
-    { id: "anthropic", label: "Anthropic", hint: "sk-ant-..." },
-    { id: "openai", label: "OpenAI", hint: "sk-..." },
-    { id: "groq", label: "Groq", hint: "gsk_..." },
-    { id: "gemini", label: "Gemini", hint: "AIza..." },
-    { id: "openrouter", label: "OpenRouter", hint: "sk-or-..." },
-    { id: "deepseek", label: "DeepSeek", hint: "sk-..." },
-  ];
-
-  const LLM_MODELS_MAP: Record<typeof llmProvider, string[]> = {
-    openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
-    anthropic: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
-    groq: ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"],
-    gemini: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
-    openrouter: ["anthropic/claude-sonnet-4", "openai/gpt-4o", "google/gemini-2.5-pro", "meta-llama/llama-3.3-70b-instruct"],
-    deepseek: ["deepseek-chat", "deepseek-reasoner"],
-  };
-
-  function saveLlmConfig() {
-    const existingBalance = profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0;
-    updateProfile({
-      llmConfig:
-        llmMode === "x402"
-          ? { mode: "x402", balance: existingBalance, model: x402Model }
-          : { mode: "own-key", provider: llmProvider, model: llmModel, apiKey: llmKey.trim() },
-    });
-    setLlmSaved(true);
-    setTimeout(() => setLlmSaved(false), 2000);
-  }
-
-  async function handleX402TopUp() {
-    setTopping(true);
-    try {
-      const res = await fetch("/api/topup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallet, usd: x402TopUpAmount }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const newBalance = (profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0) + (data.credits ?? x402TopUpAmount * 100);
-        updateProfile({ llmConfig: { mode: "x402", balance: newBalance, model: x402Model } });
-      }
-    } catch {
-      // ignore
-    }
-    setTopping(false);
-  }
 
   useEffect(() => {
     fetch(`/api/users/${wallet}/public?self=1`)
@@ -1490,154 +1742,6 @@ function SettingsTab({ wallet }: { wallet: string }) {
 
   return (
     <div className="space-y-6">
-      {/* AI Provider section */}
-      <div className="surface-card rounded-xl p-5 space-y-4">
-        <div>
-          <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>AI Provider</p>
-          <p className="text-[12px] text-muted mt-0.5">API key your Sealed agent uses for deal structuring, negotiation, and milestone verification.</p>
-        </div>
-
-        {/* Mode toggle */}
-        <div className="grid grid-cols-2 gap-2">
-          {(["own-key", "x402"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setLlmMode(m)}
-              className={`h-9 rounded-md text-[12px] border transition-colors ${
-                llmMode === m
-                  ? "border-accent bg-accent/10 text-accent"
-                  : "border-card-border bg-surface text-muted hover:text-primary"
-              }`}
-              style={{ fontWeight: 510 }}
-            >
-              {m === "own-key" ? "Own API Key" : "Buy via x402"}
-            </button>
-          ))}
-        </div>
-
-        {llmMode === "own-key" ? (
-          <>
-            <div className="space-y-1.5">
-              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Provider</label>
-              <div className="grid grid-cols-3 gap-2">
-                {PROVIDERS.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => { setLlmProvider(p.id); setLlmModel(LLM_MODELS_MAP[p.id][0]); }}
-                    className={`h-9 rounded-md text-[12px] border transition-colors ${
-                      llmProvider === p.id
-                        ? "border-accent bg-accent/10 text-accent"
-                        : "border-card-border bg-surface text-muted hover:text-primary"
-                    }`}
-                    style={{ fontWeight: 510 }}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Model</label>
-              <select
-                value={llmModel}
-                onChange={(e) => setLlmModel(e.target.value)}
-                className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
-              >
-                {LLM_MODELS_MAP[llmProvider].map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>API Key</label>
-              <div className="flex gap-2">
-                <input
-                  type={showLlmKey ? "text" : "password"}
-                  value={llmKey}
-                  onChange={(e) => setLlmKey(e.target.value)}
-                  placeholder={PROVIDERS.find((p) => p.id === llmProvider)?.hint ?? "sk-..."}
-                  className="flex-1 h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors font-mono"
-                />
-                <button
-                  onClick={() => setShowLlmKey(!showLlmKey)}
-                  className="btn-ghost h-10 px-3 rounded-md text-[12px]"
-                >
-                  {showLlmKey ? "Hide" : "Show"}
-                </button>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* x402 balance */}
-            <div className="flex items-center justify-between rounded-md bg-surface border border-card-border px-4 py-3">
-              <div>
-                <p className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Current balance</p>
-                <p className="text-[18px] text-primary tabular-nums" style={{ fontWeight: 590 }}>
-                  ${((profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0) / 100).toFixed(2)}
-                </p>
-              </div>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
-            </div>
-
-            {/* Model select */}
-            <div className="space-y-1.5">
-              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Model</label>
-              <select
-                value={x402Model}
-                onChange={(e) => setX402Model(e.target.value)}
-                className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
-              >
-                {X402_MODELS.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label} — ${m.costPer1k.toFixed(2)}/1k tokens</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Top-up amounts */}
-            <div className="space-y-1.5">
-              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Top up</label>
-              <div className="grid grid-cols-4 gap-2">
-                {X402_TOP_UP_AMOUNTS.map((a) => (
-                  <button
-                    key={a.usd}
-                    onClick={() => setX402TopUpAmount(a.usd)}
-                    className={`h-9 rounded-md text-[12px] border relative transition-colors ${
-                      x402TopUpAmount === a.usd
-                        ? "border-accent bg-accent/10 text-accent"
-                        : "border-card-border bg-surface text-muted hover:text-primary"
-                    }`}
-                    style={{ fontWeight: 510 }}
-                  >
-                    {a.label}
-                    {"popular" in a && a.popular && (
-                      <span className="absolute -top-1.5 -right-1.5 text-[9px] bg-accent text-background rounded-full px-1" style={{ fontWeight: 590 }}>popular</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-              <button
-                onClick={handleX402TopUp}
-                disabled={topping}
-                className="btn-primary w-full h-9 rounded-md text-[12px] mt-2 disabled:opacity-40"
-              >
-                {topping ? "Processing…" : `Buy $${x402TopUpAmount} of tokens`}
-              </button>
-            </div>
-          </>
-        )}
-
-        <button
-          onClick={saveLlmConfig}
-          disabled={llmMode === "own-key" && !llmKey.trim()}
-          className="btn-primary h-9 px-5 rounded-md text-[13px] disabled:opacity-40"
-        >
-          {llmSaved ? "Saved ✓" : "Save"}
-        </button>
-      </div>
-
       {/* Email section */}
       <div className="surface-card rounded-xl p-5 space-y-4">
         <div>

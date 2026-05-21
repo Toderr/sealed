@@ -109,3 +109,13 @@ Implemented UI flow:
 - Blocker (jika ada): Tidak ada.
 - Next-action untuk agent berikutnya: Browser smoke test `/app` deal board counterparty names, `/profile/<wallet>` self dashboard tabs termasuk `?tab=agent`, `/profile` redirect, dan public profile non-self identity display.
 - Do-Not tambahan: Jangan reintroduce `/app/agent` sebagai client page yang import Supabase langsung; gunakan profile Agent tab atau API route.
+
+### Update 2026-05-21 14:03 oleh Codex
+- Status: done
+- Yang dikerjakan: Header profile sekarang menampilkan Deals, New Deal, Agent, dan Profile sehingga menu tidak hilang saat masuk Profile/Agent; `/app?view=chat` membuka New Deal via URL state; AI Provider dipindahkan dari tab Settings ke Agent Setup dan CTA model profile diarahkan ke tab Agent; empty state New Deal chat diubah menjadi prompt composer terpusat dengan ikon, input besar, tombol send, dan suggestion pills.
+- Files modified: `app/package.json`, `app/package-lock.json`, `app/src/app/app/page.tsx`, `app/src/app/profile/SelfProfilePage.tsx`, `app/src/components/ChatInterface.tsx`, `handoffs/HANDOFF_2026-05-21_reviews_status.md`
+- Commit SHA: belum ada
+- Test status: `npx.cmd eslint src/app/app/page.tsx src/app/profile/SelfProfilePage.tsx src/components/ChatInterface.tsx` pass; `npm.cmd run build` pass; `http://localhost:3001/app` return 200 setelah dev server selesai compile.
+- Blocker (jika ada): Tidak ada.
+- Next-action untuk agent berikutnya: Browser smoke test `/app?view=chat`, header `/profile/<wallet>?tab=agent`, dan Settings tab untuk memastikan AI Provider hanya muncul di Agent Setup.
+- Do-Not tambahan: Jangan duplikasi AI Provider di Settings; profile/provider CTA harus mengarah ke Agent tab.
