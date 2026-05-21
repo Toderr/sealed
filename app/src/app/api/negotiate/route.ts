@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { runNegotiation } from "@/negotiation/engine";
 import { defaultSellerBoundaries } from "@/negotiation/types";
 import type { DealParams } from "@/lib/types";
-import type { NegotiationBoundaries } from "@/memory/types";
+import type { NegotiationBoundaries, NegotiationStyle } from "@/memory/types";
 import { dispatchLlm, getLlmOptsFromEnv } from "@/lib/llm-dispatch";
+import { supabase, table } from "@/lib/supabase";
 
 interface NegotiateRequest {
   proposalId: string;
@@ -34,6 +35,23 @@ export async function POST(request: NextRequest) {
         { error: "Missing required fields" },
         { status: 400 }
       );
+    }
+
+    // Apply buyer's saved persona to their negotiation boundaries
+    const { data: templates } = await supabase
+      .from(table("agent_templates"))
+      .select("style_index, price_floor, escalate_after")
+      .eq("wallet", body.buyerWallet)
+      .limit(1);
+    if (templates && templates.length > 0) {
+      const p = templates[0];
+      const styleMap: NegotiationStyle[] = ["conservative", "balanced", "balanced"];
+      body.buyerBoundaries = {
+        ...body.buyerBoundaries,
+        negotiationStyle: styleMap[p.style_index ?? 1],
+        maxPriceDecrease: 100 - (p.price_floor ?? 80),
+        maxNegotiationRounds: p.escalate_after ?? body.buyerBoundaries.maxNegotiationRounds,
+      };
     }
 
     // Buyer's agent uses their own LLM config (from client headers)

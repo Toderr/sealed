@@ -10,7 +10,7 @@ import { renderMarkdown } from "@/lib/render-markdown";
 
 type ContractType = "sale" | "service" | "partnership" | "rental" | "nda" | "other";
 
-interface PartialDeal {
+export interface PartialDeal {
   contract_type: ContractType | null;
   title: string | null;
   total_amount: number | null;
@@ -100,8 +100,10 @@ const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.
 
 export default function ChatInterface({
   onDealCreated,
+  onPartialDeal,
 }: {
   onDealCreated: (params: DealParams) => Promise<void>;
+  onPartialDeal?: (deal: PartialDeal | null) => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -190,9 +192,11 @@ export default function ChatInterface({
           }
           setWizardPrefill(Object.keys(prefill).length > 0 ? prefill : undefined);
           setWizardStartStep(getWizardStartStep(partial));
+          onPartialDeal?.(partial);
         } else {
           setWizardPrefill(undefined);
           setWizardStartStep(undefined);
+          onPartialDeal?.(null);
         }
         setShowWizard(true);
       }

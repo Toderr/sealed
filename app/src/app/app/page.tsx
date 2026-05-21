@@ -3,11 +3,11 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import ChatInterface from "@/components/ChatInterface";
+import ChatInterface, { PartialDeal } from "@/components/ChatInterface";
 import SettingsModal from "@/components/SettingsModal";
 import { useToast } from "@/components/Toast";
 import { useProfileStore } from "@/lib/profile-store";
-import { DealParams } from "@/lib/types";
+import { DealParams, formatUsdc } from "@/lib/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
@@ -34,6 +34,7 @@ interface SupabaseDeal {
 export default function Home() {
   const [view, setView] = useState<View>("deals");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [livePartial, setLivePartial] = useState<PartialDeal | null>(null);
 
   const { publicKey } = useWallet();
   const { profile, loaded: profileLoaded } = useProfileStore(
@@ -119,7 +120,15 @@ export default function Home() {
 
       <main className="flex-1 overflow-hidden" style={{ position: "relative", zIndex: 1 }}>
         {view === "chat" ? (
-          <ChatInterface onDealCreated={handleDealDrafted} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", height: "100%", overflow: "hidden" }}>
+            <div style={{ overflow: "hidden", borderRight: "1px solid var(--card-border-subtle)" }}>
+              <ChatInterface
+                onDealCreated={handleDealDrafted}
+                onPartialDeal={setLivePartial}
+              />
+            </div>
+            <LiveDealSheet partial={livePartial} />
+          </div>
         ) : (
           <DealsBoldBoard />
         )}
@@ -599,6 +608,146 @@ function StatusPill({ tone, children }: { tone: string; children: React.ReactNod
     }}>
       {children}
     </span>
+  );
+}
+
+/* ── Live Deal Sheet ── */
+function LiveDealSheet({ partial }: { partial: PartialDeal | null }) {
+  const CONTRACT_TYPE_LABELS: Record<string, string> = {
+    sale: "Sale", service: "Service", partnership: "Partnership",
+    rental: "Rental", nda: "NDA", other: "Other",
+  };
+
+  const hasAny = partial && (partial.title || partial.total_amount || partial.milestones?.length);
+
+  return (
+    <aside style={{
+      background: "var(--panel)",
+      overflowY: "auto",
+      padding: "28px 24px 32px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 20,
+    }}>
+      <div>
+        <p style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--accent)", margin: 0, fontWeight: 510 }}>
+          Live deal sheet
+        </p>
+        <p style={{ fontSize: 12, color: "var(--muted)", margin: "6px 0 0" }}>
+          Updates as the AI extracts terms.
+        </p>
+      </div>
+
+      {!hasAny ? (
+        <div style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 10,
+          padding: "40px 0",
+          color: "var(--subtle)",
+          textAlign: "center",
+        }}>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35 }}>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <polyline points="10 9 9 9 8 9" />
+          </svg>
+          <span style={{ fontSize: 12 }}>Describe your deal on the left to see a live summary here.</span>
+        </div>
+      ) : (
+        <>
+          {/* Contract type */}
+          {partial.contract_type && (
+            <SheetRow label="Contract type">
+              <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510 }}>
+                {CONTRACT_TYPE_LABELS[partial.contract_type] ?? partial.contract_type}
+              </span>
+            </SheetRow>
+          )}
+
+          {/* Title */}
+          {partial.title && (
+            <SheetRow label="Title">
+              <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510 }}>{partial.title}</span>
+            </SheetRow>
+          )}
+
+          {/* Amount */}
+          {partial.total_amount != null && (
+            <SheetRow label="Total amount">
+              <span style={{ fontSize: 20, fontWeight: 590, color: "var(--primary)", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums", fontFamily: "ui-monospace, monospace" }}>
+                {formatUsdc(partial.total_amount)}
+              </span>
+              <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 4 }}>USDC</span>
+            </SheetRow>
+          )}
+
+          {/* Milestones */}
+          {partial.milestones && partial.milestones.length > 0 && (
+            <SheetRow label={`Milestones (${partial.milestones.length})`}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
+                {partial.milestones.map((m, i) => (
+                  <div key={i} style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    padding: "8px 10px",
+                    borderRadius: 7,
+                    background: "rgba(255,255,255,0.025)",
+                    border: "1px solid var(--card-border-subtle)",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                      <span style={{
+                        width: 18, height: 18, borderRadius: "50%",
+                        background: "rgba(113,112,255,0.12)",
+                        color: "var(--accent)",
+                        fontSize: 10, fontWeight: 590,
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        flexShrink: 0,
+                      }}>{i + 1}</span>
+                      <span style={{ fontSize: 12, color: "var(--foreground)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {m.description}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: 12, fontFamily: "ui-monospace, monospace", color: "var(--muted)", flexShrink: 0 }}>
+                      ${m.amount.toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </SheetRow>
+          )}
+
+          {/* Remaining fields hint */}
+          <div style={{
+            padding: "12px 14px",
+            borderRadius: 8,
+            background: "rgba(113,112,255,0.04)",
+            border: "1px solid rgba(113,112,255,0.12)",
+            fontSize: 12,
+            color: "var(--muted)",
+            lineHeight: 1.55,
+          }}>
+            Keep chatting to refine the terms. The AI will ask for anything still missing.
+          </div>
+        </>
+      )}
+    </aside>
+  );
+}
+
+function SheetRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 510 }}>{label}</span>
+      <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 4 }}>{children}</div>
+    </div>
   );
 }
 
