@@ -77,7 +77,7 @@ export default function InvitePage() {
   }, [payload]);
 
   useEffect(() => {
-    if (!inviterWallet || isShortWallet(inviterWallet)) return;
+    if (!isUsableWallet(inviterWallet)) return;
 
     let cancelled = false;
 
@@ -151,12 +151,12 @@ export default function InvitePage() {
     const sellerWallet = publicKey.toBase58();
     let buyerWallet = inviterWallet;
 
-    if (isShortWallet(buyerWallet)) {
+    if (!isUsableWallet(buyerWallet)) {
       buyerWallet = await resolveInviterWallet(payload);
       setResolvedInviterWallet(buyerWallet);
     }
 
-    if (isShortWallet(buyerWallet)) {
+    if (!isUsableWallet(buyerWallet)) {
       setAccepted(false);
       alert("This invite link was generated with an incomplete inviter wallet. Ask the inviter to copy a fresh link.");
       return;
@@ -629,6 +629,10 @@ function formatWallet(wallet: string) {
   return `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
 }
 
+function isUsableWallet(wallet: string) {
+  return wallet.length >= 32 && !isShortWallet(wallet);
+}
+
 function createInviteHandle(name: string, wallet: string) {
   const base = name
     .trim()
@@ -641,7 +645,7 @@ function createInviteHandle(name: string, wallet: string) {
 }
 
 async function resolveInviterWallet(payload: InvitePayload) {
-  if (!isShortWallet(payload.inviterWallet)) return payload.inviterWallet;
+  if (isUsableWallet(payload.inviterWallet)) return payload.inviterWallet;
 
   const res = await fetch(`/api/deals/${encodeURIComponent(payload.dealId)}`);
   if (!res.ok) return payload.inviterWallet;

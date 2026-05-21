@@ -178,12 +178,12 @@ export interface SealedUser {
 }
 
 export interface PublicProfile {
-  handle: string;
+  handle: string | null;
   deals_total: number;
   deals_successful: number;
   avg_rating: number;
   is_verified: boolean;
-  member_since: string;
+  member_since: string | null;
   display_name: string | null;
   bio: string | null;
   avatar_url: string | null;

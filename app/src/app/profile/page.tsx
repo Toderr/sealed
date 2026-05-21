@@ -1645,7 +1645,7 @@ function FriendsTab({ wallet }: { wallet: string }) {
   const [incoming, setIncoming] = useState<FriendEntry[]>([]);
   const [outgoing, setOutgoing] = useState<FriendEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [addWallet, setAddWallet] = useState("");
+  const [addUsername, setAddUsername] = useState("");
   const [adding, setAdding] = useState(false);
   const [addMsg, setAddMsg] = useState<string | null>(null);
 
@@ -1664,20 +1664,21 @@ function FriendsTab({ wallet }: { wallet: string }) {
 
   useEffect(() => { loadFriends(); }, [wallet]);
 
-  async function handleAdd() {
-    const fw = addWallet.trim();
-    if (!fw) return;
+  async function handleAdd(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const friendHandle = addUsername.trim().replace(/^@/, "");
+    if (!friendHandle) return;
     setAdding(true);
     setAddMsg(null);
     const res = await fetch("/api/friends", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-wallet": wallet },
-      body: JSON.stringify({ friendWallet: fw }),
+      body: JSON.stringify({ friendHandle }),
     });
     const data = await res.json();
     if (res.ok) {
       setAddMsg(data.status === "accepted" ? "Now friends!" : "Request sent!");
-      setAddWallet("");
+      setAddUsername("");
       loadFriends();
     } else {
       setAddMsg(data.error ?? "Failed");
@@ -1715,27 +1716,32 @@ function FriendsTab({ wallet }: { wallet: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Add by wallet */}
+      {/* Add by username */}
       <div className="surface-card rounded-xl p-5 space-y-3">
         <div>
           <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>Add a friend</p>
-          <p className="text-[12px] text-muted mt-0.5">Enter their Solana wallet address.</p>
+          <p className="text-[12px] text-muted mt-0.5">Enter their Sealed username.</p>
         </div>
-        <div className="flex gap-2">
+        <form onSubmit={handleAdd} className="flex gap-2">
+          <label htmlFor="friend-username" className="sr-only">Friend username</label>
           <input
-            value={addWallet}
-            onChange={(e) => setAddWallet(e.target.value)}
-            placeholder="Wallet address…"
-            className="flex-1 h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary font-mono outline-none focus:border-accent transition-colors"
+            id="friend-username"
+            value={addUsername}
+            onChange={(e) => setAddUsername(e.target.value)}
+            type="text"
+            autoComplete="username"
+            spellCheck={false}
+            placeholder="@username"
+            className="flex-1 h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60 transition-colors"
           />
           <button
-            onClick={handleAdd}
-            disabled={adding || !addWallet.trim()}
-            className="btn-primary h-10 px-5 rounded-md text-[13px] disabled:opacity-40"
+            type="submit"
+            disabled={adding || !addUsername.trim()}
+            className="btn-primary h-10 px-5 rounded-md text-[13px] disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {adding ? "Sending…" : "Send request"}
           </button>
-        </div>
+        </form>
         {addMsg && (
           <p className={`text-[12px] ${addMsg.includes("sent") || addMsg.includes("friends") ? "text-success" : "text-danger"}`}>
             {addMsg}

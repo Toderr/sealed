@@ -8,6 +8,11 @@ type ProfileDeal = {
   milestones: Array<{ status?: string }> | null;
 };
 
+type SupabaseErrorLike = {
+  code?: string;
+  message?: string;
+};
+
 function isSuccessfulDeal(deal: ProfileDeal) {
   return (
     deal.status === "completed" ||
@@ -55,20 +60,50 @@ async function getReputationFallback(wallet: string) {
   };
 }
 
+function missingSchemaColumn(error: SupabaseErrorLike | null) {
+  const message = error?.message ?? "";
+  const match = message.match(/'([^']+)' column/);
+  return message.includes("schema cache") ? match?.[1] ?? null : null;
+}
+
+async function upsertUserRecord(payload: Record<string, unknown>) {
+  const nextPayload = Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== undefined)
+  );
+
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const { error } = await supabase
+      .from(table("users"))
+      .upsert(nextPayload, { onConflict: "wallet", ignoreDuplicates: false });
+
+    if (!error) return { ok: true as const };
+
+    const missingColumn = missingSchemaColumn(error);
+    if (
+      missingColumn &&
+      missingColumn !== "wallet" &&
+      missingColumn !== "handle" &&
+      Object.prototype.hasOwnProperty.call(nextPayload, missingColumn)
+    ) {
+      delete nextPayload[missingColumn];
+      continue;
+    }
+
+    if (error.message?.includes("unique") || error.code === "23505") {
+      return { ok: false as const, error: "Handle already taken" };
+    }
+    return { ok: false as const, error: error.message };
+  }
+
+  return { ok: false as const, error: "Unable to save profile" };
+}
+
 export async function upsertUser(
   wallet: string,
   handle: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { error } = await supabase
-    .from(table("users"))
-    .upsert({ wallet, handle }, { onConflict: "wallet", ignoreDuplicates: false });
-
-  if (error) {
-    if (error.message?.includes("unique") || error.code === "23505") {
-      return { ok: false, error: "Handle already taken" };
-    }
-    return { ok: false, error: error.message };
-  }
+  const result = await upsertUserRecord({ wallet, handle });
+  if (!result.ok) return result;
 
   // Ensure reputation row exists
   await supabase
@@ -92,10 +127,13 @@ export async function getUser(wallet: string): Promise<SealedUser | null> {
 export async function getUserByHandle(
   handle: string
 ): Promise<SealedUser | null> {
+  const normalized = handle.trim().replace(/^@/, "");
+  if (!normalized) return null;
+
   const { data, error } = await supabase
     .from(table("users"))
     .select("*")
-    .eq("handle", handle)
+    .ilike("handle", normalized)
     .single();
 
   if (error || !data) return null;
@@ -105,29 +143,29 @@ export async function getUserByHandle(
 export async function getPublicProfile(
   wallet: string
 ): Promise<PublicProfile | null> {
-  const user = await getUser(wallet);
-  if (!user) return null;
-
-  const rep = await getReputation(wallet);
-  const fallback = await getReputationFallback(wallet);
+  const [user, rep, fallback] = await Promise.all([
+    getUser(wallet),
+    getReputation(wallet),
+    getReputationFallback(wallet),
+  ]);
 
   return {
-    handle: user.handle,
+    handle: user?.handle ?? null,
     deals_total: Math.max(rep?.deals_total ?? 0, fallback.deals_total),
     deals_successful: Math.max(rep?.deals_successful ?? 0, fallback.deals_successful),
     avg_rating: fallback.avg_rating > 0 ? fallback.avg_rating : rep?.avg_rating ?? 0,
-    is_verified: !!user.verified_at,
-    member_since: user.member_since,
-    display_name: user.display_name ?? null,
-    bio: user.bio ?? null,
-    avatar_url: user.avatar_url ?? null,
-    website: user.website ?? null,
-    twitter_handle: user.twitter_handle ?? null,
-    linkedin_url: user.linkedin_url ?? null,
-    instagram_handle: user.instagram_handle ?? null,
-    telegram_handle: user.telegram_handle ?? null,
-    company_file_url: user.company_file_url ?? null,
-    company_file_name: user.company_file_name ?? null,
+    is_verified: !!user?.verified_at,
+    member_since: user?.member_since ?? null,
+    display_name: user?.display_name ?? null,
+    bio: user?.bio ?? null,
+    avatar_url: user?.avatar_url ?? null,
+    website: user?.website ?? null,
+    twitter_handle: user?.twitter_handle ?? null,
+    linkedin_url: user?.linkedin_url ?? null,
+    instagram_handle: user?.instagram_handle ?? null,
+    telegram_handle: user?.telegram_handle ?? null,
+    company_file_url: user?.company_file_url ?? null,
+    company_file_name: user?.company_file_name ?? null,
   };
 }
 
@@ -147,19 +185,8 @@ export async function updateUserProfile(
     company_file_name?: string;
   }
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { error } = await supabase
-    .from(table("users"))
-    .upsert(
-      { wallet, ...fields },
-      { onConflict: "wallet", ignoreDuplicates: false }
-    );
-
-  if (error) {
-    if (error.message?.includes("unique") || error.code === "23505") {
-      return { ok: false, error: "Handle already taken" };
-    }
-    return { ok: false, error: error.message };
-  }
+  const result = await upsertUserRecord({ wallet, ...fields });
+  if (!result.ok) return result;
 
   await supabase
     .from(table("reputation"))

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
-import { getPublicProfile } from "@/lib/sealed-users";
+import { getPublicProfile, getUserByHandle } from "@/lib/sealed-users";
 
 type FriendRow = {
   id: string;
@@ -46,15 +46,33 @@ export async function POST(req: NextRequest) {
   const wallet = req.headers.get("x-wallet");
   if (!wallet) return Response.json({ error: "Missing x-wallet" }, { status: 401 });
 
-  const { friendWallet } = (await req.json()) as { friendWallet?: string };
-  if (!friendWallet) return Response.json({ error: "friendWallet required" }, { status: 400 });
-  if (friendWallet === wallet) return Response.json({ error: "Cannot add yourself" }, { status: 400 });
+  const { friendWallet, friendHandle } = (await req.json()) as {
+    friendWallet?: string;
+    friendHandle?: string;
+  };
+
+  let resolvedFriendWallet = friendWallet?.trim();
+  if (!resolvedFriendWallet && friendHandle?.trim()) {
+    const handle = friendHandle.trim().replace(/^@/, "");
+    const friend = await getUserByHandle(handle);
+    if (!friend) {
+      return Response.json({ error: "Username not found" }, { status: 404 });
+    }
+    resolvedFriendWallet = friend.wallet;
+  }
+
+  if (!resolvedFriendWallet) {
+    return Response.json({ error: "Username required" }, { status: 400 });
+  }
+
+  const friendWalletValue = resolvedFriendWallet;
+  if (friendWalletValue === wallet) return Response.json({ error: "Cannot add yourself" }, { status: 400 });
 
   // If they already sent us a request, auto-accept it
   const { data: reverse } = await supabase
     .from(table("friends"))
     .select("id, status")
-    .eq("wallet", friendWallet)
+    .eq("wallet", friendWalletValue)
     .eq("friend_wallet", wallet)
     .maybeSingle();
 
@@ -72,7 +90,7 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabase
     .from(table("friends"))
     .upsert(
-      { wallet, friend_wallet: friendWallet, status: "pending" },
+      { wallet, friend_wallet: friendWalletValue, status: "pending" },
       { onConflict: "wallet,friend_wallet" }
     )
     .select()
