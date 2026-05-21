@@ -7,6 +7,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
 import type { PublicProfile } from "@/lib/types";
+import { SelfProfilePage } from "../SelfProfilePage";
 
 type FullProfile = PublicProfile & {
   bio?: string;
@@ -35,14 +36,15 @@ export default function PublicProfilePage() {
   const [tab, setTab] = useState<Tab>("timeline");
 
   const wallet = profileWallet;
+  const isSelf = Boolean(wallet && myWallet === wallet);
 
   useEffect(() => {
-    if (!wallet) return;
+    if (!wallet || isSelf) return;
     fetch(`/api/users/${wallet}/public`)
       .then((r) => r.json())
       .then((data: FullProfile) => { setProfile(data); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [wallet]);
+  }, [wallet, isSelf]);
 
   useEffect(() => {
     if (!myWallet || !wallet || myWallet === wallet) return;
@@ -82,12 +84,20 @@ export default function PublicProfilePage() {
     setFriendLoading(false);
   }
 
-  const shortWallet = wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-6)}` : "";
-  const initials = profile?.handle
-    ? profile.handle.slice(0, 2).toUpperCase()
-    : shortWallet.slice(0, 2).toUpperCase();
+  if (isSelf) return <SelfProfilePage />;
 
-  const isSelf = myWallet === wallet;
+  const profileDisplayName =
+    profile?.display_name?.trim() || (profile?.handle ? `@${profile.handle}` : "Sealed user");
+  const profileUsername = profile?.handle ? `@${profile.handle}` : null;
+  const initialsSource = profile?.display_name?.trim() || profile?.handle || "SU";
+  const initials = initialsSource
+    .replace(/^@/, "")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--background)", display: "flex", flexDirection: "column", position: "relative" }}>
@@ -132,7 +142,7 @@ export default function PublicProfilePage() {
       ) : !profile ? (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, textAlign: "center" }}>
           <p style={{ fontSize: 16, color: "var(--primary)", fontWeight: 590 }}>Profile not found</p>
-          <p style={{ fontSize: 13, color: "var(--muted)" }}>{shortWallet}</p>
+          <p style={{ fontSize: 13, color: "var(--muted)" }}>This Sealed profile is not available yet.</p>
           <Link href="/app" className="btn-ghost" style={{ height: 32, padding: "0 14px", borderRadius: 6, fontSize: 12, marginTop: 8, display: "inline-flex", alignItems: "center", textDecoration: "none" }}>← Back</Link>
         </div>
       ) : (
@@ -176,7 +186,7 @@ export default function PublicProfilePage() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <p style={{ fontSize: 18, fontWeight: 590, color: "var(--primary)", margin: 0, letterSpacing: "-0.012em" }}>
-                        {profile.handle ? `@${profile.handle}` : shortWallet}
+                        {profileDisplayName}
                       </p>
                       {profile.is_verified && (
                         <span style={{
@@ -192,9 +202,11 @@ export default function PublicProfilePage() {
                         </span>
                       )}
                     </div>
-                    <p style={{ fontSize: 12, color: "var(--muted)", margin: "2px 0 0" }}>
-                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{shortWallet}</span>
-                    </p>
+                    {profileUsername && profile.display_name && (
+                      <p style={{ fontSize: 12, color: "var(--muted)", margin: "2px 0 0" }}>
+                        {profileUsername}
+                      </p>
+                    )}
                     {profile.bio && (
                       <p style={{ fontSize: 12, color: "var(--foreground)", margin: "10px 0 0", lineHeight: 1.55 }}>
                         {profile.bio}

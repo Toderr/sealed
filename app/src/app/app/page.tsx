@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ChatInterface, { PartialDeal } from "@/components/ChatInterface";
 import SettingsModal from "@/components/SettingsModal";
 import { useToast } from "@/components/Toast";
 import { useProfileStore } from "@/lib/profile-store";
-import { DealParams, formatUsdc } from "@/lib/types";
+import { formatUsdc, type DealParams, type PublicProfile } from "@/lib/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
@@ -31,6 +31,8 @@ interface SupabaseDeal {
   created_at?: string;
 }
 
+type CounterpartyProfile = Pick<PublicProfile, "handle" | "display_name" | "avatar_url">;
+
 function isMilestoneDone(status: string | undefined) {
   const normalized = status?.toLowerCase();
   return normalized === "released" || normalized === "completed";
@@ -53,6 +55,47 @@ function dealHref(deal: SupabaseDeal) {
     return `/negotiate/${deal.deal_id}`;
   }
   return `/deals/${deal.deal_id}`;
+}
+
+function getCounterpartyWallet(deal: SupabaseDeal, wallet: string | null) {
+  if (!wallet) return null;
+  return deal.buyer_wallet === wallet ? deal.seller_wallet : deal.buyer_wallet;
+}
+
+function counterpartyDisplayName(profile?: CounterpartyProfile | null) {
+  const displayName = profile?.display_name?.trim();
+  if (displayName) return displayName;
+  if (profile?.handle) return `@${profile.handle}`;
+  return "Counterparty joined";
+}
+
+function counterpartyInitials(profile?: CounterpartyProfile | null) {
+  const source = profile?.display_name?.trim() || profile?.handle || "CP";
+  return source
+    .replace(/^@/, "")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+async function fetchCounterpartyProfileMap(wallets: string[]) {
+  const entries = await Promise.all(
+    wallets.map(async (profileWallet) => {
+      try {
+        const res = await fetch(`/api/users/${encodeURIComponent(profileWallet)}/public`);
+        if (!res.ok) return null;
+        const profile = (await res.json()) as CounterpartyProfile;
+        return [profileWallet, profile] as const;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return Object.fromEntries(entries.filter(Boolean) as Array<readonly [string, CounterpartyProfile]>);
 }
 
 export default function Home() {
@@ -182,12 +225,12 @@ function AppHeader({
   const initials = profile?.name
     ? profile.name.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase()
     : null;
-  const shortWallet = wallet ? `${wallet.slice(0, 4)}…${wallet.slice(-4)}` : null;
+  const profileLabel = profile?.username ? `@${profile.username}` : profile?.name ?? "Profile";
 
   const tabs: { id: string; label: string; href?: string; view?: View }[] = [
     { id: "deals", label: "Deals", view: "deals" },
     { id: "new", label: "New Deal", view: "chat" },
-    { id: "agent", label: "Agent", href: "/app/agent" },
+    { id: "agent", label: "Agent", href: wallet ? `/profile/${wallet}?tab=agent` : "/profile" },
     { id: "profile", label: "Profile", href: wallet ? `/profile/${wallet}` : "/profile" },
   ];
 
@@ -291,8 +334,8 @@ function AppHeader({
             }}>
               {initials ?? "?"}
             </div>
-            <span style={{ fontSize: 12, fontFamily: "ui-monospace, monospace", color: "var(--muted)" }}>
-              {shortWallet ?? "—"}
+            <span style={{ fontSize: 12, color: "var(--muted)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {profileLabel}
             </span>
           </div>
         )}
@@ -310,6 +353,17 @@ function DealsBoldBoard() {
   const [deals, setDeals] = useState<SupabaseDeal[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [counterpartyProfiles, setCounterpartyProfiles] = useState<Record<string, CounterpartyProfile>>({});
+
+  const counterpartyWallets = useMemo(() => {
+    return Array.from(
+      new Set(
+        deals
+          .map((deal) => getCounterpartyWallet(deal, wallet))
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+  }, [deals, wallet]);
 
   useEffect(() => {
     if (!wallet) {
@@ -327,6 +381,23 @@ function DealsBoldBoard() {
       .catch(() => { setDeals(readSessionDeals(wallet)); })
       .finally(() => setLoading(false));
   }, [wallet]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (counterpartyWallets.length === 0) {
+      setCounterpartyProfiles({}); // eslint-disable-line react-hooks/set-state-in-effect
+      return;
+    }
+
+    fetchCounterpartyProfileMap(counterpartyWallets).then((profiles) => {
+      if (!cancelled) setCounterpartyProfiles(profiles);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [counterpartyWallets]);
 
   const filtered = deals.filter((d) =>
     !search ||
@@ -427,6 +498,11 @@ function DealsBoldBoard() {
                       youAction={lane.id === "you"}
                       myWallet={wallet}
                       href={dealHref(d)}
+                      counterpartyProfile={
+                        getCounterpartyWallet(d, wallet)
+                          ? counterpartyProfiles[getCounterpartyWallet(d, wallet) as string]
+                          : null
+                      }
                     />
                   ))}
                   {lane.deals.length === 0 && (
@@ -458,19 +534,21 @@ function DealCardBold({
   youAction,
   myWallet,
   href,
+  counterpartyProfile,
 }: {
   deal: SupabaseDeal;
   laneColor: string;
   youAction: boolean;
   myWallet: string | null;
   href: string;
+  counterpartyProfile?: CounterpartyProfile | null;
 }) {
   const isBuyer = deal.buyer_wallet === myWallet;
-  const counterparty = isBuyer ? deal.seller_wallet : deal.buyer_wallet;
-  const shortCp = counterparty
-    ? `${counterparty.slice(0, 4)}…${counterparty.slice(-4)}`
-    : "Awaiting";
-  const cpInitials = counterparty ? counterparty.slice(0, 2).toUpperCase() : "?";
+  const counterparty = getCounterpartyWallet(deal, myWallet);
+  const counterpartyName = counterparty
+    ? counterpartyDisplayName(counterpartyProfile)
+    : "Awaiting counterparty";
+  const cpInitials = counterparty ? counterpartyInitials(counterpartyProfile) : "?";
 
   const totalMs = (deal.milestones ?? []).length;
   const doneMs = (deal.milestones ?? []).filter((m) => isMilestoneDone(m.status)).length;
@@ -479,7 +557,7 @@ function DealCardBold({
   const displayStatus = inferDealStatus(deal);
 
   const statusLabel: Record<string, string> = {
-    draft:          "Awaiting counterparty",
+    draft:          counterparty ? "Counterparty joined" : "Awaiting counterparty",
     "seller-ready": "Counterparty reviewing",
     "seller-agreed":"Ready to fund",
     proposed:       "Ready to sign",
@@ -559,7 +637,7 @@ function DealCardBold({
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12, color: "var(--foreground)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {shortCp}
+            {counterpartyName}
           </div>
           <div style={{ fontSize: 11, color: "var(--muted)" }}>
             You as <span style={{ color: "var(--foreground)" }}>{isBuyer ? "buyer" : "seller"}</span>

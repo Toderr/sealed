@@ -1,0 +1,2017 @@
+"use client";
+
+import { Suspense, useMemo, useState, useEffect } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useWallet } from "@solana/wallet-adapter-react";
+import dynamic from "next/dynamic";
+import { SealedMark } from "@/components/SealedLogo";
+import { useProfileStore, encodeInvite, X402_MODELS, X402_TOP_UP_AMOUNTS } from "@/lib/profile-store";
+import { useDealsStore } from "@/lib/deals-store";
+import type { Deal, AgentTemplate, NotificationPrefs, PublicProfile } from "@/lib/types";
+
+const WalletMultiButton = dynamic(
+  () =>
+    import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
+  { ssr: false }
+);
+
+type ProfileMilestone = {
+  description: string;
+  amount: number;
+  status?: string;
+};
+
+type MirrorDeal = {
+  deal_id: string;
+  buyer_wallet: string;
+  seller_wallet: string | null;
+  title: string;
+  description?: string | null;
+  total_amount_usdc: number | string;
+  milestones: ProfileMilestone[];
+  status: string;
+  created_at?: string;
+};
+
+type ProfileDealRowData = {
+  dealId: string;
+  title: string;
+  description: string;
+  status: string;
+  totalAmountUsdc: number;
+  milestones: ProfileMilestone[];
+  createdAt?: string;
+  buyerWallet?: string;
+  sellerWallet?: string | null;
+};
+
+type CounterpartyProfile = Pick<PublicProfile, "handle" | "display_name" | "avatar_url">;
+
+type DealFilter = "all" | "active" | "sealed" | "needs_invite";
+type DealSort = "newest" | "oldest" | "value_desc" | "value_asc" | "status";
+
+const DEAL_FILTERS: { value: DealFilter; label: string }[] = [
+  { value: "all", label: "All deals" },
+  { value: "active", label: "Active" },
+  { value: "sealed", label: "Sealed" },
+  { value: "needs_invite", label: "Needs invite" },
+];
+
+const DEAL_SORTS: { value: DealSort; label: string }[] = [
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "value_desc", label: "Highest value" },
+  { value: "value_asc", label: "Lowest value" },
+  { value: "status", label: "Status" },
+];
+
+function isDoneMilestone(status: string | undefined) {
+  const normalized = status?.toLowerCase();
+  return normalized === "released" || normalized === "completed";
+}
+
+function profileDealStatusKey(deal: ProfileDealRowData) {
+  if (deal.milestones.length > 0 && deal.milestones.every((m) => isDoneMilestone(m.status))) {
+    return "completed";
+  }
+
+  const raw = deal.status.toLowerCase();
+  if (raw === "created") return "draft";
+  if (raw === "inprogress") return "in_progress";
+  return raw;
+}
+
+function isProfileDealSealed(deal: ProfileDealRowData) {
+  return profileDealStatusKey(deal) === "completed";
+}
+
+function isProfileDealActive(deal: ProfileDealRowData) {
+  const status = profileDealStatusKey(deal);
+  return status !== "completed" && status !== "refunded" && status !== "disputed";
+}
+
+function fromLocalDeal(deal: Deal): ProfileDealRowData {
+  return {
+    dealId: deal.dealId,
+    title: deal.dealId.replace(/-/g, " "),
+    description: "",
+    status: deal.status,
+    totalAmountUsdc: deal.totalAmount / 1_000_000,
+    buyerWallet: deal.buyer.toBase58(),
+    sellerWallet: deal.seller.toBase58(),
+    milestones: deal.milestones.map((m) => ({
+      description: m.description,
+      amount: m.amount / 1_000_000,
+      status: m.status,
+    })),
+    createdAt: deal.createdAt ? new Date(deal.createdAt * 1000).toISOString() : undefined,
+  };
+}
+
+function fromMirrorDeal(deal: MirrorDeal): ProfileDealRowData {
+  return {
+    dealId: deal.deal_id,
+    title: deal.title || deal.deal_id.replace(/-/g, " "),
+    description: deal.description ?? "",
+    status: deal.status,
+    totalAmountUsdc: Number(deal.total_amount_usdc) || 0,
+    buyerWallet: deal.buyer_wallet,
+    sellerWallet: deal.seller_wallet,
+    milestones: (deal.milestones ?? []).map((m) => ({
+      description: m.description,
+      amount: Number(m.amount) || 0,
+      status: m.status,
+    })),
+    createdAt: deal.created_at,
+  };
+}
+
+function readSessionProfileDeals(wallet: string): ProfileDealRowData[] {
+  const deals: ProfileDealRowData[] = [];
+  try {
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (!key?.startsWith("deal:")) continue;
+      const raw = sessionStorage.getItem(key);
+      if (!raw) continue;
+      const deal = JSON.parse(raw) as MirrorDeal;
+      if (deal.buyer_wallet === wallet || deal.seller_wallet === wallet) {
+        deals.push(fromMirrorDeal(deal));
+      }
+    }
+  } catch {}
+  return deals;
+}
+
+function mergeProfileDeals(...sources: ProfileDealRowData[][]) {
+  const map = new Map<string, ProfileDealRowData>();
+  for (const source of sources) {
+    for (const deal of source) map.set(deal.dealId, deal);
+  }
+  return Array.from(map.values()).sort((a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return tb - ta;
+  });
+}
+
+function profileDealTimestamp(deal: ProfileDealRowData) {
+  if (!deal.createdAt) return 0;
+  const timestamp = new Date(deal.createdAt).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function profileDealStatusRank(deal: ProfileDealRowData) {
+  const order: Record<string, number> = {
+    draft: 0,
+    "seller-ready": 1,
+    "seller-agreed": 2,
+    proposed: 3,
+    funded: 4,
+    in_progress: 5,
+    completed: 6,
+    refunded: 7,
+    disputed: 8,
+  };
+  return order[profileDealStatusKey(deal)] ?? 99;
+}
+
+function profileDealMatchesFilter(deal: ProfileDealRowData, filter: DealFilter) {
+  if (filter === "all") return true;
+  if (filter === "active") return isProfileDealActive(deal);
+  if (filter === "sealed") return isProfileDealSealed(deal);
+  return profileDealStatusKey(deal) === "draft" && !deal.sellerWallet;
+}
+
+function getProfileDealCounterpartyWallet(deal: ProfileDealRowData, wallet: string) {
+  if (deal.buyerWallet === wallet) return deal.sellerWallet || null;
+  if (deal.sellerWallet === wallet) return deal.buyerWallet || null;
+  return deal.sellerWallet || deal.buyerWallet || null;
+}
+
+function counterpartyDisplayName(profile?: CounterpartyProfile | null) {
+  const displayName = profile?.display_name?.trim();
+  if (displayName) return displayName;
+  if (profile?.handle) return `@${profile.handle}`;
+  return "Counterparty joined";
+}
+
+async function fetchCounterpartyProfileMap(wallets: string[]) {
+  const entries = await Promise.all(
+    wallets.map(async (profileWallet) => {
+      try {
+        const res = await fetch(`/api/users/${encodeURIComponent(profileWallet)}/public`);
+        if (!res.ok) return null;
+        const profile = (await res.json()) as CounterpartyProfile;
+        return [profileWallet, profile] as const;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return Object.fromEntries(entries.filter(Boolean) as Array<readonly [string, CounterpartyProfile]>);
+}
+
+type SelfProfileTab = "overview" | "agent" | "friends" | "settings";
+
+function readRequestedTab(searchParams: { get(name: string): string | null }): SelfProfileTab {
+  const tab = searchParams.get("tab");
+  return tab === "agent" || tab === "friends" || tab === "settings" ? tab : "overview";
+}
+
+export function SelfProfilePage() {
+  return (
+    <Suspense fallback={null}>
+      <SelfProfilePageContent />
+    </Suspense>
+  );
+}
+
+export function SelfProfilePageContent() {
+  const { publicKey } = useWallet();
+  const wallet = publicKey?.toBase58() ?? null;
+  const { profile, loaded, updateProfile } = useProfileStore(wallet);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const { deals } = useDealsStore(publicKey ?? null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<SelfProfileTab>(() => readRequestedTab(searchParams));
+  const [mirrorDeals, setMirrorDeals] = useState<ProfileDealRowData[]>([]);
+  const [sessionDeals, setSessionDeals] = useState<ProfileDealRowData[]>([]);
+  const [publicProfile, setPublicProfile] = useState<PublicProfile | null>(null);
+  const [counterpartyProfiles, setCounterpartyProfiles] = useState<Record<string, CounterpartyProfile>>({});
+  const [dealSearch, setDealSearch] = useState("");
+  const [dealFilter, setDealFilter] = useState<DealFilter>("all");
+  const [dealSort, setDealSort] = useState<DealSort>("newest");
+
+  const localDeals = useMemo(() => deals.map(fromLocalDeal), [deals]);
+  const profileDeals = useMemo(
+    () => mergeProfileDeals(localDeals, sessionDeals, mirrorDeals),
+    [localDeals, sessionDeals, mirrorDeals]
+  );
+  const counterpartyWallets = useMemo(() => {
+    if (!wallet) return [];
+    return Array.from(
+      new Set(
+        profileDeals
+          .map((deal) => getProfileDealCounterpartyWallet(deal, wallet))
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+  }, [profileDeals, wallet]);
+  const visibleProfileDeals = useMemo(() => {
+    const query = dealSearch.trim().toLowerCase();
+    const next = profileDeals.filter((deal) => {
+      const counterpartyWallet = wallet ? getProfileDealCounterpartyWallet(deal, wallet) : null;
+      const counterpartyName = counterpartyWallet
+        ? counterpartyDisplayName(counterpartyProfiles[counterpartyWallet])
+        : "";
+      const matchesQuery =
+        !query ||
+        deal.dealId.toLowerCase().includes(query) ||
+        deal.title.toLowerCase().includes(query) ||
+        deal.description.toLowerCase().includes(query) ||
+        counterpartyName.toLowerCase().includes(query);
+      return matchesQuery && profileDealMatchesFilter(deal, dealFilter);
+    });
+
+    return next.sort((a, b) => {
+      if (dealSort === "oldest") return profileDealTimestamp(a) - profileDealTimestamp(b);
+      if (dealSort === "value_desc") return b.totalAmountUsdc - a.totalAmountUsdc;
+      if (dealSort === "value_asc") return a.totalAmountUsdc - b.totalAmountUsdc;
+      if (dealSort === "status") return profileDealStatusRank(a) - profileDealStatusRank(b);
+      return profileDealTimestamp(b) - profileDealTimestamp(a);
+    });
+  }, [counterpartyProfiles, dealFilter, dealSearch, dealSort, profileDeals, wallet]);
+
+  useEffect(() => {
+    setActiveTab(readRequestedTab(searchParams));
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!loaded || !wallet) return;
+    if (!profile?.onboardingComplete) {
+      router.replace("/onboarding");
+    }
+  }, [loaded, wallet, profile, router]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!wallet) {
+      setMirrorDeals([]);
+      setSessionDeals([]);
+      return;
+    }
+
+    setSessionDeals(readSessionProfileDeals(wallet));
+
+    fetch("/api/deals/mirror", { headers: { "x-wallet": wallet } })
+      .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (cancelled || !ok) return;
+        const next = ((data.deals ?? []) as MirrorDeal[]).map(fromMirrorDeal);
+        setMirrorDeals(next);
+      })
+      .catch(() => {
+        if (!cancelled) setMirrorDeals([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!wallet) {
+      setPublicProfile(null);
+      return;
+    }
+
+    fetch(`/api/users/${wallet}/public?self=1`)
+      .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!cancelled && ok) setPublicProfile(data as PublicProfile);
+      })
+      .catch(() => {
+        if (!cancelled) setPublicProfile(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (counterpartyWallets.length === 0) {
+      setCounterpartyProfiles({});
+      return;
+    }
+
+    fetchCounterpartyProfileMap(counterpartyWallets).then((profiles) => {
+      if (!cancelled) setCounterpartyProfiles(profiles);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [counterpartyWallets]);
+
+  if (!loaded) return null;
+
+  if (!wallet) {
+    return (
+      <Shell>
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-4">
+          <div className="text-center space-y-2">
+            <h1 className="text-[22px] text-primary" style={{ fontWeight: 590 }}>
+              Connect your wallet to view your profile
+            </h1>
+            <p className="text-[14px] text-muted">
+              Your Sealed identity is tied to your wallet.
+            </p>
+          </div>
+          <WalletMultiButton />
+        </div>
+      </Shell>
+    );
+  }
+
+  if (!profile?.onboardingComplete) {
+    return null;
+  }
+
+  const activeDealCount = profileDeals.filter(isProfileDealActive).length;
+  const sealedDealCount = profileDeals.filter(isProfileDealSealed).length;
+  const totalVolumeUsdc = profileDeals.reduce(
+    (sum, d) => sum + d.totalAmountUsdc,
+    0
+  );
+  const averageRating = publicProfile?.avg_rating ?? 0;
+
+  const initials = profile.name
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
+
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !wallet) return;
+    setAvatarUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/profile/avatar", {
+        method: "POST",
+        headers: { "x-wallet": wallet },
+        body: fd,
+      });
+      const data = await res.json();
+      if (res.ok && data.avatarUrl) {
+        updateProfile({ avatarUrl: data.avatarUrl });
+      }
+    } finally {
+      setAvatarUploading(false);
+      e.target.value = "";
+    }
+  }
+
+  const activeLLM =
+    profile.llmConfig?.mode === "own-key"
+      ? profile.llmConfig.model
+      : profile.llmConfig?.mode === "x402"
+      ? profile.llmConfig.model
+      : null;
+
+  const x402Balance =
+    profile.llmConfig?.mode === "x402" ? profile.llmConfig.balance : null;
+
+  return (
+    <Shell>
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+          <div className="flex flex-col lg:flex-row gap-6">
+            {/* Left: Profile card */}
+            <aside className="lg:w-72 flex-shrink-0 space-y-4">
+              <div className="surface-card rounded-xl p-5 space-y-4">
+                {/* Avatar + name */}
+                <div className="flex flex-col items-center text-center gap-3">
+                  <label className="relative cursor-pointer group" title="Upload photo">
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      className="sr-only"
+                      onChange={handleAvatarUpload}
+                      disabled={avatarUploading}
+                    />
+                    <div className="w-16 h-16 rounded-full overflow-hidden bg-brand/20 border border-brand/30 flex items-center justify-center text-[22px] text-brand" style={{ fontWeight: 590 }}>
+                      {profile.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={profile.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+                      ) : avatarUploading ? (
+                        <svg className="animate-spin w-6 h-6 text-brand" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                        </svg>
+                      ) : (
+                        initials
+                      )}
+                    </div>
+                    <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                      </svg>
+                    </div>
+                  </label>
+                  <div>
+                    <p className="text-[16px] text-primary" style={{ fontWeight: 590 }}>
+                      {profile.name}
+                    </p>
+                    <p className="text-[13px] text-muted">@{profile.username}</p>
+                  </div>
+                </div>
+
+                {/* Bio */}
+                {profile.bio && (
+                  <p className="text-[13px] text-foreground leading-relaxed text-center">
+                    {profile.bio}
+                  </p>
+                )}
+
+                {/* Company file */}
+                {profile.companyFileName && (
+                  <div className="flex items-center gap-2 rounded-md bg-surface-hover px-3 py-2">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-muted flex-shrink-0">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                    </svg>
+                    <span className="text-[12px] text-muted truncate">
+                      {profile.companyFileName}
+                    </span>
+                  </div>
+                )}
+
+                {/* Social links */}
+                <SocialRow socials={profile.socials} />
+
+                {/* LLM badge */}
+                <div className="border-t border-card-border-subtle pt-3 space-y-2">
+                  <p className="text-[11px] text-subtle" style={{ fontWeight: 510 }}>
+                    Agent model
+                  </p>
+                  {activeLLM ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="pill-neutral text-accent truncate">{activeLLM}</span>
+                      {x402Balance !== null && (
+                        <span className="text-[11px] text-muted tabular-nums flex-shrink-0">
+                          ${(x402Balance / 100).toFixed(2)} left
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <Link
+                      href="/onboarding?edit=1"
+                      className="text-[12px] text-warning hover:text-accent transition-colors"
+                    >
+                      No LLM configured — set up now →
+                    </Link>
+                  )}
+                  {profile.llmConfig?.mode === "x402" && (
+                    <Link
+                      href="/onboarding?edit=1"
+                      className="flex items-center gap-1 text-[11px] text-muted hover:text-accent transition-colors"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      </svg>
+                      Top up via x402
+                    </Link>
+                  )}
+                </div>
+
+                {/* Edit button */}
+                <Link
+                  href="/onboarding?edit=1"
+                  className="btn-ghost flex items-center justify-center gap-1.5 h-9 rounded-md text-[13px] w-full"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                  Edit profile
+                </Link>
+              </div>
+            </aside>
+
+            {/* Right: Dashboard */}
+            <main className="flex-1 min-w-0 space-y-6">
+              {/* Tab bar */}
+              <div className="flex gap-0.5 border-b border-card-border-subtle">
+                {(["overview", "agent", "friends", "settings"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-4 h-9 text-[13px] rounded-t-md transition-colors capitalize ${
+                      activeTab === tab
+                        ? "text-primary border-b-2 border-accent -mb-px"
+                        : "text-muted hover:text-primary"
+                    }`}
+                    style={{ fontWeight: activeTab === tab ? 590 : 400 }}
+                  >
+                    {tab === "agent" ? "Agent Setup" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              {/* Overview tab */}
+              {activeTab === "overview" && (
+                <>
+                  {/* Stats row */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <StatCard label="Total deals" value={profileDeals.length} />
+                    <StatCard label="Active" value={activeDealCount} accent />
+                    <StatCard label="Sealed" value={sealedDealCount} />
+                    <StatCard
+                      label="Avg rating"
+                      value={averageRating > 0 ? averageRating.toFixed(1) : "-"}
+                      star={averageRating > 0}
+                    />
+                    <StatCard
+                      label="Volume (USDC)"
+                      value={`$${totalVolumeUsdc.toLocaleString()}`}
+                    />
+                  </div>
+
+                  {/* Deals */}
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h2
+                        className="text-[14px] text-primary"
+                        style={{ fontWeight: 590 }}
+                      >
+                        Your deals
+                      </h2>
+                      <Link
+                        href="/app"
+                        className="btn-primary h-8 px-4 rounded-md text-[12px] flex items-center gap-1.5"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="12" y1="5" x2="12" y2="19" />
+                          <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        New deal
+                      </Link>
+                    </div>
+
+                    {profileDeals.length === 0 ? (
+                      <EmptyDeals />
+                    ) : (
+                      <>
+                        <DealListControls
+                          search={dealSearch}
+                          filter={dealFilter}
+                          sort={dealSort}
+                          onSearchChange={setDealSearch}
+                          onFilterChange={setDealFilter}
+                          onSortChange={setDealSort}
+                        />
+                        {visibleProfileDeals.length === 0 ? (
+                          <EmptyFilteredDeals
+                            onReset={() => {
+                              setDealSearch("");
+                              setDealFilter("all");
+                              setDealSort("newest");
+                            }}
+                          />
+                        ) : (
+                          <div className="space-y-2">
+                            {visibleProfileDeals.map((deal) => (
+                              <DealRow
+                                key={deal.dealId}
+                                deal={deal}
+                                profile={profile}
+                                wallet={wallet}
+                                counterpartyProfile={
+                                  getProfileDealCounterpartyWallet(deal, wallet)
+                                    ? counterpartyProfiles[
+                                        getProfileDealCounterpartyWallet(deal, wallet) as string
+                                      ]
+                                    : null
+                                }
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Agent Setup tab */}
+              {activeTab === "agent" && <AgentSetupTab wallet={wallet} />}
+
+              {/* Friends tab */}
+              {activeTab === "friends" && <FriendsTab wallet={wallet} />}
+
+              {/* Settings tab */}
+              {activeTab === "settings" && <SettingsTab wallet={wallet} />}
+            </main>
+          </div>
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Shell                                                                */
+/* ------------------------------------------------------------------ */
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-background flex flex-col">
+      <ProfileHeader />
+      <div className="flex-1 flex flex-col">{children}</div>
+    </div>
+  );
+}
+
+function ProfileHeader() {
+  const { publicKey } = useWallet();
+  const wallet = publicKey?.toBase58() ?? null;
+  return (
+    <header className="flex items-center justify-between px-4 sm:px-6 h-14 border-b border-card-border-subtle bg-panel">
+      <div className="flex items-center gap-6">
+        <Link href="/" className="flex items-center gap-2 text-primary">
+          <SealedMark size={24} title="Sealed" />
+          <span className="text-[14px] tracking-tight" style={{ fontWeight: 510 }}>
+            Sealed Agent
+          </span>
+        </Link>
+        <nav className="flex items-center gap-0.5">
+          <NavLink href={wallet ? `/profile/${wallet}` : "/profile"} active>
+            Profile
+          </NavLink>
+          <NavLink href="/app">
+            Deals
+          </NavLink>
+        </nav>
+      </div>
+      <WalletMultiButton />
+    </header>
+  );
+}
+
+function NavLink({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`px-3 h-8 text-[13px] rounded-md transition-colors flex items-center ${
+        active
+          ? "bg-[rgba(255,255,255,0.05)] text-primary"
+          : "text-muted hover:text-primary"
+      }`}
+      style={{ fontWeight: 510 }}
+    >
+      {children}
+    </Link>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Small components                                                    */
+/* ------------------------------------------------------------------ */
+
+function DealListControls({
+  search,
+  filter,
+  sort,
+  onSearchChange,
+  onFilterChange,
+  onSortChange,
+}: {
+  search: string;
+  filter: DealFilter;
+  sort: DealSort;
+  onSearchChange: (value: string) => void;
+  onFilterChange: (value: DealFilter) => void;
+  onSortChange: (value: DealSort) => void;
+}) {
+  const controlClass =
+    "h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none transition-colors focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60";
+
+  return (
+    <div className="surface-card rounded-xl p-3 mb-3">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_150px_170px] gap-3">
+        <label className="space-y-1">
+          <span className="block text-[11px] text-muted" style={{ fontWeight: 510 }}>
+            Search
+          </span>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Title, description, or deal ID"
+            autoComplete="off"
+            className={`${controlClass} w-full`}
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="block text-[11px] text-muted" style={{ fontWeight: 510 }}>
+            Filter
+          </span>
+          <select
+            value={filter}
+            onChange={(e) => onFilterChange(e.target.value as DealFilter)}
+            className={`${controlClass} w-full cursor-pointer`}
+          >
+            {DEAL_FILTERS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="block text-[11px] text-muted" style={{ fontWeight: 510 }}>
+            Sort
+          </span>
+          <select
+            value={sort}
+            onChange={(e) => onSortChange(e.target.value as DealSort)}
+            className={`${controlClass} w-full cursor-pointer`}
+          >
+            {DEAL_SORTS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  accent,
+  star,
+}: {
+  label: string;
+  value: number | string;
+  accent?: boolean;
+  star?: boolean;
+}) {
+  return (
+    <div className="surface-card rounded-xl p-4">
+      <p className="text-[11px] text-muted mb-1" style={{ fontWeight: 510 }}>
+        {label}
+      </p>
+      <div className="flex items-baseline gap-1.5">
+        <p
+          className={`text-[22px] ${accent ? "text-accent" : "text-primary"}`}
+          style={{ fontWeight: 590 }}
+        >
+          {value}
+        </p>
+        {star && (
+          <span className="text-[13px] text-warning" aria-label="stars">
+            ★
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const STATUS_LABEL: Record<string, { label: string; color: string }> = {
+  draft: { label: "Awaiting counterparty", color: "text-warning" },
+  "seller-ready": { label: "Counterparty reviewing", color: "text-warning" },
+  "seller-agreed": { label: "Ready to fund", color: "text-accent" },
+  proposed: { label: "Ready to sign", color: "text-accent" },
+  funded: { label: "Funded", color: "text-accent" },
+  in_progress: { label: "In progress", color: "text-success" },
+  completed: { label: "Sealed", color: "text-success" },
+  refunded: { label: "Refunded", color: "text-danger" },
+  disputed: { label: "Disputed", color: "text-danger" },
+};
+
+function localDealHref(deal: ProfileDealRowData) {
+  const status = profileDealStatusKey(deal);
+  return status === "draft" || status === "seller-ready" || status === "seller-agreed" || status === "proposed"
+    ? `/negotiate/${deal.dealId}`
+    : `/deals/${deal.dealId}`;
+}
+
+function DealRow({
+  deal,
+  profile,
+  wallet,
+  counterpartyProfile,
+}: {
+  deal: ProfileDealRowData;
+  profile: { name: string; bio: string };
+  wallet: string;
+  counterpartyProfile?: CounterpartyProfile | null;
+}) {
+  const [copied, setCopied] = useState(false);
+  const statusKey = profileDealStatusKey(deal);
+  const counterpartyWallet = getProfileDealCounterpartyWallet(deal, wallet);
+  const hasCounterparty = Boolean(counterpartyWallet);
+  const status =
+    statusKey === "draft" && hasCounterparty
+      ? { label: "Counterparty joined", color: "text-accent" }
+      : STATUS_LABEL[statusKey] ?? { label: "Unknown", color: "text-muted" };
+  const needsCounterparty = statusKey === "draft" && !hasCounterparty;
+  const counterpartyName = hasCounterparty
+    ? counterpartyDisplayName(counterpartyProfile)
+    : "No counterparty yet";
+
+  function copyInvite() {
+    const payload = {
+      dealId: deal.dealId,
+      dealTitle: deal.title || deal.dealId.replace(/-/g, " "),
+      inviterName: profile.name,
+      inviterWallet: wallet,
+      amount: deal.totalAmountUsdc,
+      currency: "USDC",
+      milestoneCount: deal.milestones.length,
+      milestones: deal.milestones.map((m) => ({ description: m.description, amount: m.amount })),
+      description: deal.description || profile.bio,
+    };
+    const token = encodeInvite(payload);
+    const link = `${window.location.origin}/invite/${encodeURIComponent(token)}`;
+    navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="surface-card rounded-lg px-4 py-3 flex items-center justify-between gap-4 hover:bg-surface-hover/50 transition-colors">
+      <Link
+        href={localDealHref(deal)}
+        className="min-w-0 flex-1 flex items-center justify-between gap-4 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+      >
+      <div className="min-w-0">
+        <p className="text-[13px] text-primary truncate" style={{ fontWeight: 510 }}>
+          {deal.title || deal.dealId}
+        </p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className="text-[11px] text-muted truncate">
+            {hasCounterparty ? `With ${counterpartyName}` : counterpartyName}
+          </span>
+          <span className="text-subtle text-[11px]">·</span>
+          <span className={`text-[11px] ${status.color}`}>{status.label}</span>
+          <span className="text-subtle text-[11px]">·</span>
+          <span className="text-[11px] text-muted">
+            {deal.milestones.length} milestone{deal.milestones.length !== 1 ? "s" : ""}
+          </span>
+        </div>
+        </div>
+        <span className="text-[13px] text-primary tabular-nums flex-shrink-0" style={{ fontWeight: 590 }}>
+          ${deal.totalAmountUsdc.toLocaleString()} USDC
+        </span>
+      </Link>
+      <div className="flex items-center gap-3 flex-shrink-0">
+        {needsCounterparty && (
+          <button
+            type="button"
+            onClick={copyInvite}
+            className={`text-[11px] px-3 h-10 rounded border transition-colors flex items-center gap-1 ${
+              copied
+                ? "border-success/40 text-success"
+                : "border-card-border text-muted hover:text-primary hover:border-accent/40"
+            }`}
+            title="Copy invite link"
+          >
+            {copied ? "Copied" : "Invite"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EmptyDeals() {
+  return (
+    <div className="surface-card rounded-xl flex flex-col items-center justify-center py-16 gap-4 text-center">
+      <div className="w-12 h-12 rounded-full bg-surface-hover flex items-center justify-center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-muted">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+          <polyline points="10 9 9 9 8 9" />
+        </svg>
+      </div>
+      <div>
+        <p className="text-[14px] text-primary" style={{ fontWeight: 510 }}>
+          No deals yet
+        </p>
+        <p className="text-[13px] text-muted mt-0.5">
+          Start your first deal and let your agent negotiate for you.
+        </p>
+      </div>
+      <Link
+        href="/app"
+        className="btn-primary h-9 px-5 rounded-md text-[13px] flex items-center gap-1.5"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+        Create your first deal
+      </Link>
+    </div>
+  );
+}
+
+function EmptyFilteredDeals({ onReset }: { onReset: () => void }) {
+  return (
+    <div className="surface-card rounded-xl flex flex-col items-center justify-center py-12 gap-3 text-center">
+      <div className="w-10 h-10 rounded-full bg-surface-hover flex items-center justify-center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-muted">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+      </div>
+      <div>
+        <p className="text-[14px] text-primary" style={{ fontWeight: 510 }}>
+          No matching deals
+        </p>
+        <p className="text-[13px] text-muted mt-0.5">
+          Adjust the search, filter, or sort controls to see more deals.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onReset}
+        className="btn-ghost h-9 px-4 rounded-md text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+      >
+        Reset filters
+      </button>
+    </div>
+  );
+}
+
+function SocialRow({
+  socials,
+}: {
+  socials: {
+    twitter: string;
+    telegram: string;
+    instagram: string;
+    linkedin: string;
+    website: string;
+  };
+}) {
+  const links = [
+    { key: "twitter", url: socials.twitter, label: "X" },
+    { key: "telegram", url: socials.telegram, label: "TG" },
+    { key: "instagram", url: socials.instagram, label: "IG" },
+    { key: "linkedin", url: socials.linkedin, label: "LI" },
+    { key: "website", url: socials.website, label: "Web" },
+  ].filter((l) => l.url);
+
+  if (links.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {links.map((l) => (
+        <a
+          key={l.key}
+          href={
+            l.url.startsWith("http")
+              ? l.url
+              : `https://${l.url}`
+          }
+          target="_blank"
+          rel="noopener noreferrer"
+          className="pill-neutral hover:text-accent hover:border-accent/30 transition-colors"
+        >
+          {l.label}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/* ── Agent Setup Tab ──────────────────────────────────────────────────────── */
+
+const STYLE_LABELS: Record<string, string> = {
+  firm: "Firm",
+  flexible: "Flexible",
+  collaborative: "Collaborative",
+};
+
+function AgentSetupTab({ wallet }: { wallet: string }) {
+  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+  const [limit, setLimit] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<Partial<AgentTemplate>>({
+    name: "",
+    negotiation_style: "flexible",
+    price_floor_pct: 80,
+    escalate_after_rounds: 3,
+    agent_intro_message: "",
+    deal_types: [],
+    auto_approve_if: [],
+  });
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // fetchTemplates intentionally owns the loading lifecycle for this tab.
+  /* eslint-disable react-hooks/exhaustive-deps */
+  useEffect(() => {
+    fetchTemplates();
+  }, [wallet]);
+  /* eslint-enable react-hooks/exhaustive-deps */
+
+  async function fetchTemplates() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/agent-templates?wallet=${wallet}`);
+      if (res.ok) {
+        const data = await res.json();
+        setTemplates(data.templates ?? []);
+        // Infer limit from kyc status via user endpoint
+        const uRes = await fetch(`/api/users/${wallet}/public`);
+        if (uRes.ok) {
+          const u = await uRes.json();
+          setLimit(u.is_verified ? 10 : 1);
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSave() {
+    if (!form.name?.trim()) {
+      setFormError("Template name is required.");
+      return;
+    }
+    setSaving(true);
+    setFormError(null);
+    try {
+      const res = await fetch("/api/agent-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet, ...form }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setFormError(data.error ?? "Failed to save template.");
+        return;
+      }
+      setShowForm(false);
+      setForm({ name: "", negotiation_style: "flexible", price_floor_pct: 80, escalate_after_rounds: 3, agent_intro_message: "" });
+      fetchTemplates();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSetActive(id: string) {
+    await fetch("/api/agent-templates", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, wallet, action: "set-active" }),
+    });
+    fetchTemplates();
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this template?")) return;
+    await fetch("/api/agent-templates", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, wallet }),
+    });
+    fetchTemplates();
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Verification banner */}
+      <div className={`rounded-xl px-4 py-3 flex items-center justify-between gap-4 ${
+        limit === 10
+          ? "bg-success/10 border border-success/20"
+          : "bg-warning/10 border border-warning/20"
+      }`}>
+        <div>
+          <p className="text-[13px] text-primary" style={{ fontWeight: 510 }}>
+            {limit === 10 ? "✓ Verified account" : "Unverified account"}
+          </p>
+          <p className="text-[12px] text-muted mt-0.5">
+            {limit === 10
+              ? "Up to 10 templates available."
+              : `Using ${templates.length} of 1 template. Get verified to unlock 10.`}
+          </p>
+        </div>
+        {limit < 10 && (
+          <Link
+            href="/profile/verify"
+            className="btn-ghost h-8 px-3 rounded-md text-[12px] flex-shrink-0"
+          >
+            Get Verified →
+          </Link>
+        )}
+      </div>
+
+      {/* Template list */}
+      {loading ? (
+        <div className="text-[13px] text-muted">Loading templates…</div>
+      ) : (
+        <div className="space-y-2">
+          {templates.map((t) => (
+            <div
+              key={t.id}
+              className={`surface-card rounded-xl px-4 py-3 flex items-start justify-between gap-4 ${
+                t.active ? "border border-accent/30" : ""
+              }`}
+            >
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-[14px] text-primary truncate" style={{ fontWeight: 510 }}>
+                    {t.name}
+                  </p>
+                  {t.active && (
+                    <span className="pill-neutral text-accent text-[10px]">Active</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="pill-neutral text-[11px]">{STYLE_LABELS[t.negotiation_style]}</span>
+                  <span className="pill-neutral text-[11px]">Floor {t.price_floor_pct}%</span>
+                  <span className="pill-neutral text-[11px]">Escalate after {t.escalate_after_rounds} rounds</span>
+                </div>
+                {t.agent_intro_message && (
+                  <p className="text-[12px] text-muted truncate">{t.agent_intro_message}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {!t.active && (
+                  <button
+                    onClick={() => handleSetActive(t.id)}
+                    className="text-[11px] px-2.5 h-7 rounded border border-card-border text-muted hover:text-accent hover:border-accent/40 transition-colors"
+                  >
+                    Set active
+                  </button>
+                )}
+                <button
+                  onClick={() => handleDelete(t.id)}
+                  className="text-[11px] px-2.5 h-7 rounded border border-card-border text-muted hover:text-danger hover:border-danger/40 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {templates.length === 0 && !showForm && (
+            <div className="surface-card rounded-xl py-10 flex flex-col items-center gap-3 text-center">
+              <p className="text-[14px] text-muted">No agent templates yet.</p>
+              <p className="text-[13px] text-subtle">Create a template so your agent knows how to negotiate on your behalf.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* New template form */}
+      {showForm && (
+        <div className="surface-card rounded-xl p-5 space-y-4 border border-accent/20">
+          <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>New Template</p>
+          {formError && (
+            <p className="text-[12px] text-danger">{formError}</p>
+          )}
+          <div className="space-y-3">
+            <Field label="Template name">
+              <input
+                value={form.name ?? ""}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g. Standard Vendor Terms"
+                className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors"
+              />
+            </Field>
+            <Field label="Negotiation style">
+              <select
+                value={form.negotiation_style ?? "flexible"}
+                onChange={(e) => setForm({ ...form, negotiation_style: e.target.value as AgentTemplate["negotiation_style"] })}
+                className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
+              >
+                <option value="firm">Firm — hold your ground</option>
+                <option value="flexible">Flexible — balanced trade-offs</option>
+                <option value="collaborative">Collaborative — win-win focus</option>
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={`Price floor (${form.price_floor_pct}% of ask)`}>
+                <input
+                  type="range"
+                  min={50}
+                  max={100}
+                  value={form.price_floor_pct ?? 80}
+                  onChange={(e) => setForm({ ...form, price_floor_pct: Number(e.target.value) })}
+                  className="w-full accent-accent"
+                />
+              </Field>
+              <Field label="Escalate to me after N rounds">
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={form.escalate_after_rounds ?? 3}
+                  onChange={(e) => setForm({ ...form, escalate_after_rounds: Number(e.target.value) })}
+                  className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors"
+                />
+              </Field>
+            </div>
+            <Field label="Agent opening message (optional)">
+              <textarea
+                value={form.agent_intro_message ?? ""}
+                onChange={(e) => setForm({ ...form, agent_intro_message: e.target.value })}
+                placeholder="First message your agent sends when starting a negotiation…"
+                rows={2}
+                className="w-full rounded-md bg-surface border border-card-border px-3 py-2 text-[13px] text-primary outline-none focus:border-accent resize-none transition-colors"
+              />
+            </Field>
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="btn-primary h-9 px-5 rounded-md text-[13px] disabled:opacity-40"
+            >
+              {saving ? "Saving…" : "Save Template"}
+            </button>
+            <button
+              onClick={() => { setShowForm(false); setFormError(null); }}
+              className="btn-ghost h-9 px-4 rounded-md text-[13px]"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Add button */}
+      {!showForm && templates.length < limit && (
+        <button
+          onClick={() => setShowForm(true)}
+          className="btn-ghost h-9 px-4 rounded-md text-[13px] flex items-center gap-1.5"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          New Template
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+/* ── Settings Tab ─────────────────────────────────────────────────────────── */
+
+function SettingsTab({ wallet }: { wallet: string }) {
+  const { profile, updateProfile } = useProfileStore(wallet);
+
+  // AI provider state
+  const [llmMode, setLlmMode] = useState<"own-key" | "x402">("own-key");
+  const [llmProvider, setLlmProvider] = useState<"openai" | "anthropic" | "groq" | "gemini" | "openrouter" | "deepseek">("anthropic");
+  const [llmModel, setLlmModel] = useState("claude-sonnet-4-6");
+  const [llmKey, setLlmKey] = useState("");
+  const [showLlmKey, setShowLlmKey] = useState(false);
+  const [llmSaved, setLlmSaved] = useState(false);
+  const [x402Model, setX402Model] = useState(X402_MODELS[0].id);
+  const [x402TopUpAmount, setX402TopUpAmount] = useState(10);
+  const [topping, setTopping] = useState(false);
+
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [notifyPrefs, setNotifyPrefs] = useState<NotificationPrefs>({
+    deal_review_needed: true,
+    milestone_due: true,
+    deal_accepted: true,
+    deal_declined: true,
+    new_deal_invite: true,
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState(false);
+
+  useEffect(() => {
+    if (profile?.llmConfig?.mode === "own-key") {
+      setLlmMode("own-key");
+      setLlmProvider(profile.llmConfig.provider as typeof llmProvider);
+      setLlmModel(profile.llmConfig.model);
+      setLlmKey(profile.llmConfig.apiKey);
+    } else if (profile?.llmConfig?.mode === "x402") {
+      setLlmMode("x402");
+      setX402Model(profile.llmConfig.model);
+    }
+  }, [profile]);
+
+  const PROVIDERS: { id: typeof llmProvider; label: string; hint: string }[] = [
+    { id: "anthropic", label: "Anthropic", hint: "sk-ant-..." },
+    { id: "openai", label: "OpenAI", hint: "sk-..." },
+    { id: "groq", label: "Groq", hint: "gsk_..." },
+    { id: "gemini", label: "Gemini", hint: "AIza..." },
+    { id: "openrouter", label: "OpenRouter", hint: "sk-or-..." },
+    { id: "deepseek", label: "DeepSeek", hint: "sk-..." },
+  ];
+
+  const LLM_MODELS_MAP: Record<typeof llmProvider, string[]> = {
+    openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+    anthropic: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
+    groq: ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"],
+    gemini: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+    openrouter: ["anthropic/claude-sonnet-4", "openai/gpt-4o", "google/gemini-2.5-pro", "meta-llama/llama-3.3-70b-instruct"],
+    deepseek: ["deepseek-chat", "deepseek-reasoner"],
+  };
+
+  function saveLlmConfig() {
+    const existingBalance = profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0;
+    updateProfile({
+      llmConfig:
+        llmMode === "x402"
+          ? { mode: "x402", balance: existingBalance, model: x402Model }
+          : { mode: "own-key", provider: llmProvider, model: llmModel, apiKey: llmKey.trim() },
+    });
+    setLlmSaved(true);
+    setTimeout(() => setLlmSaved(false), 2000);
+  }
+
+  async function handleX402TopUp() {
+    setTopping(true);
+    try {
+      const res = await fetch("/api/topup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet, usd: x402TopUpAmount }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newBalance = (profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0) + (data.credits ?? x402TopUpAmount * 100);
+        updateProfile({ llmConfig: { mode: "x402", balance: newBalance, model: x402Model } });
+      }
+    } catch {
+      // ignore
+    }
+    setTopping(false);
+  }
+
+  useEffect(() => {
+    fetch(`/api/users/${wallet}/public?self=1`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.notify_on) setNotifyPrefs(data.notify_on);
+        if (data.email) setEmail(data.email);
+        if (data.email_verified) setEmailVerified(data.email_verified);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [wallet]);
+
+  async function sendOtp() {
+    const res = await fetch("/api/users/email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wallet, email }),
+    });
+    if (res.ok) setOtpSent(true);
+  }
+
+  async function verifyOtp() {
+    const res = await fetch("/api/users/email/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wallet, otp }),
+    });
+    if (res.ok) {
+      setEmailVerified(true);
+      setOtpSent(false);
+    }
+  }
+
+  async function savePrefs() {
+    setSaving(true);
+    await fetch("/api/users/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wallet, notify_on: notifyPrefs }),
+    });
+    setSaving(false);
+    setSavedMsg(true);
+    setTimeout(() => setSavedMsg(false), 2000);
+  }
+
+  const NOTIFY_LABELS: Record<keyof NotificationPrefs, string> = {
+    deal_review_needed: "Deal review needed",
+    milestone_due: "Milestone confirmation due",
+    deal_accepted: "Deal accepted by counterparty",
+    deal_declined: "Deal declined by counterparty",
+    new_deal_invite: "New deal invite received",
+  };
+
+  if (loading) return <div className="text-[13px] text-muted">Loading settings…</div>;
+
+  return (
+    <div className="space-y-6">
+      {/* AI Provider section */}
+      <div className="surface-card rounded-xl p-5 space-y-4">
+        <div>
+          <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>AI Provider</p>
+          <p className="text-[12px] text-muted mt-0.5">API key your Sealed agent uses for deal structuring, negotiation, and milestone verification.</p>
+        </div>
+
+        {/* Mode toggle */}
+        <div className="grid grid-cols-2 gap-2">
+          {(["own-key", "x402"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setLlmMode(m)}
+              className={`h-9 rounded-md text-[12px] border transition-colors ${
+                llmMode === m
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-card-border bg-surface text-muted hover:text-primary"
+              }`}
+              style={{ fontWeight: 510 }}
+            >
+              {m === "own-key" ? "Own API Key" : "Buy via x402"}
+            </button>
+          ))}
+        </div>
+
+        {llmMode === "own-key" ? (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Provider</label>
+              <div className="grid grid-cols-3 gap-2">
+                {PROVIDERS.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => { setLlmProvider(p.id); setLlmModel(LLM_MODELS_MAP[p.id][0]); }}
+                    className={`h-9 rounded-md text-[12px] border transition-colors ${
+                      llmProvider === p.id
+                        ? "border-accent bg-accent/10 text-accent"
+                        : "border-card-border bg-surface text-muted hover:text-primary"
+                    }`}
+                    style={{ fontWeight: 510 }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Model</label>
+              <select
+                value={llmModel}
+                onChange={(e) => setLlmModel(e.target.value)}
+                className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
+              >
+                {LLM_MODELS_MAP[llmProvider].map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>API Key</label>
+              <div className="flex gap-2">
+                <input
+                  type={showLlmKey ? "text" : "password"}
+                  value={llmKey}
+                  onChange={(e) => setLlmKey(e.target.value)}
+                  placeholder={PROVIDERS.find((p) => p.id === llmProvider)?.hint ?? "sk-..."}
+                  className="flex-1 h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors font-mono"
+                />
+                <button
+                  onClick={() => setShowLlmKey(!showLlmKey)}
+                  className="btn-ghost h-10 px-3 rounded-md text-[12px]"
+                >
+                  {showLlmKey ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* x402 balance */}
+            <div className="flex items-center justify-between rounded-md bg-surface border border-card-border px-4 py-3">
+              <div>
+                <p className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Current balance</p>
+                <p className="text-[18px] text-primary tabular-nums" style={{ fontWeight: 590 }}>
+                  ${((profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0) / 100).toFixed(2)}
+                </p>
+              </div>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            </div>
+
+            {/* Model select */}
+            <div className="space-y-1.5">
+              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Model</label>
+              <select
+                value={x402Model}
+                onChange={(e) => setX402Model(e.target.value)}
+                className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
+              >
+                {X402_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label} — ${m.costPer1k.toFixed(2)}/1k tokens</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Top-up amounts */}
+            <div className="space-y-1.5">
+              <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>Top up</label>
+              <div className="grid grid-cols-4 gap-2">
+                {X402_TOP_UP_AMOUNTS.map((a) => (
+                  <button
+                    key={a.usd}
+                    onClick={() => setX402TopUpAmount(a.usd)}
+                    className={`h-9 rounded-md text-[12px] border relative transition-colors ${
+                      x402TopUpAmount === a.usd
+                        ? "border-accent bg-accent/10 text-accent"
+                        : "border-card-border bg-surface text-muted hover:text-primary"
+                    }`}
+                    style={{ fontWeight: 510 }}
+                  >
+                    {a.label}
+                    {"popular" in a && a.popular && (
+                      <span className="absolute -top-1.5 -right-1.5 text-[9px] bg-accent text-background rounded-full px-1" style={{ fontWeight: 590 }}>popular</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={handleX402TopUp}
+                disabled={topping}
+                className="btn-primary w-full h-9 rounded-md text-[12px] mt-2 disabled:opacity-40"
+              >
+                {topping ? "Processing…" : `Buy $${x402TopUpAmount} of tokens`}
+              </button>
+            </div>
+          </>
+        )}
+
+        <button
+          onClick={saveLlmConfig}
+          disabled={llmMode === "own-key" && !llmKey.trim()}
+          className="btn-primary h-9 px-5 rounded-md text-[13px] disabled:opacity-40"
+        >
+          {llmSaved ? "Saved ✓" : "Save"}
+        </button>
+      </div>
+
+      {/* Email section */}
+      <div className="surface-card rounded-xl p-5 space-y-4">
+        <div>
+          <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>Email notifications</p>
+          <p className="text-[12px] text-muted mt-0.5">Receive deal alerts to your email.</p>
+        </div>
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your@email.com"
+              disabled={emailVerified}
+              className="flex-1 h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors disabled:opacity-50"
+            />
+            {!emailVerified && (
+              <button
+                onClick={sendOtp}
+                disabled={!email.includes("@")}
+                className="btn-ghost h-10 px-4 rounded-md text-[13px] disabled:opacity-40"
+              >
+                {otpSent ? "Resend OTP" : "Send OTP"}
+              </button>
+            )}
+            {emailVerified && (
+              <span className="flex items-center gap-1 text-[13px] text-success px-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Verified
+              </span>
+            )}
+          </div>
+          {otpSent && !emailVerified && (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                placeholder="6-digit code"
+                maxLength={6}
+                className="w-36 h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors font-mono"
+              />
+              <button
+                onClick={verifyOtp}
+                disabled={otp.length !== 6}
+                className="btn-primary h-10 px-4 rounded-md text-[13px] disabled:opacity-40"
+              >
+                Verify
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Telegram section */}
+      <div className="surface-card rounded-xl p-5 space-y-4 opacity-60">
+        <div>
+          <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>Telegram notifications</p>
+          <p className="text-[12px] text-muted mt-0.5">Setup coming soon.</p>
+        </div>
+        <input
+          disabled
+          placeholder="@your_telegram_handle"
+          className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-muted cursor-not-allowed"
+        />
+      </div>
+
+      {/* Notification toggles */}
+      <div className="surface-card rounded-xl p-5 space-y-4">
+        <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>Notification events</p>
+        <div className="space-y-3">
+          {(Object.keys(NOTIFY_LABELS) as (keyof NotificationPrefs)[]).map((key) => (
+            <label key={key} className="flex items-center justify-between gap-4 cursor-pointer">
+              <span className="text-[13px] text-foreground">{NOTIFY_LABELS[key]}</span>
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={notifyPrefs[key]}
+                  onChange={(e) => setNotifyPrefs({ ...notifyPrefs, [key]: e.target.checked })}
+                  className="sr-only"
+                />
+                <div
+                  onClick={() => setNotifyPrefs({ ...notifyPrefs, [key]: !notifyPrefs[key] })}
+                  className={`w-10 h-5 rounded-full cursor-pointer transition-colors ${
+                    notifyPrefs[key] ? "bg-accent" : "bg-surface-hover"
+                  }`}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform mt-0.5 ${
+                    notifyPrefs[key] ? "translate-x-5 ml-0.5" : "translate-x-0.5"
+                  }`} />
+                </div>
+              </div>
+            </label>
+          ))}
+        </div>
+        <button
+          onClick={savePrefs}
+          disabled={saving}
+          className="btn-primary h-9 px-5 rounded-md text-[13px] disabled:opacity-40"
+        >
+          {savedMsg ? "Saved ✓" : saving ? "Saving…" : "Save preferences"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Friends Tab ──────────────────────────────────────────────────────────── */
+
+type FriendEntry = {
+  id: string;
+  wallet: string;
+  friend_wallet: string;
+  status: string;
+  created_at: string;
+  counterpartyWallet: string;
+  profile: PublicProfile | null;
+};
+
+function FriendsTab({ wallet }: { wallet: string }) {
+  const [friends, setFriends] = useState<FriendEntry[]>([]);
+  const [incoming, setIncoming] = useState<FriendEntry[]>([]);
+  const [outgoing, setOutgoing] = useState<FriendEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addUsername, setAddUsername] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [addMsg, setAddMsg] = useState<string | null>(null);
+
+  function loadFriends() {
+    setLoading(true);
+    fetch("/api/friends", { headers: { "x-wallet": wallet } })
+      .then((r) => r.json())
+      .then((d) => {
+        setFriends(d.friends ?? []);
+        setIncoming(d.incoming ?? []);
+        setOutgoing(d.outgoing ?? []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+
+  // loadFriends intentionally resets loading state whenever the wallet changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadFriends(); }, [wallet]);
+
+  async function handleAdd(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const friendHandle = addUsername.trim().replace(/^@/, "");
+    if (!friendHandle) return;
+    setAdding(true);
+    setAddMsg(null);
+    const res = await fetch("/api/friends", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-wallet": wallet },
+      body: JSON.stringify({ friendHandle }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setAddMsg(data.status === "accepted" ? "Now friends!" : "Request sent!");
+      setAddUsername("");
+      loadFriends();
+    } else {
+      setAddMsg(data.error ?? "Failed");
+    }
+    setAdding(false);
+  }
+
+  async function handleAccept(cpWallet: string) {
+    await fetch(`/api/friends/${cpWallet}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-wallet": wallet },
+      body: JSON.stringify({ action: "accept" }),
+    });
+    loadFriends();
+  }
+
+  async function handleDecline(cpWallet: string) {
+    await fetch(`/api/friends/${cpWallet}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-wallet": wallet },
+      body: JSON.stringify({ action: "decline" }),
+    });
+    loadFriends();
+  }
+
+  async function handleRemove(cpWallet: string) {
+    await fetch(`/api/friends/${cpWallet}`, {
+      method: "DELETE",
+      headers: { "x-wallet": wallet },
+    });
+    loadFriends();
+  }
+
+  if (loading) return <div className="text-[13px] text-muted">Loading friends…</div>;
+
+  return (
+    <div className="space-y-6">
+      {/* Add by username */}
+      <div className="surface-card rounded-xl p-5 space-y-3">
+        <div>
+          <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>Add a friend</p>
+          <p className="text-[12px] text-muted mt-0.5">Enter their Sealed username.</p>
+        </div>
+        <form onSubmit={handleAdd} className="flex gap-2">
+          <label htmlFor="friend-username" className="sr-only">Friend username</label>
+          <input
+            id="friend-username"
+            value={addUsername}
+            onChange={(e) => setAddUsername(e.target.value)}
+            type="text"
+            autoComplete="username"
+            spellCheck={false}
+            placeholder="@username"
+            className="flex-1 h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60 transition-colors"
+          />
+          <button
+            type="submit"
+            disabled={adding || !addUsername.trim()}
+            className="btn-primary h-10 px-5 rounded-md text-[13px] disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+          >
+            {adding ? "Sending…" : "Send request"}
+          </button>
+        </form>
+        {addMsg && (
+          <p className={`text-[12px] ${addMsg.includes("sent") || addMsg.includes("friends") ? "text-success" : "text-danger"}`}>
+            {addMsg}
+          </p>
+        )}
+      </div>
+
+      {/* Incoming requests */}
+      {incoming.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-[13px] text-primary" style={{ fontWeight: 590 }}>
+            Incoming requests <span className="ml-1 px-1.5 py-0.5 rounded-full bg-accent/20 text-accent text-[11px]">{incoming.length}</span>
+          </p>
+          {incoming.map((f) => (
+            <FriendCard key={f.id} entry={f}>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleAccept(f.counterpartyWallet)}
+                  className="btn-primary h-8 px-4 rounded-md text-[12px]"
+                >
+                  Accept
+                </button>
+                <button
+                  onClick={() => handleDecline(f.counterpartyWallet)}
+                  className="btn-ghost h-8 px-3 rounded-md text-[12px]"
+                >
+                  Decline
+                </button>
+              </div>
+            </FriendCard>
+          ))}
+        </div>
+      )}
+
+      {/* Accepted friends */}
+      {friends.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-[13px] text-primary" style={{ fontWeight: 590 }}>
+            Friends <span className="ml-1 text-muted text-[12px]">({friends.length})</span>
+          </p>
+          {friends.map((f) => (
+            <FriendCard key={f.id} entry={f}>
+              <div className="flex gap-2">
+                <Link
+                  href="/app"
+                  className="btn-ghost h-8 px-3 rounded-md text-[12px] flex items-center gap-1.5"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  Invite to deal
+                </Link>
+                <button
+                  onClick={() => handleRemove(f.counterpartyWallet)}
+                  className="btn-ghost h-8 px-3 rounded-md text-[12px] text-danger hover:text-danger"
+                >
+                  Remove
+                </button>
+              </div>
+            </FriendCard>
+          ))}
+        </div>
+      )}
+
+      {/* Outgoing pending */}
+      {outgoing.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-[13px] text-muted" style={{ fontWeight: 590 }}>Pending sent</p>
+          {outgoing.map((f) => (
+            <FriendCard key={f.id} entry={f}>
+              <button
+                onClick={() => handleRemove(f.counterpartyWallet)}
+                className="btn-ghost h-8 px-3 rounded-md text-[12px]"
+              >
+                Cancel
+              </button>
+            </FriendCard>
+          ))}
+        </div>
+      )}
+
+      {friends.length === 0 && incoming.length === 0 && outgoing.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+          <div className="w-10 h-10 rounded-full bg-surface border border-card-border flex items-center justify-center text-muted">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>No friends yet</p>
+            <p className="text-[12px] text-muted mt-0.5">Add people you&apos;ve worked with or send requests from their public profile.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FriendCard({
+  entry,
+  children,
+}: {
+  entry: FriendEntry;
+  children: React.ReactNode;
+}) {
+  const cp = entry.counterpartyWallet;
+  const p = entry.profile;
+  const displayName = p?.display_name?.trim() || (p?.handle ? `@${p.handle}` : "Sealed user");
+  const username = p?.handle ? `@${p.handle}` : null;
+  const initialsSource = p?.display_name?.trim() || p?.handle || "SU";
+  const initials = initialsSource
+    .replace(/^@/, "")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+
+  return (
+    <div className="surface-card rounded-xl p-4 flex items-center gap-4">
+      <Link href={`/profile/${cp}`} className="flex-shrink-0">
+        <div className="w-10 h-10 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-[14px] text-accent" style={{ fontWeight: 590 }}>
+          {initials}
+        </div>
+      </Link>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <Link href={`/profile/${cp}`} className="text-[13px] text-primary hover:text-accent transition-colors truncate" style={{ fontWeight: 510 }}>
+            {displayName}
+          </Link>
+          {p?.is_verified && (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-success flex-shrink-0">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9 12 11 14 15 10" />
+            </svg>
+          )}
+        </div>
+        {p?.display_name && username && (
+          <p className="text-[11px] text-muted mt-0.5">{username}</p>
+        )}
+        <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted">
+          <span>{p?.deals_successful ?? 0} deals done</span>
+          {p && p.deals_total > 0 && (
+            <span>{Math.round((p.deals_successful / p.deals_total) * 100)}% success</span>
+          )}
+          {p && p.avg_rating > 0 && <span>{p.avg_rating.toFixed(1)} ★</span>}
+        </div>
+      </div>
+      <div className="flex-shrink-0">{children}</div>
+    </div>
+  );
+}
