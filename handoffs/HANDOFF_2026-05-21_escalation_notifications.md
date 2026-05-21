@@ -66,3 +66,13 @@ Implemented:
 - Blocker (jika ada): Supabase migration 004 must be applied manually before live DB accepts `status = 'escalated'`.
 - Next-action untuk agent berikutnya: Run migration 004, then smoke test buyer/seller renegotiate and escrow deploy with insufficient and sufficient devnet USDC.
 - Do-Not tambahan: Do not bypass the USDC precheck by writing Supabase `funded`; only confirmed Solana tx can advance funding state.
+
+### Update 2026-05-21 18:13 oleh Codex
+- Status: done
+- Yang dikerjakan: Persisted renegotiation requests in `sealed_messages`, made `escalated` reset stale negotiation results, opened seller counterparty into manual renegotiation chat, and restarted buyer agent flow when seller requests renegotiation.
+- Files modified: `ARCHITECTURE.md`, `SYSTEM_DESIGN.md`, `docs/ARCHITECTURE.md`, `app/src/app/api/messages/route.ts`, `app/src/app/api/negotiate/manual/route.ts`, `app/src/app/negotiate/[dealId]/page.tsx`.
+- Commit SHA: `9b8890b`
+- Test status: `npx.cmd eslint src/app/api/messages/route.ts src/app/api/negotiate/manual/route.ts src/app/negotiate/[dealId]/page.tsx` pass with existing warnings; `npm.cmd run build` pass; Anchor not touched.
+- Blocker (jika ada): Supabase migration 004 still must be applied manually before production can store `status = 'escalated'`.
+- Next-action untuk agent berikutnya: Smoke test buyer-initiated and seller-initiated Renegotiate across two wallets/devices, then confirm notification menu links to `/negotiate/[dealId]`.
+- Do-Not tambahan: Do not treat `sealed_messages.metadata.type = 'renegotiation_request'` as authority to mutate final terms or fund state.
