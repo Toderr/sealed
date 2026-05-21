@@ -74,8 +74,18 @@ Implemented UI flow:
 - Status: done
 - Yang dikerjakan: Profile self stats sekarang merge Supabase mirror, sessionStorage deal drafts, dan local deal store agar sealed deals di board ikut tercatat di profile; wording "Settled/settled" di UI diganti menjadi "Sealed/sealed".
 - Files modified: `app/src/app/app/page.tsx`, `app/src/app/profile/page.tsx`, `app/src/app/profile/[wallet]/page.tsx`, `app/src/lib/sealed-users.ts`, `handoffs/HANDOFF_2026-05-21_reviews_status.md`
-- Commit SHA: not committed
+- Commit SHA: a36df15
 - Test status: targeted lint pass untuk `app/page`, public profile, dan `sealed-users`; `profile/page.tsx` masih punya lint lama unrelated di LLM/friends sections; frontend build pass.
 - Blocker (jika ada): Tidak ada.
 - Next-action untuk agent berikutnya: Smoke test `/app` Sealed lane dan `/profile` stats pada wallet yang punya 5 sealed deals.
 - Do-Not tambahan: Jangan hitung profile self hanya dari `useDealsStore`; board memakai mirror/session source.
+
+### Update 2026-05-21 12:25 oleh Codex
+- Status: done
+- Yang dikerjakan: Menambahkan search/filter/sort pada `/profile` Your deals, menampilkan Avg rating di stats profile via `/api/users/[wallet]/public?self=1`, dan menghapus card "Invite your counterparty" dari sidebar profile. Tombol invite tetap ada di masing-masing deal card yang masih butuh counterparty.
+- Files modified: `app/src/app/profile/page.tsx`, `handoffs/HANDOFF_2026-05-21_reviews_status.md`
+- Commit SHA: fbe88b1
+- Test status: `npm.cmd run build` pass; `npx.cmd eslint "src/app/profile/page.tsx"` masih fail hanya pada lint lama unrelated di Settings/Friends (`set-state-in-effect`, unused vars); dev server `http://localhost:3001/profile` return 200.
+- Blocker (jika ada): Tidak ada.
+- Next-action untuk agent berikutnya: Browser smoke test `/profile` dengan deals banyak: cek search, filter Active/Sealed/Needs invite, sort, rating self, dan pastikan invite hanya muncul di deal row draft.
+- Do-Not tambahan: Jangan reintroduce invite generator sebagai sidebar-level profile card; invite tetap contextual per deal.
