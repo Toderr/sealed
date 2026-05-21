@@ -89,3 +89,13 @@ Implemented UI flow:
 - Blocker (jika ada): Tidak ada.
 - Next-action untuk agent berikutnya: Browser smoke test `/profile` dengan deals banyak: cek search, filter Active/Sealed/Needs invite, sort, rating self, dan pastikan invite hanya muncul di deal row draft.
 - Do-Not tambahan: Jangan reintroduce invite generator sebagai sidebar-level profile card; invite tetap contextual per deal.
+
+### Update 2026-05-21 12:53 oleh Codex
+- Status: done
+- Yang dikerjakan: Add friend di `/profile` sekarang memakai username/handle dan `POST /api/friends` resolve handle ke wallet server-side; invite page lebih kuat resolve full inviter wallet sebelum fetch stats; public profile stats tetap dihitung dari deal/rating fallback meski row `sealed_users` belum lengkap; profile upsert retry otomatis tanpa kolom optional yang belum ada di schema cache seperti `display_name`.
+- Files modified: `app/src/app/api/friends/route.ts`, `app/src/app/invite/[token]/page.tsx`, `app/src/app/profile/page.tsx`, `app/src/lib/sealed-users.ts`, `app/src/lib/types.ts`, `handoffs/HANDOFF_2026-05-21_reviews_status.md`
+- Commit SHA: 838fb7a
+- Test status: targeted lint pass untuk `api/friends`, invite page, `sealed-users`, `types`; frontend build pass (`npm.cmd run build`); `profile/page.tsx` lint masih fail pada lint lama unrelated di Settings/Friends (`set-state-in-effect`, unused vars).
+- Blocker (jika ada): Tidak ada.
+- Next-action untuk agent berikutnya: Browser smoke test add friend pakai `@username`, buka invite link lama/baru dan cek About the inviter stats, lalu coba invitee name gate pada schema tanpa `display_name`.
+- Do-Not tambahan: Jangan kembalikan add friend ke wallet-address input; public profile button boleh tetap pakai wallet karena sudah berada di profile wallet tersebut.
