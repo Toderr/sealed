@@ -69,3 +69,13 @@ Implemented UI flow:
 - Blocker (jika ada): Tidak ada.
 - Next-action untuk agent berikutnya: Browser smoke test dan deploy.
 - Do-Not tambahan: Jangan kembali ke hidden-until-both ratings unless product explicitly wants retaliatory-review protection.
+
+### Update 2026-05-21 12:10 oleh Codex
+- Status: done
+- Yang dikerjakan: Profile self stats sekarang merge Supabase mirror, sessionStorage deal drafts, dan local deal store agar sealed deals di board ikut tercatat di profile; wording "Settled/settled" di UI diganti menjadi "Sealed/sealed".
+- Files modified: `app/src/app/app/page.tsx`, `app/src/app/profile/page.tsx`, `app/src/app/profile/[wallet]/page.tsx`, `app/src/lib/sealed-users.ts`, `handoffs/HANDOFF_2026-05-21_reviews_status.md`
+- Commit SHA: not committed
+- Test status: targeted lint pass untuk `app/page`, public profile, dan `sealed-users`; `profile/page.tsx` masih punya lint lama unrelated di LLM/friends sections; frontend build pass.
+- Blocker (jika ada): Tidak ada.
+- Next-action untuk agent berikutnya: Smoke test `/app` Sealed lane dan `/profile` stats pada wallet yang punya 5 sealed deals.
+- Do-Not tambahan: Jangan hitung profile self hanya dari `useDealsStore`; board memakai mirror/session source.

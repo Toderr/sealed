@@ -32,7 +32,8 @@ interface SupabaseDeal {
 }
 
 function isMilestoneDone(status: string | undefined) {
-  return status === "Released" || status === "Completed";
+  const normalized = status?.toLowerCase();
+  return normalized === "released" || normalized === "completed";
 }
 
 function inferDealStatus(deal: SupabaseDeal) {
@@ -351,7 +352,7 @@ function DealsBoldBoard() {
   const lanes: { id: string; title: string; color: string; caption: string; deals: SupabaseDeal[] }[] = [
     { id: "you",  title: "Waiting on you",  color: "var(--warning)", caption: "Action pending — these need your input", deals: youLane },
     { id: "them", title: "Waiting on them", color: "var(--accent)",  caption: "In progress — counterparty's move",     deals: themLane },
-    { id: "done", title: "Settled",         color: "var(--success)", caption: "Completed deals",                       deals: doneLane },
+    { id: "done", title: "Sealed",          color: "var(--success)", caption: "Sealed deals",                          deals: doneLane },
   ];
 
   return (
@@ -484,7 +485,7 @@ function DealCardBold({
     proposed:       "Ready to sign",
     funded:         "Funded",
     in_progress:    "In progress",
-    completed:      "Completed",
+    completed:      "Sealed",
     refunded:       "Refunded",
     disputed:       "Disputed",
   };

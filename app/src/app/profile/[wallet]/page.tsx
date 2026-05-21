@@ -242,7 +242,7 @@ export default function PublicProfilePage() {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 12, color: "var(--accent)", margin: 0, fontWeight: 590 }}>
-                        {profile.deals_successful} settled · 0 disputes
+                        {profile.deals_successful} sealed · 0 disputes
                       </p>
                       <p style={{ fontSize: 11, color: "var(--muted)", margin: "1px 0 0" }}>On-chain verified deal history</p>
                     </div>
@@ -283,13 +283,13 @@ export default function PublicProfilePage() {
                   </p>
                   <h1 style={{ fontSize: 32, fontWeight: 590, letterSpacing: "-0.024em", color: "var(--primary)", margin: "10px 0 0", lineHeight: 1.1 }}>
                     {profile.deals_total > 0
-                      ? `${profile.deals_total} deal${profile.deals_total === 1 ? "" : "s"} completed on-chain.`
+                      ? `${profile.deals_total} deal${profile.deals_total === 1 ? "" : "s"} sealed on-chain.`
                       : "New to Sealed."}
                   </h1>
                   <p style={{ fontSize: 14, color: "var(--muted)", marginTop: 14, lineHeight: 1.6, maxWidth: 500 }}>
                     {profile.deals_total > 0
                       ? "Every number on this profile traces to an on-chain Sealed deal. No self-reported volume, no decorative stats."
-                      : "This wallet hasn't completed a deal yet. All stats will appear here once deals are settled on-chain."}
+                      : "This wallet hasn't sealed a deal yet. All stats will appear here once deals are sealed on-chain."}
                   </p>
                 </div>
 
@@ -342,11 +342,11 @@ export default function PublicProfilePage() {
             {tab === "timeline" && (
               profile.deals_total > 0 ? (
                 <div style={{ textAlign: "center", padding: "48px 0", color: "var(--muted)", fontSize: 13 }}>
-                  Deal timeline will appear here as deals are completed.
+                  Deal timeline will appear here as deals are sealed.
                 </div>
               ) : (
                 <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
-                  No completed deals yet.
+                  No sealed deals yet.
                 </div>
               )
             )}

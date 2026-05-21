@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -17,6 +17,120 @@ const WalletMultiButton = dynamic(
   { ssr: false }
 );
 
+type ProfileMilestone = {
+  description: string;
+  amount: number;
+  status?: string;
+};
+
+type MirrorDeal = {
+  deal_id: string;
+  buyer_wallet: string;
+  seller_wallet: string | null;
+  title: string;
+  description?: string | null;
+  total_amount_usdc: number | string;
+  milestones: ProfileMilestone[];
+  status: string;
+  created_at?: string;
+};
+
+type ProfileDealRowData = {
+  dealId: string;
+  title: string;
+  description: string;
+  status: string;
+  totalAmountUsdc: number;
+  milestones: ProfileMilestone[];
+  createdAt?: string;
+};
+
+function isDoneMilestone(status: string | undefined) {
+  const normalized = status?.toLowerCase();
+  return normalized === "released" || normalized === "completed";
+}
+
+function profileDealStatusKey(deal: ProfileDealRowData) {
+  if (deal.milestones.length > 0 && deal.milestones.every((m) => isDoneMilestone(m.status))) {
+    return "completed";
+  }
+
+  const raw = deal.status.toLowerCase();
+  if (raw === "created") return "draft";
+  if (raw === "inprogress") return "in_progress";
+  return raw;
+}
+
+function isProfileDealSealed(deal: ProfileDealRowData) {
+  return profileDealStatusKey(deal) === "completed";
+}
+
+function isProfileDealActive(deal: ProfileDealRowData) {
+  const status = profileDealStatusKey(deal);
+  return status !== "completed" && status !== "refunded" && status !== "disputed";
+}
+
+function fromLocalDeal(deal: Deal): ProfileDealRowData {
+  return {
+    dealId: deal.dealId,
+    title: deal.dealId.replace(/-/g, " "),
+    description: "",
+    status: deal.status,
+    totalAmountUsdc: deal.totalAmount / 1_000_000,
+    milestones: deal.milestones.map((m) => ({
+      description: m.description,
+      amount: m.amount / 1_000_000,
+      status: m.status,
+    })),
+    createdAt: deal.createdAt ? new Date(deal.createdAt * 1000).toISOString() : undefined,
+  };
+}
+
+function fromMirrorDeal(deal: MirrorDeal): ProfileDealRowData {
+  return {
+    dealId: deal.deal_id,
+    title: deal.title || deal.deal_id.replace(/-/g, " "),
+    description: deal.description ?? "",
+    status: deal.status,
+    totalAmountUsdc: Number(deal.total_amount_usdc) || 0,
+    milestones: (deal.milestones ?? []).map((m) => ({
+      description: m.description,
+      amount: Number(m.amount) || 0,
+      status: m.status,
+    })),
+    createdAt: deal.created_at,
+  };
+}
+
+function readSessionProfileDeals(wallet: string): ProfileDealRowData[] {
+  const deals: ProfileDealRowData[] = [];
+  try {
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (!key?.startsWith("deal:")) continue;
+      const raw = sessionStorage.getItem(key);
+      if (!raw) continue;
+      const deal = JSON.parse(raw) as MirrorDeal;
+      if (deal.buyer_wallet === wallet || deal.seller_wallet === wallet) {
+        deals.push(fromMirrorDeal(deal));
+      }
+    }
+  } catch {}
+  return deals;
+}
+
+function mergeProfileDeals(...sources: ProfileDealRowData[][]) {
+  const map = new Map<string, ProfileDealRowData>();
+  for (const source of sources) {
+    for (const deal of source) map.set(deal.dealId, deal);
+  }
+  return Array.from(map.values()).sort((a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return tb - ta;
+  });
+}
+
 export default function ProfilePage() {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
@@ -25,6 +139,14 @@ export default function ProfilePage() {
   const { deals } = useDealsStore(publicKey ?? null);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"overview" | "agent" | "friends" | "settings">("overview");
+  const [mirrorDeals, setMirrorDeals] = useState<ProfileDealRowData[]>([]);
+  const [sessionDeals, setSessionDeals] = useState<ProfileDealRowData[]>([]);
+
+  const localDeals = useMemo(() => deals.map(fromLocalDeal), [deals]);
+  const profileDeals = useMemo(
+    () => mergeProfileDeals(localDeals, sessionDeals, mirrorDeals),
+    [localDeals, sessionDeals, mirrorDeals]
+  );
 
   useEffect(() => {
     if (!loaded || !wallet) return;
@@ -32,6 +154,33 @@ export default function ProfilePage() {
       router.replace("/onboarding");
     }
   }, [loaded, wallet, profile, router]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!wallet) {
+      setMirrorDeals([]);
+      setSessionDeals([]);
+      return;
+    }
+
+    setSessionDeals(readSessionProfileDeals(wallet));
+
+    fetch("/api/deals/mirror", { headers: { "x-wallet": wallet } })
+      .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (cancelled || !ok) return;
+        const next = ((data.deals ?? []) as MirrorDeal[]).map(fromMirrorDeal);
+        setMirrorDeals(next);
+      })
+      .catch(() => {
+        if (!cancelled) setMirrorDeals([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet]);
 
   if (!loaded) return null;
 
@@ -57,17 +206,10 @@ export default function ProfilePage() {
     return null;
   }
 
-  const activeDealCount = deals.filter(
-    (d) =>
-      d.status === DealStatus.Created ||
-      d.status === DealStatus.Funded ||
-      d.status === DealStatus.InProgress
-  ).length;
-  const completedDealCount = deals.filter(
-    (d) => d.status === DealStatus.Completed
-  ).length;
-  const totalVolumeUsdc = deals.reduce(
-    (sum, d) => sum + d.totalAmount / 1_000_000,
+  const activeDealCount = profileDeals.filter(isProfileDealActive).length;
+  const sealedDealCount = profileDeals.filter(isProfileDealSealed).length;
+  const totalVolumeUsdc = profileDeals.reduce(
+    (sum, d) => sum + d.totalAmountUsdc,
     0
   );
 
@@ -258,9 +400,9 @@ export default function ProfilePage() {
                 <>
                   {/* Stats row */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <StatCard label="Total deals" value={deals.length} />
+                    <StatCard label="Total deals" value={profileDeals.length} />
                     <StatCard label="Active" value={activeDealCount} accent />
-                    <StatCard label="Completed" value={completedDealCount} />
+                    <StatCard label="Sealed" value={sealedDealCount} />
                     <StatCard
                       label="Volume (USDC)"
                       value={`$${totalVolumeUsdc.toLocaleString()}`}
@@ -288,11 +430,11 @@ export default function ProfilePage() {
                       </Link>
                     </div>
 
-                    {deals.length === 0 ? (
+                    {profileDeals.length === 0 ? (
                       <EmptyDeals />
                     ) : (
                       <div className="space-y-2">
-                        {deals.map((deal) => (
+                        {profileDeals.map((deal) => (
                           <DealRow key={deal.dealId} deal={deal} profile={profile} wallet={wallet} />
                         ))}
                       </div>
@@ -538,16 +680,20 @@ function StatCard({
 }
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  [DealStatus.Created]: { label: "Awaiting counterparty", color: "text-warning" },
-  [DealStatus.Funded]: { label: "Funded", color: "text-accent" },
-  [DealStatus.InProgress]: { label: "In progress", color: "text-success" },
-  [DealStatus.Completed]: { label: "Completed", color: "text-muted" },
-  [DealStatus.Refunded]: { label: "Refunded", color: "text-danger" },
-  [DealStatus.Disputed]: { label: "Disputed", color: "text-danger" },
+  draft: { label: "Awaiting counterparty", color: "text-warning" },
+  "seller-ready": { label: "Counterparty reviewing", color: "text-warning" },
+  "seller-agreed": { label: "Ready to fund", color: "text-accent" },
+  proposed: { label: "Ready to sign", color: "text-accent" },
+  funded: { label: "Funded", color: "text-accent" },
+  in_progress: { label: "In progress", color: "text-success" },
+  completed: { label: "Sealed", color: "text-success" },
+  refunded: { label: "Refunded", color: "text-danger" },
+  disputed: { label: "Disputed", color: "text-danger" },
 };
 
-function localDealHref(deal: Deal) {
-  return deal.status === DealStatus.Created
+function localDealHref(deal: ProfileDealRowData) {
+  const status = profileDealStatusKey(deal);
+  return status === "draft" || status === "seller-ready" || status === "seller-agreed" || status === "proposed"
     ? `/negotiate/${deal.dealId}`
     : `/deals/${deal.dealId}`;
 }
@@ -557,26 +703,26 @@ function DealRow({
   profile,
   wallet,
 }: {
-  deal: Deal;
+  deal: ProfileDealRowData;
   profile: { name: string; bio: string };
   wallet: string;
 }) {
   const [copied, setCopied] = useState(false);
-  const status = STATUS_LABEL[deal.status] ?? { label: "Unknown", color: "text-muted" };
-  const amountUsdc = deal.totalAmount / 1_000_000;
-  const needsCounterparty = deal.status === DealStatus.Created;
+  const statusKey = profileDealStatusKey(deal);
+  const status = STATUS_LABEL[statusKey] ?? { label: "Unknown", color: "text-muted" };
+  const needsCounterparty = statusKey === "draft";
 
   function copyInvite() {
     const payload = {
       dealId: deal.dealId,
-      dealTitle: deal.dealId.replace(/-/g, " "),
+      dealTitle: deal.title || deal.dealId.replace(/-/g, " "),
       inviterName: profile.name,
       inviterWallet: wallet,
-      amount: amountUsdc,
+      amount: deal.totalAmountUsdc,
       currency: "USDC",
       milestoneCount: deal.milestones.length,
-      milestones: deal.milestones.map((m) => ({ description: m.description, amount: m.amount / 1_000_000 })),
-      description: profile.bio,
+      milestones: deal.milestones.map((m) => ({ description: m.description, amount: m.amount })),
+      description: deal.description || profile.bio,
     };
     const token = encodeInvite(payload);
     const link = `${window.location.origin}/invite/${encodeURIComponent(token)}`;
@@ -602,9 +748,9 @@ function DealRow({
             {deal.milestones.length} milestone{deal.milestones.length !== 1 ? "s" : ""}
           </span>
         </div>
-      </div>
+        </div>
         <span className="text-[13px] text-primary tabular-nums flex-shrink-0" style={{ fontWeight: 590 }}>
-          ${amountUsdc.toLocaleString()} USDC
+          ${deal.totalAmountUsdc.toLocaleString()} USDC
         </span>
       </Link>
       <div className="flex items-center gap-3 flex-shrink-0">

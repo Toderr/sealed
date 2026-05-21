@@ -13,7 +13,10 @@ function isSuccessfulDeal(deal: ProfileDeal) {
     deal.status === "completed" ||
     (Array.isArray(deal.milestones) &&
       deal.milestones.length > 0 &&
-      deal.milestones.every((m) => m.status === "Released" || m.status === "Completed"))
+      deal.milestones.every((m) => {
+        const status = m.status?.toLowerCase();
+        return status === "released" || status === "completed";
+      }))
   );
 }
 
