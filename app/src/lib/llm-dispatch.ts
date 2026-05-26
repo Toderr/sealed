@@ -120,7 +120,7 @@ async function callAnthropic(
   messages: LlmMessage[],
   maxTokens: number
 ): Promise<string> {
-  const client = new Anthropic({ apiKey });
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   const anthropicMessages: Anthropic.MessageParam[] = messages.map((m) => {
     if (typeof m.content === "string") {
       return { role: m.role, content: m.content };

@@ -8,10 +8,21 @@ out/
 dist/
 app/dev-server*.log
 
-# Environment
+# Environment — never commit any env or secret files
 .env
 .env.local
 .env.*.local
+.env.development
+.env.test
+.env.staging
+.env.production
+.env.preview
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
 
 # IDE
 .idea/

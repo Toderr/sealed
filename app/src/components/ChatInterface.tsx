@@ -5,7 +5,8 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { Paperclip, Send, Sparkles } from "lucide-react";
 import { ChatMessage, DealParams, formatUsdc } from "@/lib/types";
 import { SealedMark } from "@/components/SealedLogo";
-import { getLlmHeaders } from "@/lib/llm-headers";
+import { loadProfileFromStorage } from "@/lib/profile-store";
+import { dispatchLlm, type LlmMessage } from "@/lib/llm-dispatch";
 import { ContractWizard } from "@/components/ContractWizard";
 import { renderMarkdown } from "@/lib/render-markdown";
 
@@ -156,36 +157,61 @@ export default function ChatInterface({
     setLoading(true);
 
     try {
+      const wallet = publicKey?.toBase58() ?? null;
       const apiMessages = [...messages, userMsg].map((m) => ({
-        role: m.role,
+        role: m.role as "user" | "assistant",
         content: m.content,
       }));
 
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        ...getLlmHeaders(publicKey?.toBase58() ?? null),
-      };
-      if (publicKey) headers["x-wallet"] = publicKey.toBase58();
+      const profile = wallet ? loadProfileFromStorage(wallet) : null;
+      const ownKey = profile?.llmConfig?.mode === "own-key" ? profile.llmConfig : null;
 
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ messages: apiMessages }),
-      });
+      let responseText: string;
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error ?? `API error: ${res.status}`);
+      if (ownKey) {
+        // Client-side path: fetch system prompt, call LLM directly with user's key
+        const ctxRes = await fetch("/api/agent/context", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wallet }),
+        });
+        if (!ctxRes.ok) throw new Error("Failed to load agent context");
+        const { systemPrompt } = await ctxRes.json();
+
+        responseText = await dispatchLlm({
+          provider: ownKey.provider,
+          model: ownKey.model,
+          apiKey: ownKey.apiKey,
+          system: systemPrompt,
+          messages: apiMessages as LlmMessage[],
+          maxTokens: 1024,
+        });
+      } else {
+        // Server-side path: server uses its configured LLM key
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (wallet) headers["x-wallet"] = wallet;
+
+        const res = await fetch("/api/agent", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ messages: apiMessages }),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error ?? `API error: ${res.status}`);
+        }
+
+        const data = await res.json();
+        responseText = data.response;
       }
 
-      const data = await res.json();
-      const dealParams = tryParseDealParams(data.response);
+      const dealParams = tryParseDealParams(responseText);
 
       const assistantMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        // Strip JSON blocks so the user only sees the conversational text
-        content: stripJsonBlocks(data.response),
+        content: stripJsonBlocks(responseText),
         dealParams,
         timestamp: Date.now(),
       };
@@ -194,7 +220,7 @@ export default function ChatInterface({
 
       // Auto-show targeted wizard when no complete deal was produced
       if (!dealParams) {
-        const partial = tryParsePartialDeal(data.response);
+        const partial = tryParsePartialDeal(responseText);
         if (partial) {
           const prefill: WizardPrefill = {};
           if (partial.contract_type) prefill.contractType = partial.contract_type;
