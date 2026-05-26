@@ -22,4 +22,6 @@ pub enum EscrowError {
     UnauthorizedSeller,
     #[msg("Funding amount exceeds remaining balance")]
     OverFunding,
+    #[msg("30-day timeout period has not elapsed yet")]
+    TimeoutNotReached,
 }

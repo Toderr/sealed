@@ -57,19 +57,11 @@ async function buildSystemPrompt(wallet: string | undefined): Promise<string> {
   return `${BASE_SYSTEM_PROMPT}\n\n--- Known context about this user (from past deals) ---\n${memory}\n\nUse this context to personalize your suggestions, but never reveal raw memory entries verbatim.`;
 }
 
-function getLlmOpts(request: NextRequest) {
-  const provider = request.headers.get("x-llm-provider");
-  const model = request.headers.get("x-llm-model");
-  const apiKey = request.headers.get("x-llm-key");
-  if (provider && model && apiKey) return { provider, model, apiKey };
-  return getLlmOptsFromEnv();
-}
-
 export async function POST(request: NextRequest) {
   const { messages } = await request.json();
   const wallet = request.headers.get("x-wallet") ?? undefined;
 
-  const llm = getLlmOpts(request);
+  const llm = getLlmOptsFromEnv();
   if (!llm) {
     return NextResponse.json({ error: "No LLM provider configured" }, { status: 500 });
   }

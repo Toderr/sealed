@@ -46,8 +46,11 @@ export function findEscrowVaultPDA(dealId: string): [PublicKey, number] {
   );
 }
 
-export function getUsdcMint(isDevnet = true): PublicKey {
-  return new PublicKey(isDevnet ? USDC_DEVNET_MINT : USDC_MAINNET_MINT);
+export function getUsdcMint(): PublicKey {
+  const envMint = process.env.NEXT_PUBLIC_USDC_MINT;
+  if (envMint) return new PublicKey(envMint);
+  const rpc = process.env.NEXT_PUBLIC_RPC_URL ?? "";
+  return new PublicKey(rpc.includes("mainnet") ? USDC_MAINNET_MINT : USDC_DEVNET_MINT);
 }
 
 // --- Anchor instruction discriminator (first 8 bytes of sha256("global:<name>")) ---
@@ -327,3 +330,74 @@ export async function coSignAndSend(
 
 // Helper re-exports so consumers don't need @solana/spl-token directly
 export { getAccount, getAssociatedTokenAddress, TokenAccountNotFoundError, TokenInvalidAccountOwnerError };
+
+// --- New instructions: cancel, timeout refund, close ---
+
+// Cancel an unfunded (or partially funded) deal. Buyer-only. Returns any
+// partial funding to buyer and closes both the escrow vault and deal PDA.
+export async function buildCancelDealIx(
+  buyer: PublicKey,
+  dealId: string
+): Promise<TransactionInstruction> {
+  const [dealPDA] = findDealPDA(dealId);
+  const [escrowVault] = findEscrowVaultPDA(dealId);
+  const mint = getUsdcMint();
+  const buyerATA = await getAssociatedTokenAddress(mint, buyer);
+  const disc = await sha256Discriminator("cancel_deal");
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: buyer, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+      { pubkey: escrowVault, isSigner: false, isWritable: true },
+      { pubkey: buyerATA, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: disc,
+  });
+}
+
+// Unilateral refund after 30-day timeout. Buyer-only, no seller signature
+// required. Closes escrow vault and deal PDA.
+export async function buildBuyerTimeoutRefundIx(
+  buyer: PublicKey,
+  dealId: string
+): Promise<TransactionInstruction> {
+  const [dealPDA] = findDealPDA(dealId);
+  const [escrowVault] = findEscrowVaultPDA(dealId);
+  const mint = getUsdcMint();
+  const buyerATA = await getAssociatedTokenAddress(mint, buyer);
+  const disc = await sha256Discriminator("buyer_timeout_refund");
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: buyer, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+      { pubkey: escrowVault, isSigner: false, isWritable: true },
+      { pubkey: buyerATA, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: disc,
+  });
+}
+
+// Close a completed or refunded deal, reclaiming escrow vault rent.
+// Buyer-only. Call after status == Completed or Refunded.
+export async function buildCloseDealIx(
+  buyer: PublicKey,
+  dealId: string
+): Promise<TransactionInstruction> {
+  const [dealPDA] = findDealPDA(dealId);
+  const [escrowVault] = findEscrowVaultPDA(dealId);
+  const disc = await sha256Discriminator("close_deal");
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: buyer, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+      { pubkey: escrowVault, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: disc,
+  });
+}

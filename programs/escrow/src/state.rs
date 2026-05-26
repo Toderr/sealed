@@ -27,6 +27,8 @@ pub struct Deal {
     pub milestones: Vec<Milestone>,
     /// Creation timestamp
     pub created_at: i64,
+    /// Timestamp when deal reached fully-funded status (0 = not yet funded)
+    pub funded_at: i64,
     /// Last updated timestamp
     pub updated_at: i64,
     /// Bump seed for PDA

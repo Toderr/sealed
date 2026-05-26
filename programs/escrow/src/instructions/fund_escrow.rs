@@ -51,11 +51,13 @@ pub fn handler(ctx: Context<FundEscrow>, amount: u64) -> Result<()> {
     );
     token::transfer(transfer_ctx, amount)?;
 
+    let now = Clock::get()?.unix_timestamp;
     deal.funded_amount += amount;
     if deal.funded_amount == deal.total_amount {
         deal.status = DealStatus::Funded;
+        deal.funded_at = now;
     }
-    deal.updated_at = Clock::get()?.unix_timestamp;
+    deal.updated_at = now;
 
     msg!("Escrow funded: {} USDC", amount);
     Ok(())

@@ -33,8 +33,23 @@ pub mod escrow {
         instructions::release_milestone::handler(ctx, milestone_index)
     }
 
-    /// Refund remaining funds to buyer (mutual agreement or timeout)
+    /// Refund remaining funds to buyer (requires both signatures)
     pub fn refund(ctx: Context<Refund>) -> Result<()> {
         instructions::refund::handler(ctx)
+    }
+
+    /// Cancel an unfunded deal, close accounts, reclaim rent (buyer only)
+    pub fn cancel_deal(ctx: Context<CancelDeal>) -> Result<()> {
+        instructions::cancel_deal::handler(ctx)
+    }
+
+    /// Unilateral refund after 30-day inactivity timeout (buyer only, no seller required)
+    pub fn buyer_timeout_refund(ctx: Context<BuyerTimeoutRefund>) -> Result<()> {
+        instructions::buyer_timeout_refund::handler(ctx)
+    }
+
+    /// Close a completed or refunded deal, reclaim escrow vault rent (buyer only)
+    pub fn close_deal(ctx: Context<CloseDeal>) -> Result<()> {
+        instructions::close_deal::handler(ctx)
     }
 }

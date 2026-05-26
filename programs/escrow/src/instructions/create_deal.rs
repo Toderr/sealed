@@ -76,6 +76,7 @@ pub fn handler(
         })
         .collect();
     deal.created_at = Clock::get()?.unix_timestamp;
+    deal.funded_at = 0;
     deal.updated_at = deal.created_at;
     deal.bump = ctx.bumps.deal;
 

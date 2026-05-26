@@ -1,19 +1,5 @@
-import { loadProfileFromStorage } from "./profile-store";
-
-export function getLlmHeaders(wallet: string | null): Record<string, string> {
-  if (!wallet) return {};
-  try {
-    const profile = loadProfileFromStorage(wallet);
-    if (profile?.llmConfig?.mode === "own-key" && profile.llmConfig.apiKey) {
-      const { provider, model, apiKey } = profile.llmConfig;
-      return {
-        "x-llm-provider": provider,
-        "x-llm-model": model,
-        "x-llm-key": apiKey,
-      };
-    }
-  } catch {
-    // localStorage unavailable (SSR guard)
-  }
+// API keys must never transit through the server. LLM provider is always
+// server-side env var only. This function intentionally returns no credentials.
+export function getLlmHeaders(_wallet: string | null): Record<string, string> {
   return {};
 }
