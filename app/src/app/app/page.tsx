@@ -9,7 +9,7 @@ import { useToast } from "@/components/Toast";
 import { NotificationMenu } from "@/components/NotificationMenu";
 import { useProfileStore } from "@/lib/profile-store";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
-import { formatUsdc, type DealParams, type PublicProfile } from "@/lib/types";
+import { type DealParams, type PublicProfile } from "@/lib/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
@@ -114,6 +114,8 @@ function HomeContent() {
   const view: View = searchParams.get("view") === "chat" ? "chat" : "deals";
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [livePartial, setLivePartial] = useState<PartialDeal | null>(null);
+  const [hasInteracted, setHasInteracted] = useState(false);
+  const [liveDeal, setLiveDeal] = useState<DealParams | null>(null);
 
   const { publicKey } = useWallet();
   const { profile, loaded: profileLoaded } = useProfileStore(
@@ -129,7 +131,7 @@ function HomeContent() {
     }
   }, [profileLoaded, publicKey, profile, router]);
 
-  // Save draft and navigate to negotiation room
+  // Store drafted deal in state (display in LiveDealSheet; user navigates via button)
   async function handleDealDrafted(params: DealParams): Promise<void> {
     if (!publicKey) {
       toast.show({
@@ -139,6 +141,12 @@ function HomeContent() {
       });
       return;
     }
+    setLiveDeal(params);
+  }
+
+  // Save draft and navigate to negotiation room (called from LiveDealSheet button)
+  async function handleInviteCounterparty(params: DealParams): Promise<void> {
+    if (!publicKey) return;
 
     const dealTitle = params.title ?? params.dealId;
 
@@ -205,14 +213,21 @@ function HomeContent() {
 
       <main className="flex-1 overflow-hidden" style={{ position: "relative", zIndex: 1 }}>
         {view === "chat" ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", height: "100%", overflow: "hidden" }}>
-            <div style={{ overflow: "hidden", borderRight: "1px solid var(--card-border-subtle)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: hasInteracted ? "1fr 360px" : "1fr", height: "100%", overflow: "hidden", transition: "grid-template-columns 0.35s ease" }}>
+            <div style={{ overflow: "hidden", borderRight: hasInteracted ? "1px solid var(--card-border-subtle)" : "none", transition: "border-color 0.35s ease" }}>
               <ChatInterface
                 onDealCreated={handleDealDrafted}
                 onPartialDeal={setLivePartial}
+                onFirstMessage={() => setHasInteracted(true)}
               />
             </div>
-            <LiveDealSheet partial={livePartial} />
+            {hasInteracted && (
+              <LiveDealSheet
+                partial={livePartial}
+                deal={liveDeal}
+                onInvite={handleInviteCounterparty}
+              />
+            )}
           </div>
         ) : (
           <DealsBoldBoard />
@@ -749,143 +764,156 @@ function StatusPill({ tone, children }: { tone: string; children: React.ReactNod
   );
 }
 
-/* ── Live Deal Sheet ── */
-function LiveDealSheet({ partial }: { partial: PartialDeal | null }) {
+/* ── Live Deal Sheet (Bold variant) ── */
+function LiveDealSheet({
+  partial,
+  deal,
+  onInvite,
+}: {
+  partial: PartialDeal | null;
+  deal: DealParams | null;
+  onInvite: (params: DealParams) => void;
+}) {
   const CONTRACT_TYPE_LABELS: Record<string, string> = {
     sale: "Sale", service: "Service", partnership: "Partnership",
     rental: "Rental", nda: "NDA", other: "Other",
   };
 
-  const hasAny = partial && (partial.title || partial.total_amount || partial.milestones?.length);
+  const title = deal?.title ?? partial?.title ?? null;
+  const contractType = partial?.contract_type ?? null;
+  const totalAmount = deal?.totalAmount ?? partial?.total_amount ?? null;
+  const milestones: Array<{ description: string; amount: number }> = deal?.milestones ?? partial?.milestones ?? [];
+  const milestoneCount = milestones.length;
+  const plannedCap = milestones.reduce((sum, m) => sum + m.amount, 0);
 
   return (
-    <aside style={{
-      background: "var(--panel)",
-      overflowY: "auto",
-      padding: "28px 24px 32px",
-      display: "flex",
-      flexDirection: "column",
-      gap: 20,
-    }}>
-      <div>
-        <p style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--accent)", margin: 0, fontWeight: 510 }}>
-          Live deal sheet
-        </p>
-        <p style={{ fontSize: 12, color: "var(--muted)", margin: "6px 0 0" }}>
-          Updates as the AI extracts terms.
-        </p>
+    <aside style={{ background: "var(--panel)", display: "flex", flexDirection: "column", position: "relative", minHeight: 0 }}>
+      <style>{`@keyframes sealed-ping{0%{transform:scale(1);opacity:.5}100%{transform:scale(2.2);opacity:0}}`}</style>
+
+      {/* Header */}
+      <div style={{ padding: "18px 20px 14px", borderBottom: "1px solid var(--card-border-subtle)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 10, height: 10 }}>
+            <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "var(--accent)", opacity: 0.45, animation: "sealed-ping 1.6s ease-out infinite" }} />
+            <span style={{ position: "relative", width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", display: "block" }} />
+          </span>
+          <span style={{ fontSize: 11, fontWeight: 590, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--accent)" }}>Live deal sheet</span>
+        </div>
+        <span style={{ color: "var(--muted)", fontFamily: "ui-monospace, monospace", fontSize: 11, background: "rgba(255,255,255,0.04)", border: "1px solid var(--card-border-subtle)", borderRadius: 4, padding: "2px 7px" }}>
+          draft · {milestoneCount}
+        </span>
       </div>
 
-      {!hasAny ? (
-        <div style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 10,
-          padding: "40px 0",
-          color: "var(--subtle)",
-          textAlign: "center",
-        }}>
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35 }}>
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="16" y1="13" x2="8" y2="13" />
-            <line x1="16" y1="17" x2="8" y2="17" />
-            <polyline points="10 9 9 9 8 9" />
-          </svg>
-          <span style={{ fontSize: 12 }}>Describe your deal on the left to see a live summary here.</span>
-        </div>
-      ) : (
-        <>
-          {/* Contract type */}
-          {partial.contract_type && (
-            <SheetRow label="Contract type">
-              <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510 }}>
-                {CONTRACT_TYPE_LABELS[partial.contract_type] ?? partial.contract_type}
-              </span>
-            </SheetRow>
-          )}
-
-          {/* Title */}
-          {partial.title && (
-            <SheetRow label="Title">
-              <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510 }}>{partial.title}</span>
-            </SheetRow>
-          )}
-
-          {/* Amount */}
-          {partial.total_amount != null && (
-            <SheetRow label="Total amount">
-              <span style={{ fontSize: 20, fontWeight: 590, color: "var(--primary)", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums", fontFamily: "ui-monospace, monospace" }}>
-                {formatUsdc(partial.total_amount)}
-              </span>
-              <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 4 }}>USDC</span>
-            </SheetRow>
-          )}
-
-          {/* Milestones */}
-          {partial.milestones && partial.milestones.length > 0 && (
-            <SheetRow label={`Milestones (${partial.milestones.length})`}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
-                {partial.milestones.map((m, i) => (
-                  <div key={i} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    padding: "8px 10px",
-                    borderRadius: 7,
-                    background: "rgba(255,255,255,0.025)",
-                    border: "1px solid var(--card-border-subtle)",
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                      <span style={{
-                        width: 18, height: 18, borderRadius: "50%",
-                        background: "rgba(113,112,255,0.12)",
-                        color: "var(--accent)",
-                        fontSize: 10, fontWeight: 590,
-                        display: "inline-flex", alignItems: "center", justifyContent: "center",
-                        flexShrink: 0,
-                      }}>{i + 1}</span>
-                      <span style={{ fontSize: 12, color: "var(--foreground)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {m.description}
-                      </span>
-                    </div>
-                    <span style={{ fontSize: 12, fontFamily: "ui-monospace, monospace", color: "var(--muted)", flexShrink: 0 }}>
-                      ${m.amount.toLocaleString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </SheetRow>
-          )}
-
-          {/* Remaining fields hint */}
-          <div style={{
-            padding: "12px 14px",
-            borderRadius: 8,
-            background: "rgba(113,112,255,0.04)",
-            border: "1px solid rgba(113,112,255,0.12)",
-            fontSize: 12,
-            color: "var(--muted)",
-            lineHeight: 1.55,
-          }}>
-            Keep chatting to refine the terms. The AI will ask for anything still missing.
+      {/* Body */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
+        {!title && totalAmount == null && milestoneCount === 0 ? (
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "48px 0", color: "var(--subtle)", textAlign: "center" }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+            </svg>
+            <span style={{ fontSize: 12 }}>Terms will appear here as you chat.</span>
           </div>
-        </>
-      )}
-    </aside>
-  );
-}
+        ) : (
+          <>
+            {/* Title + type */}
+            {(title || contractType) && (
+              <div>
+                {title && (
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 590, color: "var(--primary)", letterSpacing: "-0.014em", lineHeight: 1.3 }}>{title}</p>
+                )}
+                {contractType && (
+                  <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--muted)" }}>{CONTRACT_TYPE_LABELS[contractType] ?? contractType}</p>
+                )}
+              </div>
+            )}
 
-function SheetRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 510 }}>{label}</span>
-      <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 4 }}>{children}</div>
-    </div>
+            {/* Total bar */}
+            {totalAmount != null && (
+              <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.06)", border: "1px solid var(--card-border)", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 10, letterSpacing: "0.10em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>Committed</div>
+                  <div style={{ fontSize: 22, fontWeight: 590, color: "var(--primary)", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums", fontFamily: "ui-monospace, monospace", lineHeight: 1 }}>
+                    ${totalAmount.toLocaleString()}
+                    <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 4, fontFamily: "inherit", fontWeight: 400, letterSpacing: 0 }}>USDC</span>
+                  </div>
+                </div>
+                {plannedCap > 0 && Math.abs(plannedCap - totalAmount) > 0.01 && (
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 10, letterSpacing: "0.10em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>Planned cap</div>
+                    <div style={{ fontSize: 14, fontWeight: 510, color: "var(--muted)", fontFamily: "ui-monospace, monospace" }}>${plannedCap.toLocaleString()}</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Milestones timeline */}
+            {milestoneCount > 0 && (
+              <div>
+                <div style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 12, fontWeight: 510 }}>Milestones</div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {milestones.map((m, i) => {
+                    const isLast = i === milestones.length - 1;
+                    return (
+                      <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, width: 28 }}>
+                          <span style={{
+                            width: 28, height: 28, borderRadius: "50%",
+                            background: "var(--accent)", color: "#fff",
+                            fontSize: 11, fontWeight: 590,
+                            display: "inline-flex", alignItems: "center", justifyContent: "center",
+                            boxShadow: "0 0 0 4px rgba(113,112,255,0.12)",
+                            flexShrink: 0, position: "relative", zIndex: 1,
+                          }}>{i + 1}</span>
+                          {!isLast && (
+                            <div style={{ width: 1, flex: 1, minHeight: 14, background: "rgba(113,112,255,0.2)", margin: "4px 0" }} />
+                          )}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0, paddingBottom: isLast ? 0 : 16 }}>
+                          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                            <span style={{ fontSize: 13, color: "var(--primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.description}</span>
+                            <span style={{ fontSize: 12, fontFamily: "ui-monospace, monospace", color: "var(--accent)", flexShrink: 0, fontWeight: 510 }}>${m.amount.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding: "12px 20px 20px", borderTop: "1px solid var(--card-border-subtle)", display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
+        <button
+          style={{ height: 36, borderRadius: 7, fontSize: 12, width: "100%", cursor: "pointer", color: "var(--muted)", background: "transparent", border: "1px solid var(--card-border)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => {/* milestone editor — future */}}
+        >
+          Edit milestones
+        </button>
+        <button
+          style={{
+            height: 40, borderRadius: 7, fontSize: 13, width: "100%",
+            cursor: deal ? "pointer" : "default",
+            background: deal ? "var(--accent)" : "rgba(113,112,255,0.25)",
+            color: "#fff", border: "none",
+            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+            fontWeight: 510, opacity: deal ? 1 : 0.55,
+          }}
+          onClick={() => deal && onInvite(deal)}
+          disabled={!deal}
+        >
+          Review &amp; invite counterparty
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14M12 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+    </aside>
   );
 }
 

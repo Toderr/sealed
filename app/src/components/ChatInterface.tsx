@@ -111,9 +111,11 @@ const NEW_DEAL_SUGGESTIONS = [
 export default function ChatInterface({
   onDealCreated,
   onPartialDeal,
+  onFirstMessage,
 }: {
   onDealCreated: (params: DealParams) => Promise<void>;
   onPartialDeal?: (deal: PartialDeal | null) => void;
+  onFirstMessage?: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -144,6 +146,10 @@ export default function ChatInterface({
   async function sendMessage(overrideText?: string) {
     const text = (overrideText ?? input).trim();
     if (!text || loading) return;
+
+    if (messages.length === 0) {
+      onFirstMessage?.();
+    }
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
