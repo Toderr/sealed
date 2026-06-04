@@ -66,6 +66,25 @@ AUDIT-*.html
 claude-session.jsonl
 codex-session.jsonl
 
+# Pitch / deck / demo assets
+Sealed\ logo/
+Sealed\ Deck*.html
+Sealed_Pitch_Script*.md
+sealed-demo-video/
+sealed_demo_contract.*
+slides-png/
+landing-preview.html
+preview-slide*.js
+preview-s*.js
+render-deck.js
+deck-*-plan.md
+context.md
+handoffs/
+screenshot-tmp/package*.json
+
+# Claude internals
+.claude/scheduled_tasks.lock
+
 # Keys (never commit)
 *.json
 !package.json
