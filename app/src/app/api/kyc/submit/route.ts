@@ -12,11 +12,16 @@ function isAllowedKycFile(buf: Buffer): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  const callerWallet = request.headers.get("x-wallet");
   const body = await request.json();
   const { wallet, documentBase64, mimeType } = body;
 
   if (!wallet || !documentBase64) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  if (!callerWallet || callerWallet !== wallet) {
+    return Response.json({ error: "Unauthorized" }, { status: 403 });
   }
 
   const buf = Buffer.from(documentBase64, "base64");

@@ -78,16 +78,6 @@ function MilestoneDot({ status }: { status: MilestoneStatus }) {
       </span>
     );
   }
-  if (status === MilestoneStatus.Completed) {
-    return (
-      <span
-        className={`${common} bg-accent/15`}
-        aria-label="Completed"
-      >
-        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-      </span>
-    );
-  }
   return (
     <span
       className={`${common} border border-card-border`}

@@ -68,7 +68,7 @@ function sanitizeMilestones(value: unknown): DealMilestone[] | null {
 function allMilestonesReleased(milestones: DealMilestone[]) {
   return (
     milestones.length > 0 &&
-    milestones.every((m) => m.status === "Released" || m.status === "Completed")
+    milestones.every((m) => m.status === "Released")
   );
 }
 

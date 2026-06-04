@@ -220,21 +220,21 @@ export function getLlmOptsFromEnv(): { provider: string; model: string; apiKey: 
     };
   }
 
-  const anthropicKey = envSecret("ANTHROPIC_API_KEY");
-  if (anthropicKey) {
-    return {
-      provider: "anthropic",
-      model: process.env.ANTHROPIC_MODEL?.trim() || "claude-haiku-4-5-20251001",
-      apiKey: anthropicKey,
-    };
-  }
-
   const openRouterKey = envSecret("OPENROUTER_API_KEY");
   if (openRouterKey) {
     return {
       provider: "openrouter",
       model: process.env.OPENROUTER_MODEL?.trim() || "anthropic/claude-haiku-4-5",
       apiKey: openRouterKey,
+    };
+  }
+
+  const anthropicKey = envSecret("ANTHROPIC_API_KEY");
+  if (anthropicKey) {
+    return {
+      provider: "anthropic",
+      model: process.env.ANTHROPIC_MODEL?.trim() || "claude-haiku-4-5",
+      apiKey: anthropicKey,
     };
   }
 
