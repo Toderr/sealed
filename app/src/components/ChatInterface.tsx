@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { Paperclip, Send, Sparkles } from "lucide-react";
 import { ChatMessage, DealParams, formatUsdc } from "@/lib/types";
 import { SealedMark } from "@/components/SealedLogo";
@@ -9,6 +9,8 @@ import { loadProfileFromStorage } from "@/lib/profile-store";
 import { dispatchLlm, type LlmMessage } from "@/lib/llm-dispatch";
 import { ContractWizard } from "@/components/ContractWizard";
 import { renderMarkdown } from "@/lib/render-markdown";
+import { MOCK_DATA } from "@/lib/env";
+import MockDealForm from "@/components/MockDealForm";
 
 type ContractType = "sale" | "service" | "partnership" | "rental" | "nda" | "other";
 
@@ -269,6 +271,15 @@ export default function ChatInterface({
   }
 
   const showEmptyPrompt = messages.length === 0 && !showWizard;
+
+  // Fully-offline mode: replace the AI chat with a manual deal form.
+  if (MOCK_DATA) {
+    return (
+      <div className="flex flex-col h-full w-full overflow-y-auto">
+        <MockDealForm onDealCreated={onDealCreated} onFirstMessage={onFirstMessage} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full w-full max-w-5xl mx-auto">

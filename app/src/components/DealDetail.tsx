@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
+import { useAppConnection as useConnection } from "@/lib/use-app-connection";
 import {
   Deal,
   DealStatus,
@@ -26,6 +27,8 @@ import {
   sendTx,
 } from "@/lib/escrow-client";
 import { useToast } from "@/components/Toast";
+import { MOCK_CHAIN, MOCK_DATA } from "@/lib/env";
+import { mockEscrow } from "@/lib/mock-escrow";
 import { useDealsStore } from "@/lib/deals-store";
 import { useRefundHandoffs } from "@/lib/refund-handoff";
 import { getLlmHeaders } from "@/lib/llm-headers";
@@ -110,6 +113,10 @@ export default function DealDetail({
 
   const refreshBalance = useCallback(async () => {
     if (!publicKey) return;
+    if (MOCK_CHAIN) {
+      setUsdcBalance(lamportsToUsdc(mockEscrow.balanceOf(publicKey.toBase58())));
+      return;
+    }
     try {
       const mint = getUsdcMint();
       const ata = await getAssociatedTokenAddress(mint, publicKey);
@@ -128,6 +135,12 @@ export default function DealDetail({
     let cancelled = false;
     (async () => {
       if (!publicKey) return;
+      if (MOCK_CHAIN) {
+        if (!cancelled) {
+          setUsdcBalance(lamportsToUsdc(mockEscrow.balanceOf(publicKey.toBase58())));
+        }
+        return;
+      }
       try {
         const mint = getUsdcMint();
         const ata = await getAssociatedTokenAddress(mint, publicKey);
@@ -189,6 +202,11 @@ export default function DealDetail({
       const fundIx = await buildFundEscrowIx(publicKey, deal.dealId, amountUsdc);
       const sig = await sendTx(connection, [ensureAta, fundIx], signTransaction);
 
+      if (MOCK_CHAIN) {
+        // Move fake USDC into the fake escrow ledger so balances stay accurate.
+        mockEscrow.fundEscrow(deal.dealId, publicKey.toBase58(), remaining, deal.totalAmount);
+      }
+
       const nextFunded = deal.fundedAmount + remaining;
       updateDeal(deal.dealId, (d) => ({
         ...d,
@@ -246,6 +264,18 @@ export default function DealDetail({
         [ensureSellerAta, releaseIx],
         signTransaction
       );
+
+      if (MOCK_CHAIN) {
+        const allReleased = deal.milestones.every((m, i) =>
+          i === index ? true : m.status === MilestoneStatus.Released
+        );
+        mockEscrow.releaseMilestone(
+          deal.dealId,
+          deal.seller.toBase58(),
+          milestone.amount,
+          allReleased
+        );
+      }
 
       updateDeal(deal.dealId, (d) => {
         const milestones = d.milestones.map((m, i) =>
@@ -723,21 +753,36 @@ function MilestoneProofSection({
     });
 
     try {
-      const res = await fetch("/api/verify-milestone", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getLlmHeaders(wallet) },
-        body: JSON.stringify({
-          milestoneDescription: milestone.description,
-          proofType,
-          proofData,
-          sellerNote: note.trim() || undefined,
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(body.error || `HTTP ${res.status}`);
+      let data: { review: VerifierReview };
+
+      if (MOCK_DATA) {
+        // Offline mode: skip the LLM verifier. Auto-pass; the buyer still
+        // manually clicks Release, which is the real decision.
+        data = {
+          review: {
+            recommendation: "approve",
+            confidence: 1,
+            notes: "Offline mode — verification skipped. Buyer decides release.",
+            reviewedAt: Math.floor(Date.now() / 1000),
+          },
+        };
+      } else {
+        const res = await fetch("/api/verify-milestone", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...getLlmHeaders(wallet) },
+          body: JSON.stringify({
+            milestoneDescription: milestone.description,
+            proofType,
+            proofData,
+            sellerNote: note.trim() || undefined,
+          }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(body.error || `HTTP ${res.status}`);
+        }
+        data = (await res.json()) as { review: VerifierReview };
       }
-      const data = (await res.json()) as { review: VerifierReview };
 
       const proof: MilestoneProof = {
         proofType,
@@ -1085,7 +1130,9 @@ function RefundPanel({
     });
     try {
       const ix = await buildRefundIx(deal.buyer, deal.seller, deal.dealId);
-      const blockhash = (await connection.getLatestBlockhash()).blockhash;
+      const blockhash = MOCK_CHAIN
+        ? "mock-blockhash"
+        : (await connection.getLatestBlockhash()).blockhash;
       // feePayer = whichever side initiates (either works, both sign anyway)
       const partialTxB64 = await buildAndPartialSign(
         connection,
@@ -1139,6 +1186,9 @@ function RefundPanel({
     });
     try {
       const sig = await coSignAndSend(connection, blob, signTransaction);
+      if (MOCK_CHAIN) {
+        mockEscrow.refund(deal.dealId, deal.buyer.toBase58());
+      }
       clearHandoff(deal.dealId);
       onRefunded(DealStatus.Refunded);
       toast.update(pendingId, {
