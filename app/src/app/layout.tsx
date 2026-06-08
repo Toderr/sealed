@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import WalletProvider from "@/components/WalletProvider";
 import { ToastProvider } from "@/components/Toast";
+import MockDataInstaller from "@/components/MockDataInstaller";
 import "./globals.css";
 
 // Inter Variable. Linear's core typeface, weights 300/400/510/590 required.
@@ -46,6 +47,7 @@ export default function RootLayout({
       className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}
     >
       <body className="min-h-screen">
+        <MockDataInstaller />
         <WalletProvider>
           <ToastProvider>{children}</ToastProvider>
         </WalletProvider>
