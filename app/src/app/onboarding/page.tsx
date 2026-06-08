@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useWallet } from "@solana/wallet-adapter-react";
-import dynamic from "next/dynamic";
+import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import Link from "next/link";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
@@ -14,10 +13,7 @@ import {
   type LLMProvider,
 } from "@/lib/profile-store";
 
-const WalletMultiButton = dynamic(
-  () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
-  { ssr: false }
-);
+import WalletMultiButton from "@/components/AppWalletButton";
 
 type Step = "wallet" | "profile" | "agent" | "done";
 

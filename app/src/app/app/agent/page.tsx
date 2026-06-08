@@ -2,14 +2,10 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useWallet } from "@solana/wallet-adapter-react";
-import dynamic from "next/dynamic";
+import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { SealedMark } from "@/components/SealedLogo";
 
-const WalletMultiButton = dynamic(
-  () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
-  { ssr: false }
-);
+import WalletMultiButton from "@/components/AppWalletButton";
 
 export default function AgentSettingsRedirectPage() {
   const { publicKey } = useWallet();

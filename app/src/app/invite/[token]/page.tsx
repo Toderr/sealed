@@ -3,8 +3,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useWallet } from "@solana/wallet-adapter-react";
-import dynamic from "next/dynamic";
+import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { SealedMark } from "@/components/SealedLogo";
 import { decodeInvite, type InvitePayload, useProfileStore } from "@/lib/profile-store";
 import { atDisplayHandle } from "@/lib/user-display";
@@ -30,11 +29,7 @@ type AccountCheck = {
   hasAccount: boolean;
 };
 
-const WalletMultiButton = dynamic(
-  () =>
-    import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
-  { ssr: false }
-);
+import WalletMultiButton from "@/components/AppWalletButton";
 
 export default function InvitePage() {
   const params = useParams();

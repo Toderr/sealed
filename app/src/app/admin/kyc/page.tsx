@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 
 interface Submission {
   wallet: string;
