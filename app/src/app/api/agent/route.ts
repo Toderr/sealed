@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dispatchLlm, getLlmOptsFromEnv } from "@/lib/llm-dispatch";
 import { buildSystemPrompt } from "@/lib/agent-system-prompt";
+import { getWallet } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   const { messages } = await request.json();
-  const wallet = request.headers.get("x-wallet") ?? undefined;
+  const wallet = getWallet(request) ?? undefined;
 
   const llm = getLlmOptsFromEnv();
   if (!llm) {

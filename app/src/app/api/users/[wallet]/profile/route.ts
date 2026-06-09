@@ -1,11 +1,12 @@
 import { updateUserProfile } from "@/lib/sealed-users";
+import { getWallet } from "@/lib/auth";
 
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ wallet: string }> }
 ) {
   const { wallet } = await params;
-  const callerWallet = request.headers.get("x-wallet");
+  const callerWallet = getWallet(request);
 
   if (!callerWallet || callerWallet !== wallet) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
