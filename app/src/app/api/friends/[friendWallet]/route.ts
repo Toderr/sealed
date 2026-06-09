@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
+import { walletOrError } from "@/lib/auth";
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ friendWallet: string }> }
 ) {
-  const wallet = req.headers.get("x-wallet");
-  if (!wallet) return Response.json({ error: "Missing x-wallet" }, { status: 401 });
+  const wallet = walletOrError(req);
+  if (wallet instanceof Response) return wallet;
 
   const { friendWallet } = await params;
   const { action } = (await req.json()) as { action?: "accept" | "decline" };
@@ -43,8 +44,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ friendWallet: string }> }
 ) {
-  const wallet = req.headers.get("x-wallet");
-  if (!wallet) return Response.json({ error: "Missing x-wallet" }, { status: 401 });
+  const wallet = walletOrError(req);
+  if (wallet instanceof Response) return wallet;
 
   const { friendWallet } = await params;
 

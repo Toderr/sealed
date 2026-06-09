@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import sharp from "sharp";
 import { supabase, table } from "@/lib/supabase";
+import { walletOrError } from "@/lib/auth";
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
 const MAGIC_JPEG = [0xff, 0xd8, 0xff];
@@ -14,10 +15,8 @@ function isImage(buf: Buffer): boolean {
 }
 
 export async function POST(request: NextRequest) {
-  const wallet = request.headers.get("x-wallet");
-  if (!wallet) {
-    return Response.json({ error: "Missing x-wallet header" }, { status: 401 });
-  }
+  const wallet = walletOrError(request);
+  if (wallet instanceof Response) return wallet;
 
   let formData: FormData;
   try {

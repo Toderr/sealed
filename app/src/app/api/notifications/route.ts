@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
+import { walletOrError } from "@/lib/auth";
 
 type DealRow = {
   deal_id: string;
@@ -31,10 +32,8 @@ type NotificationItem = {
 };
 
 export async function GET(request: NextRequest) {
-  const wallet = request.headers.get("x-wallet");
-  if (!wallet) {
-    return Response.json({ error: "Missing x-wallet header" }, { status: 401 });
-  }
+  const wallet = walletOrError(request);
+  if (wallet instanceof Response) return wallet;
 
   const [{ data: deals, error: dealsError }, { data: queue }] = await Promise.all([
     supabase

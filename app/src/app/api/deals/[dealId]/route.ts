@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
 import { incrementDeal } from "@/lib/reputation";
+import { walletOrError } from "@/lib/auth";
 
 type DealMilestone = {
   description: string;
@@ -94,10 +95,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ dealId: string }> }
 ) {
-  const wallet = req.headers.get("x-wallet");
-  if (!wallet) {
-    return Response.json({ error: "Missing x-wallet header" }, { status: 401 });
-  }
+  const wallet = walletOrError(req);
+  if (wallet instanceof Response) return wallet;
 
   const { dealId } = await params;
 

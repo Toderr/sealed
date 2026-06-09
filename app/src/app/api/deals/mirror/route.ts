@@ -1,11 +1,10 @@
 import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
+import { walletOrError } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
-  const wallet = request.headers.get("x-wallet");
-  if (!wallet) {
-    return Response.json({ error: "Missing x-wallet header" }, { status: 401 });
-  }
+  const wallet = walletOrError(request);
+  if (wallet instanceof Response) return wallet;
 
   const body = await request.json();
   const {
@@ -87,10 +86,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const wallet = request.headers.get("x-wallet");
-  if (!wallet) {
-    return Response.json({ error: "Missing x-wallet header" }, { status: 401 });
-  }
+  const wallet = walletOrError(request);
+  if (wallet instanceof Response) return wallet;
 
   const { data, error } = await supabase
     .from(table("deals"))
