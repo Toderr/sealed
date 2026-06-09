@@ -10,15 +10,11 @@ import { NotificationMenu } from "@/components/NotificationMenu";
 import { useProfileStore } from "@/lib/profile-store";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import { type DealParams, type PublicProfile } from "@/lib/types";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
-import dynamic from "next/dynamic";
 
-const WalletMultiButton = dynamic(
-  () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
-  { ssr: false }
-);
+import WalletMultiButton from "@/components/AppWalletButton";
 
 type View = "chat" | "deals";
 

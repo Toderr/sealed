@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import dynamic from "next/dynamic";
+import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
+import { useAppConnection as useConnection } from "@/lib/use-app-connection";
 import { SealedMark } from "@/components/SealedLogo";
 import { NotificationMenu } from "@/components/NotificationMenu";
 import { useBusinessMemory } from "@/memory/localstorage-store";
@@ -24,6 +24,8 @@ import type { Deal } from "@/lib/types";
 import type { Proposal } from "@/negotiation/types";
 import { defaultSellerBoundaries } from "@/negotiation/types";
 import { buildCreateDealIx, buildFundEscrowIx, buildEnsureAtaIx, getUsdcMint, getUsdcBalance, sendTx } from "@/lib/escrow-client";
+import { MOCK_CHAIN, MOCK_DATA } from "@/lib/env";
+import { mockEscrow } from "@/lib/mock-escrow";
 import { PublicKey } from "@solana/web3.js";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -31,11 +33,7 @@ import type { NegotiationBoundaries } from "@/memory/types";
 import { AgentRole } from "@/agents/types";
 import { ArrowLeft } from "lucide-react";
 
-const WalletMultiButton = dynamic(
-  () =>
-    import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
-  { ssr: false }
-);
+import WalletMultiButton from "@/components/AppWalletButton";
 
 const labelStyle: React.CSSProperties = { fontWeight: 510, letterSpacing: "-0.006em" };
 const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.014em" };
@@ -343,6 +341,7 @@ export default function NegotiateRoom() {
   // Supabase Realtime — instant cross-device updates (fallback: 4s poll above)
   useEffect(() => {
     if (!dealId) return;
+    if (MOCK_DATA) return; // offline: no Realtime; the poll + storage events cover it
 
     const channel = supabaseBrowser
       .channel(`deal:${dealId}`)
@@ -625,6 +624,51 @@ export default function NegotiateRoom() {
     const buyerBoundaries = role === "buyer" ? memory.boundaries : defaultSellerBoundaries();
     const sellerBoundaries = role === "seller" ? memory.boundaries : defaultSellerBoundaries();
 
+    // Offline mode: skip the LLM rounds. Treat the current terms as agreed so the
+    // existing Accept & Deploy controls appear — you drive the decision manually.
+    if (MOCK_DATA) {
+      const now = Date.now();
+      setNegState({
+        kind: "done",
+        proposal: {
+          id: `${deal.deal_id}-mock`,
+          origin: "manual",
+          buyerWallet: deal.buyer_wallet,
+          sellerWallet: dealParams.sellerWallet,
+          initialTerms: dealParams,
+          revisions: [
+            {
+              round: 0,
+              by: AgentRole.Structurer,
+              onBehalfOf: "buyer",
+              action: "open",
+              proposedTerms: dealParams,
+              reasoning: "Offline mode — manual deal, no AI negotiation.",
+              concessions: [],
+              asks: [],
+              timestamp: now,
+            },
+          ],
+          status: "agreed",
+          finalTerms: dealParams,
+          summary: {
+            pros: ["Offline manual deal — terms as entered."],
+            cons: [],
+            keyConcessions: [],
+            riskFlags: [],
+            confidenceScore: 1,
+            recommendation: "accept",
+            recommendationReasoning: "Manual offline deal; accept to fund the escrow.",
+          },
+          buyerBoundaries,
+          sellerBoundaries,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      return;
+    }
+
     try {
       const res = await fetch("/api/negotiate", {
         method: "POST",
@@ -753,6 +797,17 @@ export default function NegotiateRoom() {
 
       const now = Math.floor(Date.now() / 1000);
       const fundedAmount = usdcToLamports(finalTerms.totalAmount);
+
+      if (MOCK_CHAIN) {
+        // Record create + full funding in the fake ledger (lamports).
+        mockEscrow.createDeal(finalTerms.dealId, fundedAmount);
+        mockEscrow.fundEscrow(
+          finalTerms.dealId,
+          publicKey.toBase58(),
+          fundedAmount,
+          fundedAmount
+        );
+      }
       const fundedDeal: Deal = {
         dealId: finalTerms.dealId,
         buyer: publicKey,

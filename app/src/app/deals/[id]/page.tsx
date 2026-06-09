@@ -2,25 +2,24 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
-import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import dynamic from "next/dynamic";
+import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
+import { useAppConnection as useConnection } from "@/lib/use-app-connection";
 import { PublicKey } from "@solana/web3.js";
-import { formatUsdc } from "@/lib/types";
+import { formatUsdc, usdcToLamports } from "@/lib/types";
 import {
   buildReleaseMilestoneIx,
   buildEnsureAtaIx,
   getUsdcMint,
   sendTx,
 } from "@/lib/escrow-client";
+import { MOCK_CHAIN } from "@/lib/env";
+import { mockEscrow } from "@/lib/mock-escrow";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
 import Link from "next/link";
 
-const WalletMultiButton = dynamic(
-  () => import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
-  { ssr: false }
-);
+import WalletMultiButton from "@/components/AppWalletButton";
 
 type Milestone = { description: string; amount: number; status?: string };
 type SupabaseDeal = {
@@ -213,6 +212,16 @@ export default function ActiveDealPage() {
       const updated = milestones.map((m, i) =>
         i === milestoneIndex ? { ...m, status: "Released" } : m
       );
+
+      if (MOCK_CHAIN) {
+        const allReleased = updated.every((m) => m.status === "Released");
+        mockEscrow.releaseMilestone(
+          dealId,
+          sellerPubkey.toBase58(),
+          usdcToLamports(milestones[milestoneIndex].amount),
+          allReleased
+        );
+      }
       await patchMilestones(updated);
       await postMessage(
         `✅ Milestone ${milestoneIndex + 1} approved. **${formatUsdc(milestones[milestoneIndex].amount)} USDC** released to seller.\n\nTx: \`${sig.slice(0, 8)}...${sig.slice(-8)}\``,

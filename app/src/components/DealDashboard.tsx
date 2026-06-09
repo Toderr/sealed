@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import Link from "next/link";
 
 interface SupabaseDeal {

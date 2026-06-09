@@ -24,6 +24,8 @@ import {
   lamportsToUsdc,
   usdcToLamports,
 } from "./types";
+import { MOCK_CHAIN } from "./env";
+import { mockEscrow } from "./mock-escrow";
 
 export const PROGRAM_ID = new PublicKey(
   process.env.NEXT_PUBLIC_PROGRAM_ID ??
@@ -93,10 +95,22 @@ function encodeMilestones(
 
 // --- Instruction builders ---
 
+// In mock mode every instruction is discarded by sendTx, so builders return a
+// trivial placeholder and skip ATA derivation (which throws for off-curve
+// wallets, e.g. a manually-typed seller in the offline deal form).
+function mockIx(payer: PublicKey): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [{ pubkey: payer, isSigner: true, isWritable: true }],
+    data: Buffer.alloc(0),
+  });
+}
+
 export async function buildCreateDealIx(
   buyer: PublicKey,
   params: DealParams
 ): Promise<TransactionInstruction> {
+  if (MOCK_CHAIN) return mockIx(buyer);
   const seller = new PublicKey(params.sellerWallet);
   const mint = getUsdcMint();
   const [dealPDA] = findDealPDA(params.dealId);
@@ -136,6 +150,7 @@ export async function buildFundEscrowIx(
   dealId: string,
   amount: number
 ): Promise<TransactionInstruction> {
+  if (MOCK_CHAIN) return mockIx(buyer);
   const [dealPDA] = findDealPDA(dealId);
   const [escrowVault] = findEscrowVaultPDA(dealId);
   const mint = getUsdcMint();
@@ -163,6 +178,7 @@ export async function buildReleaseMilestoneIx(
   milestoneIndex: number,
   sellerPubkey: PublicKey
 ): Promise<TransactionInstruction> {
+  if (MOCK_CHAIN) return mockIx(buyer);
   const [dealPDA] = findDealPDA(dealId);
   const [escrowVault] = findEscrowVaultPDA(dealId);
   const mint = getUsdcMint();
@@ -192,6 +208,7 @@ export async function buildRefundIx(
   seller: PublicKey,
   dealId: string
 ): Promise<TransactionInstruction> {
+  if (MOCK_CHAIN) return mockIx(buyer);
   const [dealPDA] = findDealPDA(dealId);
   const [escrowVault] = findEscrowVaultPDA(dealId);
   const mint = getUsdcMint();
@@ -223,6 +240,9 @@ export async function buildEnsureAtaIx(
   owner: PublicKey,
   mint: PublicKey
 ): Promise<TransactionInstruction> {
+  // Mock mode: never sent on-chain (sendTx discards it). Skip ATA derivation,
+  // which throws TokenOwnerOffCurveError for off-curve mock/manual wallets.
+  if (MOCK_CHAIN) return mockIx(payer);
   const ata = await getAssociatedTokenAddress(mint, owner);
   return createAssociatedTokenAccountIdempotentInstruction(
     payer,
@@ -241,6 +261,11 @@ export async function sendTx(
   ixs: TransactionInstruction | TransactionInstruction[],
   signTransaction: (tx: Transaction) => Promise<Transaction>
 ): Promise<string> {
+  // Mock mode: never touch the chain. Component handlers update Deal state after
+  // this resolves, so returning a fake signature keeps the full flow working.
+  if (MOCK_CHAIN) {
+    return mockEscrow.fakeSig("send");
+  }
   try {
     const instructions = Array.isArray(ixs) ? ixs : [ixs];
     const tx = new Transaction();
@@ -273,6 +298,9 @@ export async function getUsdcBalance(
   owner: PublicKey,
   mint = getUsdcMint()
 ): Promise<number> {
+  if (MOCK_CHAIN) {
+    return lamportsToUsdc(mockEscrow.balanceOf(owner.toBase58()));
+  }
   const ata = await getAssociatedTokenAddress(mint, owner);
   try {
     const account = await getAccount(connection, ata);
@@ -306,6 +334,9 @@ export async function buildAndPartialSign(
   feePayer: PublicKey,
   signTransaction: (tx: Transaction) => Promise<Transaction>
 ): Promise<string> {
+  if (MOCK_CHAIN) {
+    return "mock-partial-tx-blob";
+  }
   const tx = new Transaction();
   ixs.forEach((ix) => tx.add(ix));
   tx.feePayer = feePayer;
@@ -320,6 +351,9 @@ export async function coSignAndSend(
   partialTxB64: string,
   signTransaction: (tx: Transaction) => Promise<Transaction>
 ): Promise<string> {
+  if (MOCK_CHAIN) {
+    return mockEscrow.fakeSig("cosign");
+  }
   const bytes = Buffer.from(partialTxB64, "base64");
   const tx = Transaction.from(bytes);
   const fullySigned = await signTransaction(tx);
@@ -339,6 +373,7 @@ export async function buildCancelDealIx(
   buyer: PublicKey,
   dealId: string
 ): Promise<TransactionInstruction> {
+  if (MOCK_CHAIN) return mockIx(buyer);
   const [dealPDA] = findDealPDA(dealId);
   const [escrowVault] = findEscrowVaultPDA(dealId);
   const mint = getUsdcMint();
@@ -363,6 +398,7 @@ export async function buildBuyerTimeoutRefundIx(
   buyer: PublicKey,
   dealId: string
 ): Promise<TransactionInstruction> {
+  if (MOCK_CHAIN) return mockIx(buyer);
   const [dealPDA] = findDealPDA(dealId);
   const [escrowVault] = findEscrowVaultPDA(dealId);
   const mint = getUsdcMint();

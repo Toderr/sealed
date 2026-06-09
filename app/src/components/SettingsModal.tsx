@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { useBusinessMemory } from "@/memory/localstorage-store";
 import {
   DEFAULT_BOUNDARIES,
