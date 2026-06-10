@@ -20,7 +20,7 @@ import {
   formatUsdc,
   usdcToLamports,
 } from "@/lib/types";
-import type { Deal } from "@/lib/types";
+import type { Deal, SupabaseDeal } from "@/lib/types";
 import { labelStyle, headingStyle } from "@/lib/typography";
 import type { Proposal } from "@/negotiation/types";
 import { defaultSellerBoundaries } from "@/negotiation/types";
@@ -35,17 +35,6 @@ import { AgentRole } from "@/agents/types";
 import { ArrowLeft } from "lucide-react";
 
 import WalletMultiButton from "@/components/AppWalletButton";
-
-type SupabaseDeal = {
-  deal_id: string;
-  buyer_wallet: string;
-  seller_wallet: string;
-  title: string;
-  description: string | null;
-  total_amount_usdc: number;
-  milestones: Array<{ description: string; amount: number; status?: string }>;
-  status: string;
-};
 
 type NegState =
   | { kind: "idle" }
@@ -542,7 +531,7 @@ export default function NegotiateRoom() {
   const dealParams: DealParams = deal
     ? {
         dealId: deal.deal_id,
-        sellerWallet: deal.seller_wallet,
+        sellerWallet: deal.seller_wallet ?? "",
         totalAmount: deal.total_amount_usdc,
         milestones: (deal.milestones ?? []).map((m) => ({
           description: m.description,
@@ -1382,7 +1371,7 @@ export default function NegotiateRoom() {
             />
             <PartyCard
               label="Seller"
-              wallet={deal.seller_wallet}
+              wallet={deal.seller_wallet ?? ""}
               isYou={wallet === deal.seller_wallet}
               profile={wallet === deal.seller_wallet ? null : (role === "buyer" ? cpProfile : null)}
               handle={wallet === deal.seller_wallet ? (profile?.name ?? null) : cpHandle}

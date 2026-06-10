@@ -62,6 +62,35 @@ export interface Deal {
   bump: number;
 }
 
+// --- Off-chain mirror (Supabase sealed_deals) ---
+//
+// Distinct from the on-chain `Deal` above: the mirror stores human-readable
+// context (title, description), pre-chain draft/coordination state, and uses
+// plain strings (not PublicKey/lamports). Shape derived from the sealed_deals
+// schema. `seller_wallet`/`description` are nullable (DB columns are); a deal
+// can exist as a draft before a counterparty or on-chain PDA exists.
+// `description`/`created_at` are optional because some callers build partial
+// rows that omit them.
+
+export interface SupabaseMilestone {
+  description: string;
+  amount: number;
+  status?: string;
+}
+
+export interface SupabaseDeal {
+  deal_id: string;
+  buyer_wallet: string;
+  seller_wallet: string | null;
+  title: string;
+  description?: string | null;
+  total_amount_usdc: number;
+  status: string;
+  milestones: SupabaseMilestone[];
+  created_at?: string;
+  updated_at?: string;
+}
+
 // --- AI Agent types ---
 
 export interface MilestoneInput {
