@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
+import { walletOrError } from "@/lib/auth";
 import { randomUUID } from "crypto";
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -20,13 +21,11 @@ function detectType(buf: Buffer): { mime: string; ext: string } | null {
 }
 
 export async function POST(request: NextRequest) {
-  const walletHeader = request.headers.get("x-wallet");
+  const walletHeader = walletOrError(request);
+  if (walletHeader instanceof Response) return walletHeader;
+
   const dealId = request.headers.get("x-deal-id") ?? "standalone";
   const milestoneIndex = parseInt(request.headers.get("x-milestone-index") ?? "0", 10);
-
-  if (!walletHeader) {
-    return Response.json({ error: "Missing x-wallet header" }, { status: 401 });
-  }
 
   let formData: FormData;
   try {

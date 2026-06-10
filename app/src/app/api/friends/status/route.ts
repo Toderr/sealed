@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
+import { getWallet } from "@/lib/auth";
 
 // GET /api/friends/status?with=<wallet>
 // Returns the friendship status between x-wallet and ?with=
 export async function GET(req: NextRequest) {
-  const myWallet = req.headers.get("x-wallet");
+  const myWallet = getWallet(req);
   if (!myWallet) return Response.json({ status: "none" });
 
   const url = new URL(req.url);

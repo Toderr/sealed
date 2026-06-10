@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
+import { getWallet } from "@/lib/auth";
 import { randomUUID } from "crypto";
 
 const MAGIC_PDF = [0x25, 0x50, 0x44, 0x46];
@@ -12,7 +13,7 @@ function isAllowedKycFile(buf: Buffer): boolean {
 }
 
 export async function POST(request: NextRequest) {
-  const callerWallet = request.headers.get("x-wallet");
+  const callerWallet = getWallet(request);
   const body = await request.json();
   const { wallet, documentBase64, mimeType } = body;
 

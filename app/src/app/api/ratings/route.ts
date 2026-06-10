@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { submitRating } from "@/lib/reputation";
 import { supabase, table } from "@/lib/supabase";
+import { walletOrError } from "@/lib/auth";
 
 type RatingMilestone = { status?: string };
 
@@ -38,10 +39,8 @@ function counterpartyFor(deal: Awaited<ReturnType<typeof getDealForRating>>, wal
 }
 
 export async function GET(request: NextRequest) {
-  const raterWallet = request.headers.get("x-wallet");
-  if (!raterWallet) {
-    return Response.json({ error: "Missing x-wallet header" }, { status: 401 });
-  }
+  const raterWallet = walletOrError(request);
+  if (raterWallet instanceof Response) return raterWallet;
 
   const dealId = request.nextUrl.searchParams.get("deal_id");
   if (!dealId) {
@@ -73,10 +72,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const rater_wallet = request.headers.get("x-wallet");
-  if (!rater_wallet) {
-    return Response.json({ error: "Missing x-wallet header" }, { status: 401 });
-  }
+  const rater_wallet = walletOrError(request);
+  if (rater_wallet instanceof Response) return rater_wallet;
 
   const body = await request.json();
   const { deal_id, ratee_wallet, stars, review_text } = body;

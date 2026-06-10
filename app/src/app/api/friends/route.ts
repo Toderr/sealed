@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
 import { getPublicProfile, getUserByHandle } from "@/lib/sealed-users";
+import { walletOrError } from "@/lib/auth";
 
 type FriendRow = {
   id: string;
@@ -16,8 +17,8 @@ async function enrichRow(row: FriendRow, cpWallet: string) {
 }
 
 export async function GET(req: NextRequest) {
-  const wallet = req.headers.get("x-wallet");
-  if (!wallet) return Response.json({ error: "Missing x-wallet" }, { status: 401 });
+  const wallet = walletOrError(req);
+  if (wallet instanceof Response) return wallet;
 
   const { data, error } = await supabase
     .from(table("friends"))
@@ -43,8 +44,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const wallet = req.headers.get("x-wallet");
-  if (!wallet) return Response.json({ error: "Missing x-wallet" }, { status: 401 });
+  const wallet = walletOrError(req);
+  if (wallet instanceof Response) return wallet;
 
   const { friendWallet, friendHandle } = (await req.json()) as {
     friendWallet?: string;
