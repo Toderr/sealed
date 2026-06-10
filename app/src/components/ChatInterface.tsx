@@ -11,6 +11,7 @@ import { ContractWizard } from "@/components/ContractWizard";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { MOCK_DATA } from "@/lib/env";
 import MockDealForm from "@/components/MockDealForm";
+import { labelStyle, headingStyle } from "@/lib/typography";
 
 type ContractType = "sale" | "service" | "partnership" | "rental" | "nda" | "other";
 
@@ -98,9 +99,6 @@ interface WizardPrefill {
   totalAmount?: string;
   milestones?: Array<{ description: string; amount: string }>;
 }
-
-const labelStyle: React.CSSProperties = { fontWeight: 510, letterSpacing: "-0.006em" };
-const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.014em" };
 
 const NEW_DEAL_SUGGESTIONS = [
   "Draft a vendor deal for 100 units at $5,000 with two delivery milestones",

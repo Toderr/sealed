@@ -3,7 +3,7 @@ import { runNegotiation } from "@/negotiation/engine";
 import { defaultSellerBoundaries } from "@/negotiation/types";
 import type { DealParams } from "@/lib/types";
 import type { NegotiationBoundaries, NegotiationStyle } from "@/memory/types";
-import { dispatchLlm, getLlmOptsFromEnv } from "@/lib/llm-dispatch";
+import { dispatchLlm, getLlmOptsFromEnv, getLlmOptsFromRequest } from "@/lib/llm-dispatch";
 import { supabase, table } from "@/lib/supabase";
 import { AgentRole } from "@/agents/types";
 import type { Proposal } from "@/negotiation/types";
@@ -19,14 +19,6 @@ interface NegotiateRequest {
 }
 
 type LlmOpts = { provider: string; model: string; apiKey: string };
-
-function getLlmOpts(request: NextRequest) {
-  const provider = request.headers.get("x-llm-provider");
-  const model = request.headers.get("x-llm-model");
-  const apiKey = request.headers.get("x-llm-key");
-  if (provider && model && apiKey) return { provider, model, apiKey };
-  return getLlmOptsFromEnv();
-}
 
 function llmLabel(opts: LlmOpts) {
   return `${opts.provider}:${opts.model}`;
@@ -142,7 +134,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Buyer's agent uses their own LLM config (from client headers)
-    const buyerLlm = getLlmOpts(request);
+    const buyerLlm = getLlmOptsFromRequest(request);
     if (!buyerLlm) {
       return NextResponse.json({ error: "No LLM provider configured" }, { status: 500 });
     }

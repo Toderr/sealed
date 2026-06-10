@@ -38,15 +38,7 @@ import {
   TokenAccountNotFoundError,
 } from "@solana/spl-token";
 import { Connection } from "@solana/web3.js";
-
-const labelStyle: React.CSSProperties = {
-  fontWeight: 510,
-  letterSpacing: "-0.006em",
-};
-const headingStyle: React.CSSProperties = {
-  fontWeight: 590,
-  letterSpacing: "-0.014em",
-};
+import { labelStyle, headingStyle } from "@/lib/typography";
 
 const STATUS_STYLES: Record<DealStatus, { color: string; label: string }> = {
   [DealStatus.Created]: { color: "text-accent", label: "Awaiting funding" },

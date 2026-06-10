@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { labelStyle, headingStyle } from "@/lib/typography";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -302,9 +303,6 @@ export function buildWizardPrompt(data: WizardData): string {
 }
 
 // ── Style constants ────────────────────────────────────────────────────────
-
-const labelStyle: React.CSSProperties = { fontWeight: 510, letterSpacing: "-0.006em" };
-const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.014em" };
 
 // ── Friend types ───────────────────────────────────────────────────────────
 

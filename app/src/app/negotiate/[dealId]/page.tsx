@@ -21,6 +21,7 @@ import {
   usdcToLamports,
 } from "@/lib/types";
 import type { Deal } from "@/lib/types";
+import { labelStyle, headingStyle } from "@/lib/typography";
 import type { Proposal } from "@/negotiation/types";
 import { defaultSellerBoundaries } from "@/negotiation/types";
 import { buildCreateDealIx, buildFundEscrowIx, buildEnsureAtaIx, getUsdcMint, getUsdcBalance, sendTx } from "@/lib/escrow-client";
@@ -34,9 +35,6 @@ import { AgentRole } from "@/agents/types";
 import { ArrowLeft } from "lucide-react";
 
 import WalletMultiButton from "@/components/AppWalletButton";
-
-const labelStyle: React.CSSProperties = { fontWeight: 510, letterSpacing: "-0.006em" };
-const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.014em" };
 
 type SupabaseDeal = {
   deal_id: string;
@@ -523,7 +521,6 @@ export default function NegotiateRoom() {
     startNegotiation();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal?.status, role, negState.kind]);
-
 
   // Generate invite link
   const inviteLink = (() => {

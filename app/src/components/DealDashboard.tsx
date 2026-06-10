@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import Link from "next/link";
+import { labelStyle, headingStyle } from "@/lib/typography";
 
 interface SupabaseDeal {
   deal_id: string;
@@ -15,9 +16,6 @@ interface SupabaseDeal {
   status: string;
   created_at?: string;
 }
-
-const labelStyle: React.CSSProperties = { fontWeight: 510, letterSpacing: "-0.006em" };
-const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.014em" };
 
 function statusStyle(status: string): string {
   switch (status) {
