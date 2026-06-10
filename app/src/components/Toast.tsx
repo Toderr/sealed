@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { labelStyle } from "@/lib/typography";
 
 type ToastVariant = "success" | "error" | "info" | "loading";
 
@@ -92,8 +93,6 @@ function VariantIcon({ variant }: { variant: ToastVariant }) {
       );
   }
 }
-
-const labelStyle: React.CSSProperties = { fontWeight: 510, letterSpacing: "-0.006em" };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);

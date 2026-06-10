@@ -12,18 +12,10 @@ import {
   PaymentTerm,
 } from "@/memory/types";
 import { useToast } from "./Toast";
+import { labelStyle, headingStyle } from "@/lib/typography";
 
 const STYLES: NegotiationStyle[] = ["conservative", "balanced", "aggressive"];
 const PAYMENT_TERMS = Object.keys(PAYMENT_TERM_LABELS) as PaymentTerm[];
-
-const labelStyle: React.CSSProperties = {
-  fontWeight: 510,
-  letterSpacing: "-0.006em",
-};
-const headingStyle: React.CSSProperties = {
-  fontWeight: 590,
-  letterSpacing: "-0.014em",
-};
 
 export default function SettingsModal({
   onClose,

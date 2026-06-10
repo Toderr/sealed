@@ -9,9 +9,7 @@ import { useState } from "react";
 import type { DealParams } from "@/lib/types";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { MOCK_IDENTITIES } from "@/lib/mock-wallet";
-
-const labelStyle: React.CSSProperties = { fontWeight: 510, letterSpacing: "-0.006em" };
-const headingStyle: React.CSSProperties = { fontWeight: 590, letterSpacing: "-0.014em" };
+import { labelStyle, headingStyle } from "@/lib/typography";
 
 type MilestoneRow = { description: string; amount: string };
 

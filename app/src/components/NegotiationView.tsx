@@ -5,20 +5,12 @@ import { formatUsdc, type DealParams } from "@/lib/types";
 import type { NegotiationBoundaries } from "@/memory/types";
 import type { Proposal, Revision } from "@/negotiation/types";
 import { getLlmHeaders } from "@/lib/llm-headers";
+import { labelStyle, headingStyle } from "@/lib/typography";
 
 type ViewState =
   | { kind: "running" }
   | { kind: "done"; proposal: Proposal }
   | { kind: "error"; message: string };
-
-const labelStyle: React.CSSProperties = {
-  fontWeight: 510,
-  letterSpacing: "-0.006em",
-};
-const headingStyle: React.CSSProperties = {
-  fontWeight: 590,
-  letterSpacing: "-0.014em",
-};
 
 export default function NegotiationView({
   initialTerms,
