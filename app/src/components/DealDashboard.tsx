@@ -5,17 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import Link from "next/link";
 import { labelStyle, headingStyle } from "@/lib/typography";
-
-interface SupabaseDeal {
-  deal_id: string;
-  buyer_wallet: string;
-  seller_wallet: string | null;
-  title: string;
-  total_amount_usdc: number;
-  milestones: Array<{ description: string; amount: number; status?: string }>;
-  status: string;
-  created_at?: string;
-}
+import type { SupabaseDeal } from "@/lib/types";
 
 function statusStyle(status: string): string {
   switch (status) {

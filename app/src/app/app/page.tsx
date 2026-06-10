@@ -9,7 +9,7 @@ import { useToast } from "@/components/Toast";
 import { NotificationMenu } from "@/components/NotificationMenu";
 import { useProfileStore } from "@/lib/profile-store";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
-import { type DealParams, type PublicProfile } from "@/lib/types";
+import { type DealParams, type PublicProfile, type SupabaseDeal } from "@/lib/types";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
@@ -17,17 +17,6 @@ import { SealedBackdrop } from "@/components/SealedBackdrop";
 import WalletMultiButton from "@/components/AppWalletButton";
 
 type View = "chat" | "deals";
-
-interface SupabaseDeal {
-  deal_id: string;
-  buyer_wallet: string;
-  seller_wallet: string | null;
-  title: string;
-  total_amount_usdc: number;
-  milestones: Array<{ description: string; amount: number; status?: string }>;
-  status: string;
-  created_at?: string;
-}
 
 type CounterpartyProfile = Pick<PublicProfile, "handle" | "display_name" | "avatar_url">;
 

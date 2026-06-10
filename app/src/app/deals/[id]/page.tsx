@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { useAppConnection as useConnection } from "@/lib/use-app-connection";
 import { PublicKey } from "@solana/web3.js";
-import { formatUsdc, usdcToLamports } from "@/lib/types";
+import { formatUsdc, usdcToLamports, type SupabaseDeal } from "@/lib/types";
 import {
   buildReleaseMilestoneIx,
   buildEnsureAtaIx,
@@ -22,17 +22,6 @@ import Link from "next/link";
 import WalletMultiButton from "@/components/AppWalletButton";
 
 type Milestone = { description: string; amount: number; status?: string };
-type SupabaseDeal = {
-  deal_id: string;
-  buyer_wallet: string;
-  seller_wallet: string | null;
-  title: string;
-  description: string | null;
-  total_amount_usdc: number;
-  milestones: Milestone[];
-  status: string;
-  created_at: string;
-};
 type DbMsg = { id: string; role: string; content: string; wallet: string | null; created_at: string };
 type Deliverable = {
   id: string;
