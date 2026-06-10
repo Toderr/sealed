@@ -240,3 +240,21 @@ export function getLlmOptsFromEnv(): { provider: string; model: string; apiKey: 
 
   return null;
 }
+
+// Structural request type — avoids coupling this lib to next/server.
+type HeaderReq = { headers: { get(name: string): string | null } };
+
+/**
+ * Resolve LLM options for a request: prefer the caller's own-key headers
+ * (x-llm-provider / x-llm-model / x-llm-key), else fall back to the server env.
+ * Previously duplicated verbatim in the negotiate + verify-milestone routes.
+ */
+export function getLlmOptsFromRequest(
+  request: HeaderReq
+): { provider: string; model: string; apiKey: string } | null {
+  const provider = request.headers.get("x-llm-provider");
+  const model = request.headers.get("x-llm-model");
+  const apiKey = request.headers.get("x-llm-key");
+  if (provider && model && apiKey) return { provider, model, apiKey };
+  return getLlmOptsFromEnv();
+}
