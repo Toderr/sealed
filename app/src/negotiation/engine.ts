@@ -14,6 +14,7 @@ import type {
   Revision,
   RevisionAction,
 } from "./types";
+import { extractJson } from "@/lib/extract-json";
 
 type LlmCaller = (system: string, userMessage: string) => Promise<string>;
 
@@ -23,18 +24,6 @@ interface AgentTurnOutput {
   reasoning: string;
   concessions: string[];
   asks: string[];
-}
-
-function extractJson<T>(text: string): T {
-  // LLMs sometimes wrap in ```json ... ``` or ``` ... ```
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const raw = fenced ? fenced[1] : text;
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end === -1) {
-    throw new Error("No JSON object found in agent response");
-  }
-  return JSON.parse(raw.slice(start, end + 1)) as T;
 }
 
 function validateTurn(out: AgentTurnOutput, initial: DealParams): AgentTurnOutput {
@@ -148,7 +137,7 @@ export async function runNegotiation(
 
     let turn: AgentTurnOutput;
     try {
-      const parsed = extractJson<AgentTurnOutput>(raw);
+      const parsed = extractJson<AgentTurnOutput>(raw, "agent response");
       turn = validateTurn(parsed, params.initialTerms);
     } catch (err) {
       throw new Error(
@@ -236,7 +225,7 @@ Produce the summary JSON now.`;
 
   const raw = await callLlm(SUMMARIZER_PROMPT, userMessage);
   try {
-    return extractJson<NegotiationSummary>(raw);
+    return extractJson<NegotiationSummary>(raw, "agent response");
   } catch {
     // Fall back to a minimal summary if the model misbehaves. Better UX than
     // crashing the whole negotiation on a summarizer format error.
