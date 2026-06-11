@@ -30,6 +30,7 @@ import { mockEscrow } from "@/lib/mock-escrow";
 import { PublicKey } from "@solana/web3.js";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
 import type { NegotiationBoundaries } from "@/memory/types";
 import { AgentRole } from "@/agents/types";
 import { ArrowLeft } from "lucide-react";
@@ -184,13 +185,10 @@ export default function NegotiateRoom() {
   // Re-push a sessionStorage deal to Supabase so counterparties on other devices can load it
   function retryMirrorSync(local: SupabaseDeal) {
     if (!local.buyer_wallet) return;
-    fetch("/api/deals/mirror", {
+    apiFetchSafe("/api/deals/mirror", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-wallet": local.buyer_wallet,
-      },
-      body: JSON.stringify({
+      wallet: local.buyer_wallet,
+      body: {
         deal_id: local.deal_id,
         seller_wallet: local.seller_wallet ?? null,
         title: local.title,
@@ -198,8 +196,8 @@ export default function NegotiateRoom() {
         total_amount_usdc: local.total_amount_usdc,
         milestones: local.milestones ?? [],
         status: local.status ?? "draft",
-      }),
-    }).catch(() => {}); // best-effort
+      },
+    }, undefined); // best-effort
   }
 
   // Fetch deal — tries Supabase first, falls back to sessionStorage
@@ -222,22 +220,21 @@ export default function NegotiateRoom() {
       else setLoadError("Loading timed out — please refresh the page.");
     }, 10000);
 
-    fetch(`/api/deals/${dealId}`)
-      .then((r) => r.json())
+    apiFetch<{ deal?: SupabaseDeal; error?: string }>(`/api/deals/${dealId}`)
       .then((data) => {
         clearTimeout(timer);
         if (cancelled) return;
-        if (data.error) {
+        if (data.error || !data.deal) {
           const local = trySessionStorage();
           if (local) {
             setDeal(local);
             // Retry mirror sync so counterparties on other devices can find this deal
             retryMirrorSync(local);
           } else {
-            setLoadError(data.error);
+            setLoadError(data.error ?? "Deal not found");
           }
         } else {
-          setDeal(data.deal as SupabaseDeal);
+          setDeal(data.deal);
         }
       })
       .catch(() => {
@@ -306,12 +303,11 @@ export default function NegotiateRoom() {
       } catch {}
 
       // Also poll Supabase for cross-device sync
-      fetch(`/api/deals/${dealId}`)
-        .then((r) => r.json())
+      apiFetch<{ deal?: SupabaseDeal }>(`/api/deals/${dealId}`)
         .then((data) => {
           console.log("[poll] status from Supabase:", data.deal?.status ?? "NOT FOUND");
           if (!data.deal) return; // Don't retryMirrorSync here — it would overwrite seller_wallet
-          const updated = data.deal as SupabaseDeal;
+          const updated = data.deal;
           setDeal((prev) => {
             if (!prev) return updated;
             const sellerChanged = (updated.seller_wallet ?? "") !== (prev.seller_wallet ?? "");
@@ -389,8 +385,7 @@ export default function NegotiateRoom() {
     let cancelled = false;
     async function loadNotice() {
       try {
-        const res = await fetch(`/api/messages?deal_id=${dealId}`);
-        const data = (await res.json()) as { messages?: DbMsg[] };
+        const data = await apiFetch<{ messages?: DbMsg[] }>(`/api/messages?deal_id=${dealId}`);
         if (cancelled) return;
         const next = renegotiationNoticeFromMessages(data.messages ?? []);
         if (next) setRenegotiationNotice(next);
@@ -423,9 +418,8 @@ export default function NegotiateRoom() {
     if (!deal || !wallet) return;
     const cpWallet = deal.buyer_wallet === wallet ? deal.seller_wallet : deal.buyer_wallet;
     if (!cpWallet) return;
-    fetch(`/api/users/${cpWallet}/public`)
-      .then((r) => r.json())
-      .then((data: PublicProfile) => {
+    apiFetch<PublicProfile>(`/api/users/${cpWallet}/public`)
+      .then((data) => {
         setCpProfile(data);
         setCpHandle(atDisplayHandle(data.handle));
       })
@@ -557,10 +551,9 @@ export default function NegotiateRoom() {
 
     try {
       try {
-        const messageRes = await fetch("/api/messages", {
+        await apiFetch("/api/messages", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+          body: {
             deal_id: deal.deal_id,
             role: "system",
             content: `${requestLabel} requested renegotiation:\n\n${requestText}`,
@@ -571,25 +564,17 @@ export default function NegotiateRoom() {
               requested_by: wallet,
               requested_by_role: requestedByRole,
             },
-          }),
+          },
         });
-        if (!messageRes.ok) {
-          console.warn("[renegotiate] Could not persist request message", await messageRes.text());
-        }
       } catch (error) {
         console.warn("[renegotiate] Could not persist request message", error);
       }
 
-      const res = await fetch(`/api/deals/${deal.deal_id}`, {
+      await apiFetch(`/api/deals/${deal.deal_id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-wallet": wallet },
-        body: JSON.stringify({ status: "escalated" }),
+        wallet,
+        body: { status: "escalated" },
       });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? "Could not update deal status");
-      }
     } catch (error) {
       try {
         localStorage.removeItem(`sealed:deal-escalated:${deal.deal_id}`);
@@ -656,28 +641,18 @@ export default function NegotiateRoom() {
     }
 
     try {
-      const res = await fetch("/api/negotiate", {
+      const data = await apiFetch<{ proposal: Proposal }>("/api/negotiate", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getLlmHeaders(wallet),
-        },
-        body: JSON.stringify({
+        headers: getLlmHeaders(wallet),
+        body: {
           proposalId: `${deal.deal_id}-${Date.now()}`,
           buyerWallet: deal.buyer_wallet,
           initialTerms: dealParams,
           buyerBoundaries,
           sellerBoundaries,
           renegotiationRequest,
-        }),
+        },
       });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? `API error ${res.status}`);
-      }
-
-      const data = (await res.json()) as { proposal: Proposal };
       setNegState({ kind: "done", proposal: data.proposal });
       if (data.proposal.status === "escalated") {
         setDeal((prev) => (prev ? { ...prev, status: "escalated" } : prev));
@@ -836,10 +811,6 @@ export default function NegotiateRoom() {
         tx_signature: sig,
         status: "funded",
       };
-      const mirrorHeaders = {
-        "Content-Type": "application/json",
-        "x-wallet": publicKey.toBase58(),
-      };
       const mirrorPatch = {
         seller_wallet: mirroredDeal.seller_wallet,
         title: mirroredDeal.title,
@@ -869,31 +840,16 @@ export default function NegotiateRoom() {
         }));
       } catch {}
 
+      const mirrorWallet = publicKey.toBase58();
       try {
-        const mirrorRes = await fetch("/api/deals/mirror", {
-          method: "POST",
-          headers: mirrorHeaders,
-          body: JSON.stringify(mirroredDeal),
-        });
-        if (!mirrorRes.ok) {
-          const mirrorErr = await mirrorRes.json().catch(() => ({}));
-          console.error("Mirror sync failed:", mirrorErr);
-          await fetch(`/api/deals/${finalTerms.dealId}`, {
-            method: "PATCH",
-            headers: mirrorHeaders,
-            body: JSON.stringify(mirrorPatch),
-          });
-        }
-      } catch {
-        try {
-          await fetch(`/api/deals/${finalTerms.dealId}`, {
-            method: "PATCH",
-            headers: mirrorHeaders,
-            body: JSON.stringify(mirrorPatch),
-          });
-        } catch {
-          // non-fatal
-        }
+        await apiFetch("/api/deals/mirror", { method: "POST", wallet: mirrorWallet, body: mirroredDeal });
+      } catch (mirrorErr) {
+        console.error("Mirror sync failed:", mirrorErr);
+        await apiFetchSafe(`/api/deals/${finalTerms.dealId}`, {
+          method: "PATCH",
+          wallet: mirrorWallet,
+          body: mirrorPatch,
+        }, undefined);
       }
 
       setDealSealedId(finalTerms.dealId);
@@ -1111,13 +1067,11 @@ export default function NegotiateRoom() {
                         <button
                           onClick={async () => {
                             if (!memory) return;
-                            try {
-                              await fetch(`/api/deals/${deal.deal_id}`, {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json", "x-wallet": wallet ?? "" },
-                                body: JSON.stringify({ status: "seller-ready" }),
-                              });
-                            } catch {}
+                            await apiFetchSafe(`/api/deals/${deal.deal_id}`, {
+                              method: "PATCH",
+                              wallet: wallet ?? "",
+                              body: { status: "seller-ready" },
+                            }, undefined);
                             setDeal((prev) => prev ? { ...prev, status: "seller-ready" } : prev);
                             setSellerView("agent-waiting");
                           }}
@@ -1159,35 +1113,33 @@ export default function NegotiateRoom() {
                         const finalAmount = negotiatedTerms?.totalAmount ?? deal.total_amount_usdc;
                         const finalMilestones = negotiatedTerms?.milestones ?? deal.milestones ?? [];
                         try {
-                          const patchRes = await fetch(`/api/deals/${deal.deal_id}`, {
+                          await apiFetch(`/api/deals/${deal.deal_id}`, {
                             method: "PATCH",
-                            headers: { "Content-Type": "application/json", "x-wallet": wallet ?? "" },
-                            body: JSON.stringify({
+                            wallet: wallet ?? "",
+                            body: {
                               seller_wallet: wallet ?? "",
                               status: "seller-agreed",
                               total_amount_usdc: finalAmount,
                               milestones: finalMilestones,
-                            }),
+                            },
                           });
-                          console.log("[onAgree] PATCH status:", patchRes.status);
-                          if (!patchRes.ok) {
-                            console.warn("[onAgree] PATCH failed, trying mirror fallback");
-                            const mirrorRes = await fetch("/api/deals/mirror", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json", "x-wallet": deal.buyer_wallet },
-                              body: JSON.stringify({
-                                deal_id: deal.deal_id,
-                                seller_wallet: wallet ?? "",
-                                title: deal.title,
-                                description: deal.description ?? "",
-                                total_amount_usdc: finalAmount,
-                                milestones: finalMilestones,
-                                status: "seller-agreed",
-                              }),
-                            });
-                            console.log("[onAgree] mirror fallback status:", mirrorRes.status);
-                          }
-                        } catch (e) { console.error("[onAgree] error:", e); }
+                        } catch {
+                          // PATCH failed (e.g. 404) — fall back to mirror upsert.
+                          console.warn("[onAgree] PATCH failed, trying mirror fallback");
+                          await apiFetchSafe("/api/deals/mirror", {
+                            method: "POST",
+                            wallet: deal.buyer_wallet,
+                            body: {
+                              deal_id: deal.deal_id,
+                              seller_wallet: wallet ?? "",
+                              title: deal.title,
+                              description: deal.description ?? "",
+                              total_amount_usdc: finalAmount,
+                              milestones: finalMilestones,
+                              status: "seller-agreed",
+                            },
+                          }, undefined);
+                        }
                         setDeal((prev) => prev ? {
                           ...prev,
                           status: "seller-agreed",
@@ -1895,10 +1847,8 @@ function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: bo
   useEffect(() => {
     let cancelled = false;
     function poll() {
-      fetch(`/api/messages?deal_id=${dealId}`)
-        .then((r) => r.json())
-        .then((data) => { if (!cancelled) setMsgs(data.messages ?? []); })
-        .catch(() => {});
+      apiFetchSafe<{ messages?: DbMsg[] }>(`/api/messages?deal_id=${dealId}`, {}, { messages: [] })
+        .then((data) => { if (!cancelled) setMsgs(data.messages ?? []); });
     }
     poll();
     const interval = setInterval(poll, 4000);
@@ -2006,18 +1956,16 @@ function ManualNegotiationPanel({
 
   // Load existing messages from Supabase on mount
   useEffect(() => {
-    fetch(`/api/messages?deal_id=${deal.deal_id}`)
-      .then((r) => r.json())
+    apiFetchSafe<{ messages?: Array<{ role: string; content: string }> }>(`/api/messages?deal_id=${deal.deal_id}`, {}, { messages: [] })
       .then((data) => {
-        const dbMsgs: Array<{ role: string; content: string }> = data.messages ?? [];
+        const dbMsgs = data.messages ?? [];
         if (dbMsgs.length > 0) {
           setMessages(dbMsgs.map((m) => ({
             role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
             content: m.content,
           })));
         }
-      })
-      .catch(() => {});
+      });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal.deal_id]);
 
@@ -2032,18 +1980,16 @@ function ManualNegotiationPanel({
       milestones: (deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
       buyerWallet: deal.buyer_wallet,
     };
-    fetch("/api/negotiate/manual", {
+    apiFetchSafe<{ response?: string }>("/api/negotiate/manual", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-wallet": wallet },
-      body: JSON.stringify({ dealId: deal.deal_id, messages: [], isOpening: true, sellerWallet: wallet, dealContext }),
-    })
-      .then((r) => r.json())
+      wallet,
+      body: { dealId: deal.deal_id, messages: [], isOpening: true, sellerWallet: wallet, dealContext },
+    }, {})
       .then((data) => {
         if (data.response) {
           setMessages([{ role: "assistant", content: data.response }]);
         }
       })
-      .catch(() => {})
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
@@ -2071,13 +2017,11 @@ function ManualNegotiationPanel({
         milestones: (deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
         buyerWallet: deal.buyer_wallet,
       };
-      const res = await fetch("/api/negotiate/manual", {
+      const data = await apiFetch<{ response: string; agreed?: boolean; agreedTerms?: typeof agreedTerms }>("/api/negotiate/manual", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-wallet": wallet },
-        body: JSON.stringify({ dealId: deal.deal_id, messages: updated, sellerWallet: wallet, dealContext }),
+        wallet,
+        body: { dealId: deal.deal_id, messages: updated, sellerWallet: wallet, dealContext },
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "API error");
       setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
       if (data.agreed) {
         setAgreedByAgent(true);
@@ -2227,10 +2171,8 @@ function FriendInviteSection({ wallet, inviteLink }: { wallet: string | null; in
       const timer = window.setTimeout(() => setLoading(false), 0);
       return () => window.clearTimeout(timer);
     }
-    fetch("/api/friends", { headers: { "x-wallet": wallet } })
-      .then((r) => r.json())
+    apiFetchSafe<{ friends?: FriendInviteEntry[] }>("/api/friends", { wallet }, { friends: [] })
       .then((data) => setFriends(data.friends ?? []))
-      .catch(() => {})
       .finally(() => setLoading(false));
   }, [wallet]);
 

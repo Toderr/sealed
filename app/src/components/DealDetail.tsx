@@ -27,6 +27,7 @@ import {
   sendTx,
 } from "@/lib/escrow-client";
 import { useToast } from "@/components/Toast";
+import { apiFetch } from "@/lib/api-client";
 import { MOCK_CHAIN, MOCK_DATA } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
 import { useDealsStore } from "@/lib/deals-store";
@@ -759,21 +760,16 @@ function MilestoneProofSection({
           },
         };
       } else {
-        const res = await fetch("/api/verify-milestone", {
+        data = await apiFetch<{ review: VerifierReview }>("/api/verify-milestone", {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...getLlmHeaders(wallet) },
-          body: JSON.stringify({
+          headers: getLlmHeaders(wallet),
+          body: {
             milestoneDescription: milestone.description,
             proofType,
             proofData,
             sellerNote: note.trim() || undefined,
-          }),
+          },
         });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({ error: res.statusText }));
-          throw new Error(body.error || `HTTP ${res.status}`);
-        }
-        data = (await res.json()) as { review: VerifierReview };
       }
 
       const proof: MilestoneProof = {

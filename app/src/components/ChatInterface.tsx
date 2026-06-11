@@ -7,6 +7,7 @@ import { ChatMessage, DealParams, formatUsdc } from "@/lib/types";
 import { SealedMark } from "@/components/SealedLogo";
 import { loadProfileFromStorage } from "@/lib/profile-store";
 import { dispatchLlm, type LlmMessage } from "@/lib/llm-dispatch";
+import { apiFetch } from "@/lib/api-client";
 import { ContractWizard } from "@/components/ContractWizard";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { MOCK_DATA } from "@/lib/env";
@@ -176,13 +177,10 @@ export default function ChatInterface({
 
       if (ownKey) {
         // Client-side path: fetch system prompt, call LLM directly with user's key
-        const ctxRes = await fetch("/api/agent/context", {
+        const { systemPrompt } = await apiFetch<{ systemPrompt: string }>("/api/agent/context", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wallet }),
+          body: { wallet },
         });
-        if (!ctxRes.ok) throw new Error("Failed to load agent context");
-        const { systemPrompt } = await ctxRes.json();
 
         responseText = await dispatchLlm({
           provider: ownKey.provider,
@@ -194,21 +192,11 @@ export default function ChatInterface({
         });
       } else {
         // Server-side path: server uses its configured LLM key
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (wallet) headers["x-wallet"] = wallet;
-
-        const res = await fetch("/api/agent", {
+        const data = await apiFetch<{ response: string }>("/api/agent", {
           method: "POST",
-          headers,
-          body: JSON.stringify({ messages: apiMessages }),
+          wallet: wallet ?? undefined,
+          body: { messages: apiMessages },
         });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error ?? `API error: ${res.status}`);
-        }
-
-        const data = await res.json();
         responseText = data.response;
       }
 

@@ -10,6 +10,7 @@ import { useDealsStore } from "@/lib/deals-store";
 import { useProfileStore } from "@/lib/profile-store";
 import { formatUsdc } from "@/lib/types";
 import { getLlmHeaders } from "@/lib/llm-headers";
+import { apiFetch } from "@/lib/api-client";
 import { DocumentPanel } from "@/components/DocumentPanel";
 
 interface Message {
@@ -43,11 +44,8 @@ export default function DealReviewPage() {
 
   const fetchMessages = useCallback(async () => {
     try {
-      const res = await fetch(`/api/messages?deal_id=${dealId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(data.messages ?? []);
-      }
+      const data = await apiFetch<{ messages?: Message[] }>(`/api/messages?deal_id=${dealId}`);
+      setMessages(data.messages ?? []);
     } catch {
       // messages are optional — graceful fallback
     } finally {
@@ -106,7 +104,7 @@ export default function DealReviewPage() {
     }
     setSubmitting(true);
     try {
-      await fetch("/api/notify/process", { method: "POST" });
+      await apiFetch("/api/notify/process", { method: "POST" });
       toast({ variant: "success", title: "Deal declined. Counterparty notified." });
       router.push("/app");
     } catch {
@@ -123,25 +121,21 @@ export default function DealReviewPage() {
     }
     setSubmitting(true);
     try {
-      const res = await fetch("/api/negotiate", {
+      await apiFetch("/api/negotiate", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getLlmHeaders(wallet) },
-        body: JSON.stringify({
+        headers: getLlmHeaders(wallet),
+        body: {
           proposalId: deal!.dealId,
           buyerWallet: wallet,
           initialTerms: { amount: amountUsdc, milestones: deal!.milestones },
           buyerBoundaries: {},
           overrideInstructions: renegotiateInstructions,
-        }),
+        },
       });
-      if (res.ok) {
-        toast({ variant: "success", title: "Agent resumed negotiation with your instructions." });
-        setAction(null);
-        setRenegotiateInstructions("");
-        fetchMessages();
-      } else {
-        throw new Error("Negotiate failed");
-      }
+      toast({ variant: "success", title: "Agent resumed negotiation with your instructions." });
+      setAction(null);
+      setRenegotiateInstructions("");
+      fetchMessages();
     } catch {
       toast({ variant: "error", title: "Failed to renegotiate. Try again." });
     } finally {

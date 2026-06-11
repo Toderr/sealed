@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
+import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
 
 interface Submission {
   wallet: string;
@@ -25,17 +26,14 @@ export default function AdminKycPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/kyc", {
-        headers: { "x-wallet": wallet },
-      });
-      if (res.status === 403) {
+      const json = await apiFetch<{ submissions?: Submission[] }>("/api/admin/kyc", { wallet });
+      setItems(json.submissions ?? []);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 403) {
         setError("Wallet kamu bukan admin.");
         setItems([]);
         return;
       }
-      const json = await res.json();
-      setItems(json.submissions ?? []);
-    } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
@@ -48,22 +46,21 @@ export default function AdminKycPage() {
 
   async function decide(target: string, decision: "approved" | "rejected") {
     if (!wallet) return;
-    const res = await fetch("/api/admin/kyc", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-wallet": wallet },
-      body: JSON.stringify({ target_wallet: target, decision }),
-    });
-    if (!res.ok) {
-      const json = await res.json();
-      alert(`Failed: ${json.error ?? res.statusText}`);
+    try {
+      await apiFetch("/api/admin/kyc", {
+        method: "POST",
+        wallet,
+        body: { target_wallet: target, decision },
+      });
+    } catch (e) {
+      alert(`Failed: ${e instanceof ApiError ? e.message : "error"}`);
       return;
     }
     fetchSubmissions();
   }
 
   async function viewDocument(key: string) {
-    const res = await fetch(`/api/upload/signed?key=${encodeURIComponent(key)}`);
-    const json = await res.json();
+    const json = await apiFetchSafe<{ url?: string }>(`/api/upload/signed?key=${encodeURIComponent(key)}`, {}, {});
     if (json.url) window.open(json.url, "_blank");
   }
 

@@ -5,6 +5,7 @@ import { formatUsdc, type DealParams } from "@/lib/types";
 import type { NegotiationBoundaries } from "@/memory/types";
 import type { Proposal, Revision } from "@/negotiation/types";
 import { getLlmHeaders } from "@/lib/llm-headers";
+import { apiFetch } from "@/lib/api-client";
 import { labelStyle, headingStyle } from "@/lib/typography";
 
 type ViewState =
@@ -33,24 +34,17 @@ export default function NegotiationView({
 
     (async () => {
       try {
-        const res = await fetch("/api/negotiate", {
+        const data = await apiFetch<{ proposal: Proposal }>("/api/negotiate", {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...getLlmHeaders(buyerWallet) },
-          body: JSON.stringify({
+          headers: getLlmHeaders(buyerWallet),
+          body: {
             proposalId,
             buyerWallet,
             initialTerms,
             buyerBoundaries,
-          }),
+          },
           signal: controller.signal,
         });
-
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error ?? `API error ${res.status}`);
-        }
-
-        const data = (await res.json()) as { proposal: Proposal };
         setState({ kind: "done", proposal: data.proposal });
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
