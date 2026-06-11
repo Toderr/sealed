@@ -19,6 +19,7 @@ import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import type { Deal, AgentTemplate, NotificationPrefs, PublicProfile } from "@/lib/types";
 
 import WalletMultiButton from "@/components/AppWalletButton";
+import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
 
 type ProfileMilestone = {
   description: string;
@@ -207,9 +208,7 @@ async function fetchCounterpartyProfileMap(wallets: string[]) {
   const entries = await Promise.all(
     wallets.map(async (profileWallet) => {
       try {
-        const res = await fetch(`/api/users/${encodeURIComponent(profileWallet)}/public`);
-        if (!res.ok) return null;
-        const profile = (await res.json()) as CounterpartyProfile;
+        const profile = await apiFetch<CounterpartyProfile>(`/api/users/${encodeURIComponent(profileWallet)}/public`);
         return [profileWallet, profile] as const;
       } catch {
         return null;
@@ -314,12 +313,10 @@ export function SelfProfilePageContent() {
 
     setSessionDeals(readSessionProfileDeals(wallet));
 
-    fetch("/api/deals/mirror", { headers: { "x-wallet": wallet } })
-      .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
-      .then(({ ok, data }) => {
-        if (cancelled || !ok) return;
-        const next = ((data.deals ?? []) as MirrorDeal[]).map(fromMirrorDeal);
-        setMirrorDeals(next);
+    apiFetch<{ deals?: MirrorDeal[] }>("/api/deals/mirror", { wallet })
+      .then((data) => {
+        if (cancelled) return;
+        setMirrorDeals(((data.deals ?? []) as MirrorDeal[]).map(fromMirrorDeal));
       })
       .catch(() => {
         if (!cancelled) setMirrorDeals([]);
@@ -338,10 +335,9 @@ export function SelfProfilePageContent() {
       return;
     }
 
-    fetch(`/api/users/${wallet}/public?self=1`)
-      .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
-      .then(({ ok, data }) => {
-        if (!cancelled && ok) setPublicProfile(data as PublicProfile);
+    apiFetch<PublicProfile>(`/api/users/${wallet}/public?self=1`)
+      .then((data) => {
+        if (!cancelled) setPublicProfile(data);
       })
       .catch(() => {
         if (!cancelled) setPublicProfile(null);
@@ -415,13 +411,12 @@ export function SelfProfilePageContent() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch("/api/profile/avatar", {
+      const data = await apiFetchSafe<{ avatarUrl?: string }>("/api/profile/avatar", {
         method: "POST",
-        headers: { "x-wallet": wallet },
-        body: fd,
-      });
-      const data = await res.json();
-      if (res.ok && data.avatarUrl) {
+        wallet,
+        rawBody: fd,
+      }, {});
+      if (data.avatarUrl) {
         updateProfile({ avatarUrl: data.avatarUrl });
       }
     } finally {
@@ -1179,21 +1174,17 @@ function AiProviderPanel({ wallet }: { wallet: string }) {
   async function handleX402TopUp() {
     setTopping(true);
     try {
-      const res = await fetch("/api/topup", {
+      const data = await apiFetch<{ credits?: number }>("/api/topup", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallet, usd: x402TopUpAmount }),
+        body: { wallet, usd: x402TopUpAmount },
       });
-      if (res.ok) {
-        const data = await res.json();
-        const currentBalance =
-          profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0;
-        const newBalance =
-          currentBalance + (data.credits ?? x402TopUpAmount * 100);
-        updateProfile({
-          llmConfig: { mode: "x402", balance: newBalance, model: x402Model },
-        });
-      }
+      const currentBalance =
+        profile?.llmConfig?.mode === "x402" ? profile.llmConfig.balance : 0;
+      const newBalance =
+        currentBalance + (data.credits ?? x402TopUpAmount * 100);
+      updateProfile({
+        llmConfig: { mode: "x402", balance: newBalance, model: x402Model },
+      });
     } catch {
       // ignore
     }
@@ -1445,17 +1436,13 @@ function AgentSetupTab({ wallet }: { wallet: string }) {
   async function fetchTemplates() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/agent-templates?wallet=${wallet}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTemplates(data.templates ?? []);
-        // Infer limit from kyc status via user endpoint
-        const uRes = await fetch(`/api/users/${wallet}/public`);
-        if (uRes.ok) {
-          const u = await uRes.json();
-          setLimit(u.is_verified ? 10 : 1);
-        }
-      }
+      const data = await apiFetch<{ templates?: AgentTemplate[] }>(`/api/agent-templates?wallet=${wallet}`);
+      setTemplates(data.templates ?? []);
+      // Infer limit from kyc status via user endpoint
+      const u = await apiFetchSafe<{ is_verified?: boolean }>(`/api/users/${wallet}/public`, {}, {});
+      setLimit(u.is_verified ? 10 : 1);
+    } catch {
+      // keep current templates
     } finally {
       setLoading(false);
     }
@@ -1469,40 +1456,34 @@ function AgentSetupTab({ wallet }: { wallet: string }) {
     setSaving(true);
     setFormError(null);
     try {
-      const res = await fetch("/api/agent-templates", {
+      await apiFetch("/api/agent-templates", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallet, ...form }),
+        body: { wallet, ...form },
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setFormError(data.error ?? "Failed to save template.");
-        return;
-      }
       setShowForm(false);
       setForm({ name: "", negotiation_style: "flexible", price_floor_pct: 80, escalate_after_rounds: 3, agent_intro_message: "" });
       fetchTemplates();
+    } catch (e) {
+      setFormError(e instanceof ApiError ? e.message : "Failed to save template.");
     } finally {
       setSaving(false);
     }
   }
 
   async function handleSetActive(id: string) {
-    await fetch("/api/agent-templates", {
+    await apiFetchSafe("/api/agent-templates", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, wallet, action: "set-active" }),
-    });
+      body: { id, wallet, action: "set-active" },
+    }, undefined);
     fetchTemplates();
   }
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this template?")) return;
-    await fetch("/api/agent-templates", {
+    await apiFetchSafe("/api/agent-templates", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, wallet }),
-    });
+      body: { id, wallet },
+    }, undefined);
     fetchTemplates();
   }
 
@@ -1716,45 +1697,38 @@ function SettingsTab({ wallet }: { wallet: string }) {
   const [savedMsg, setSavedMsg] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/users/${wallet}/public?self=1`)
-      .then((r) => r.json())
+    apiFetchSafe<{ notify_on?: NotificationPrefs; email?: string; email_verified?: boolean }>(
+      `/api/users/${wallet}/public?self=1`, {}, {}
+    )
       .then((data) => {
         if (data.notify_on) setNotifyPrefs(data.notify_on);
         if (data.email) setEmail(data.email);
         if (data.email_verified) setEmailVerified(data.email_verified);
       })
-      .catch(() => {})
       .finally(() => setLoading(false));
   }, [wallet]);
 
   async function sendOtp() {
-    const res = await fetch("/api/users/email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wallet, email }),
-    });
-    if (res.ok) setOtpSent(true);
+    try {
+      await apiFetch("/api/users/email", { method: "POST", body: { wallet, email } });
+      setOtpSent(true);
+    } catch { /* ignore */ }
   }
 
   async function verifyOtp() {
-    const res = await fetch("/api/users/email/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wallet, otp }),
-    });
-    if (res.ok) {
+    try {
+      await apiFetch("/api/users/email/verify", { method: "POST", body: { wallet, otp } });
       setEmailVerified(true);
       setOtpSent(false);
-    }
+    } catch { /* ignore */ }
   }
 
   async function savePrefs() {
     setSaving(true);
-    await fetch("/api/users/notifications", {
+    await apiFetchSafe("/api/users/notifications", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wallet, notify_on: notifyPrefs }),
-    });
+      body: { wallet, notify_on: notifyPrefs },
+    }, undefined);
     setSaving(false);
     setSavedMsg(true);
     setTimeout(() => setSavedMsg(false), 2000);
@@ -1904,14 +1878,14 @@ function FriendsTab({ wallet }: { wallet: string }) {
 
   function loadFriends() {
     setLoading(true);
-    fetch("/api/friends", { headers: { "x-wallet": wallet } })
-      .then((r) => r.json())
+    apiFetchSafe<{ friends?: FriendEntry[]; incoming?: FriendEntry[]; outgoing?: FriendEntry[] }>(
+      "/api/friends", { wallet }, {}
+    )
       .then((d) => {
         setFriends(d.friends ?? []);
         setIncoming(d.incoming ?? []);
         setOutgoing(d.outgoing ?? []);
       })
-      .catch(() => {})
       .finally(() => setLoading(false));
   }
 
@@ -1925,45 +1899,44 @@ function FriendsTab({ wallet }: { wallet: string }) {
     if (!friendHandle) return;
     setAdding(true);
     setAddMsg(null);
-    const res = await fetch("/api/friends", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-wallet": wallet },
-      body: JSON.stringify({ friendHandle }),
-    });
-    const data = await res.json();
-    if (res.ok) {
+    try {
+      const data = await apiFetch<{ status?: string }>("/api/friends", {
+        method: "POST",
+        wallet,
+        body: { friendHandle },
+      });
       setAddMsg(data.status === "accepted" ? "Now friends!" : "Request sent!");
       setAddUsername("");
       loadFriends();
-    } else {
-      setAddMsg(data.error ?? "Failed");
+    } catch (e) {
+      setAddMsg(e instanceof ApiError ? e.message : "Failed");
     }
     setAdding(false);
   }
 
   async function handleAccept(cpWallet: string) {
-    await fetch(`/api/friends/${cpWallet}`, {
+    await apiFetchSafe(`/api/friends/${cpWallet}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", "x-wallet": wallet },
-      body: JSON.stringify({ action: "accept" }),
-    });
+      wallet,
+      body: { action: "accept" },
+    }, undefined);
     loadFriends();
   }
 
   async function handleDecline(cpWallet: string) {
-    await fetch(`/api/friends/${cpWallet}`, {
+    await apiFetchSafe(`/api/friends/${cpWallet}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", "x-wallet": wallet },
-      body: JSON.stringify({ action: "decline" }),
-    });
+      wallet,
+      body: { action: "decline" },
+    }, undefined);
     loadFriends();
   }
 
   async function handleRemove(cpWallet: string) {
-    await fetch(`/api/friends/${cpWallet}`, {
+    await apiFetchSafe(`/api/friends/${cpWallet}`, {
       method: "DELETE",
-      headers: { "x-wallet": wallet },
-    });
+      wallet,
+    }, undefined);
     loadFriends();
   }
 

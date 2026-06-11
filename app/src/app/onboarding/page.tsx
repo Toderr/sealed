@@ -14,6 +14,7 @@ import {
 } from "@/lib/profile-store";
 
 import WalletMultiButton from "@/components/AppWalletButton";
+import { apiFetchSafe } from "@/lib/api-client";
 
 type Step = "wallet" | "profile" | "agent" | "done";
 
@@ -108,10 +109,10 @@ function OnboardingContent() {
       companyFileName,
     });
     if (wallet) {
-      fetch(`/api/users/${wallet}/profile`, {
+      apiFetchSafe(`/api/users/${wallet}/profile`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "x-wallet": wallet },
-        body: JSON.stringify({
+        wallet,
+        body: {
           handle,
           display_name: name.trim(),
           bio: bio.trim(),
@@ -121,8 +122,8 @@ function OnboardingContent() {
           instagram_handle: instagram.trim() || undefined,
           telegram_handle: telegram.trim() || undefined,
           company_file_name: companyFileName || undefined,
-        }),
-      }).catch(() => {});
+        },
+      }, undefined);
     }
     setStep("agent");
   }

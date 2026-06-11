@@ -30,6 +30,7 @@ type AccountCheck = {
 };
 
 import WalletMultiButton from "@/components/AppWalletButton";
+import { apiFetch, apiFetchSafe } from "@/lib/api-client";
 
 export default function InvitePage() {
   const params = useParams();
@@ -77,12 +78,8 @@ export default function InvitePage() {
 
     let cancelled = false;
 
-    fetch(`/api/users/${encodeURIComponent(inviterWallet)}/public`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (!cancelled) setInviterStats(data);
-      })
-      .catch(() => {});
+    apiFetchSafe<InviterStats | null>(`/api/users/${encodeURIComponent(inviterWallet)}/public`, {}, null)
+      .then((data) => { if (!cancelled && data) setInviterStats(data); });
 
     return () => {
       cancelled = true;
@@ -94,11 +91,11 @@ export default function InvitePage() {
 
     let cancelled = false;
 
-    fetch(`/api/users/${encodeURIComponent(sellerWallet)}/public?self=1`)
-      .then((r) => r.json())
+    apiFetch<{ member_since?: string; handle?: string; display_name?: string }>(
+      `/api/users/${encodeURIComponent(sellerWallet)}/public?self=1`
+    )
       .then((data) => {
         if (cancelled) return;
-
         setAccountCheck({
           wallet: sellerWallet,
           hasAccount: Boolean(data?.member_since || data?.handle || data?.display_name),
@@ -166,51 +163,39 @@ export default function InvitePage() {
 
     // 1. Fetch full deal from Supabase and save to this browser's sessionStorage
     //    so the negotiate room can load it even before Supabase propagates the PATCH.
+    // Minimal record from the invite token, used when Supabase doesn't have the
+    // deal yet (or the fetch fails) so the negotiate room still loads.
+    const minimal = {
+      deal_id: payload.dealId,
+      buyer_wallet: buyerWallet,
+      seller_wallet: sellerWallet,
+      title: payload.dealTitle,
+      description: payload.description ?? "",
+      total_amount_usdc: payload.amount,
+      milestones: (payload.milestones ?? []).map((m) => ({ ...m, status: "Pending" })),
+      status: "draft",
+    };
     try {
-      const res = await fetch(`/api/deals/${payload.dealId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.deal) {
-          const supabaseDeal = data.deal;
-          // If Supabase deal has no milestones, use the ones from the invite token
-          const milestones =
-            supabaseDeal.milestones?.length > 0
-              ? supabaseDeal.milestones
-              : (payload.milestones ?? []).map((m) => ({ ...m, status: "Pending" }));
-          sessionStorage.setItem(`deal:${payload.dealId}`, JSON.stringify({
-            ...supabaseDeal,
-            milestones,
-            seller_wallet: sellerWallet,
-          }));
-        }
-      } else {
-        // Supabase doesn't have the deal yet — build a minimal record from the
-        // invite token so the negotiate room still loads for the counterparty.
-        const minimal = {
-          deal_id: payload.dealId,
-          buyer_wallet: buyerWallet,
+      const data = await apiFetch<{ deal?: { milestones?: unknown[] } & Record<string, unknown> }>(
+        `/api/deals/${payload.dealId}`
+      );
+      if (data.deal) {
+        const supabaseDeal = data.deal;
+        const milestones =
+          (supabaseDeal.milestones?.length ?? 0) > 0
+            ? supabaseDeal.milestones
+            : (payload.milestones ?? []).map((m) => ({ ...m, status: "Pending" }));
+        sessionStorage.setItem(`deal:${payload.dealId}`, JSON.stringify({
+          ...supabaseDeal,
+          milestones,
           seller_wallet: sellerWallet,
-          title: payload.dealTitle,
-          description: payload.description ?? "",
-          total_amount_usdc: payload.amount,
-          milestones: (payload.milestones ?? []).map((m) => ({ ...m, status: "Pending" })),
-          status: "draft",
-        };
+        }));
+      } else {
         sessionStorage.setItem(`deal:${payload.dealId}`, JSON.stringify(minimal));
       }
     } catch {
-      // Network error — still save minimal record
+      // Not found or network error — save the minimal record.
       try {
-        const minimal = {
-          deal_id: payload.dealId,
-          buyer_wallet: buyerWallet,
-          seller_wallet: sellerWallet,
-          title: payload.dealTitle,
-          description: payload.description ?? "",
-          total_amount_usdc: payload.amount,
-          milestones: (payload.milestones ?? []).map((m) => ({ ...m, status: "Pending" })),
-          status: "draft",
-        };
         sessionStorage.setItem(`deal:${payload.dealId}`, JSON.stringify(minimal));
       } catch {}
     }
@@ -228,32 +213,15 @@ export default function InvitePage() {
       milestones: (payload.milestones ?? []).map((m) => ({ ...m, status: "Pending" })),
       status: "draft",
     };
-    try {
-      await fetch("/api/deals/mirror", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-wallet": buyerWallet, // buyer's wallet
-        },
-        body: JSON.stringify(dealBody),
-      });
-    } catch {
-      // non-fatal
-    }
+    // buyer's wallet as x-wallet so mirror accepts it
+    await apiFetchSafe("/api/deals/mirror", { method: "POST", wallet: buyerWallet, body: dealBody }, undefined);
 
     // 3. Also PATCH seller_wallet (idempotent if mirror already set it)
-    try {
-      await fetch(`/api/deals/${payload.dealId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-wallet": sellerWallet,
-        },
-        body: JSON.stringify({ seller_wallet: sellerWallet }),
-      });
-    } catch {
-      // non-fatal — navigate anyway
-    }
+    await apiFetchSafe(`/api/deals/${payload.dealId}`, {
+      method: "PATCH",
+      wallet: sellerWallet,
+      body: { seller_wallet: sellerWallet },
+    }, undefined);
 
     setTimeout(() => {
       router.push(`/negotiate/${payload!.dealId}`);
@@ -275,19 +243,11 @@ export default function InvitePage() {
     const handle = createInviteHandle(displayName, sellerWallet);
 
     try {
-      const res = await fetch(`/api/users/${encodeURIComponent(sellerWallet)}/profile`, {
+      await apiFetch(`/api/users/${encodeURIComponent(sellerWallet)}/profile`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "x-wallet": sellerWallet },
-        body: JSON.stringify({
-          handle,
-          display_name: displayName,
-        }),
+        wallet: sellerWallet,
+        body: { handle, display_name: displayName },
       });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error ?? "Failed to create profile");
-      }
 
       updateProfile({
         name: displayName,
@@ -644,10 +604,9 @@ function createInviteHandle(name: string, wallet: string) {
 async function resolveInviterWallet(payload: InvitePayload) {
   if (isUsableWallet(payload.inviterWallet)) return payload.inviterWallet;
 
-  const res = await fetch(`/api/deals/${encodeURIComponent(payload.dealId)}`);
-  if (!res.ok) return payload.inviterWallet;
-
-  const data = await res.json();
+  const data = await apiFetchSafe<{ deal?: { buyer_wallet?: string } }>(
+    `/api/deals/${encodeURIComponent(payload.dealId)}`, {}, {}
+  );
   return data?.deal?.buyer_wallet ?? payload.inviterWallet;
 }
 

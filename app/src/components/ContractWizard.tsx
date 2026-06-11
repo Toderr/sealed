@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { labelStyle, headingStyle } from "@/lib/typography";
+import { apiFetch } from "@/lib/api-client";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -645,10 +646,9 @@ function FriendPickerStep({
       setShowManual(true);
       return;
     }
-    fetch("/api/friends", { headers: { "x-wallet": wallet } })
-      .then((r) => r.json())
+    apiFetch<{ friends?: FriendEntry[] }>("/api/friends", { wallet })
       .then((data) => {
-        const list: FriendEntry[] = data.friends ?? [];
+        const list = data.friends ?? [];
         setFriends(list);
         if (list.length === 0) setShowManual(true);
       })

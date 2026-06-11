@@ -9,6 +9,7 @@ import { SealedBackdrop } from "@/components/SealedBackdrop";
 import { NotificationMenu } from "@/components/NotificationMenu";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import type { PublicProfile } from "@/lib/types";
+import { apiFetch, apiFetchSafe } from "@/lib/api-client";
 import { SelfProfilePage } from "../SelfProfilePage";
 
 type FullProfile = PublicProfile & {
@@ -42,18 +43,15 @@ export default function PublicProfilePage() {
 
   useEffect(() => {
     if (!wallet || isSelf) return;
-    fetch(`/api/users/${wallet}/public`)
-      .then((r) => r.json())
-      .then((data: FullProfile) => { setProfile(data); setLoading(false); })
+    apiFetch<FullProfile>(`/api/users/${wallet}/public`)
+      .then((data) => { setProfile(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, [wallet, isSelf]);
 
   useEffect(() => {
     if (!myWallet || !wallet || myWallet === wallet) return;
-    fetch(`/api/friends/status?with=${wallet}`, { headers: { "x-wallet": myWallet } })
-      .then((r) => r.json())
-      .then((d) => setFriendStatus(d.status as FriendStatus))
-      .catch(() => {});
+    apiFetchSafe<{ status?: FriendStatus }>(`/api/friends/status?with=${wallet}`, { wallet: myWallet }, {})
+      .then((d) => { if (d.status) setFriendStatus(d.status); });
   }, [myWallet, wallet]);
 
   async function handleFriendAction() {
@@ -61,25 +59,24 @@ export default function PublicProfilePage() {
     setFriendLoading(true);
 
     if (friendStatus === "none") {
-      const res = await fetch("/api/friends", {
+      const d = await apiFetchSafe<{ status?: string }>("/api/friends", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-wallet": myWallet },
-        body: JSON.stringify({ friendWallet: wallet }),
-      });
-      const d = await res.json();
-      if (res.ok) setFriendStatus(d.status === "accepted" ? "friends" : "outgoing");
+        wallet: myWallet,
+        body: { friendWallet: wallet },
+      }, {});
+      if (d.status) setFriendStatus(d.status === "accepted" ? "friends" : "outgoing");
     } else if (friendStatus === "incoming") {
-      await fetch(`/api/friends/${wallet}`, {
+      await apiFetchSafe(`/api/friends/${wallet}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-wallet": myWallet },
-        body: JSON.stringify({ action: "accept" }),
-      });
+        wallet: myWallet,
+        body: { action: "accept" },
+      }, undefined);
       setFriendStatus("friends");
     } else if (friendStatus === "friends" || friendStatus === "outgoing") {
-      await fetch(`/api/friends/${wallet}`, {
+      await apiFetchSafe(`/api/friends/${wallet}`, {
         method: "DELETE",
-        headers: { "x-wallet": myWallet },
-      });
+        wallet: myWallet,
+      }, undefined);
       setFriendStatus("none");
     }
 

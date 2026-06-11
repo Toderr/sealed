@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { apiFetch, ApiError } from "@/lib/api-client";
 
 interface DocRecord {
   id: string;
@@ -47,11 +48,8 @@ export function DocumentPanel({
 
   async function fetchDocs() {
     try {
-      const res = await fetch(`/api/deliverables?deal_id=${dealId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setDocs(data.deliverables ?? []);
-      }
+      const data = await apiFetch<{ deliverables?: DocRecord[] }>(`/api/deliverables?deal_id=${dealId}`);
+      setDocs(data.deliverables ?? []);
     } catch {
       // graceful — docs are optional
     }
@@ -63,22 +61,16 @@ export function DocumentPanel({
     try {
       const form = new FormData();
       form.append("file", file);
-
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        headers: {
-          "x-wallet": uploaderWallet,
-          "x-deal-id": dealId,
-        },
-        body: form,
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        setError(err.error ?? "Upload failed");
+      try {
+        await apiFetch("/api/upload", {
+          method: "POST",
+          rawBody: form,
+          headers: { "x-wallet": uploaderWallet, "x-deal-id": dealId },
+        });
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : "Upload failed");
         return;
       }
-
       await fetchDocs();
     } catch {
       setError("Upload failed. Please try again.");
@@ -93,10 +85,12 @@ export function DocumentPanel({
   }
 
   async function openDoc(doc: DocRecord) {
-    const res = await fetch(`/api/upload/signed?key=${encodeURIComponent(doc.storage_key)}`);
-    if (!res.ok) return;
-    const { url } = await res.json();
-    window.open(url, "_blank", "noopener,noreferrer");
+    try {
+      const { url } = await apiFetch<{ url?: string }>(`/api/upload/signed?key=${encodeURIComponent(doc.storage_key)}`);
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      // ignore — can't open
+    }
   }
 
   return (
