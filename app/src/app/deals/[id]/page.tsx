@@ -14,6 +14,7 @@ import {
 } from "@/lib/escrow-client";
 import { MOCK_CHAIN } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
+import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
@@ -88,28 +89,22 @@ export default function ActiveDealPage() {
 
   useEffect(() => {
     if (!dealId) return;
-    fetch(`/api/deals/${dealId}`)
-      .then((r) => r.json())
-      .then((d) => { if (d.deal) setDeal(d.deal); else setLoadError(d.error ?? "Deal not found"); })
-      .catch(() => setLoadError("Failed to load deal"));
+    apiFetchSafe<{ deal?: SupabaseDeal; error?: string }>(`/api/deals/${dealId}`, {}, { error: "Failed to load deal" })
+      .then((d) => { if (d.deal) setDeal(d.deal); else setLoadError(d.error ?? "Deal not found"); });
 
-    fetch(`/api/messages?deal_id=${dealId}`)
-      .then((r) => r.json())
-      .then((d) => setMessages(d.messages ?? []))
-      .catch(() => {});
+    apiFetchSafe<{ messages?: DbMsg[] }>(`/api/messages?deal_id=${dealId}`, {}, { messages: [] })
+      .then((d) => setMessages(d.messages ?? []));
 
-    fetch(`/api/deliverables?deal_id=${dealId}`)
-      .then((r) => r.json())
-      .then((d) => setDeliverables(d.deliverables ?? []))
-      .catch(() => {});
+    apiFetchSafe<{ deliverables?: Deliverable[] }>(`/api/deliverables?deal_id=${dealId}`, {}, { deliverables: [] })
+      .then((d) => setDeliverables(d.deliverables ?? []));
   }, [dealId]);
 
   useEffect(() => {
     if (!dealId) return;
     const iv = setInterval(() => {
-      fetch(`/api/deals/${dealId}`).then((r) => r.json()).then((d) => { if (d.deal) setDeal(d.deal); }).catch(() => {});
-      fetch(`/api/messages?deal_id=${dealId}`).then((r) => r.json()).then((d) => setMessages(d.messages ?? [])).catch(() => {});
-      fetch(`/api/deliverables?deal_id=${dealId}`).then((r) => r.json()).then((d) => setDeliverables(d.deliverables ?? [])).catch(() => {});
+      apiFetchSafe<{ deal?: SupabaseDeal }>(`/api/deals/${dealId}`, {}, {}).then((d) => { if (d.deal) setDeal(d.deal); });
+      apiFetchSafe<{ messages?: DbMsg[] }>(`/api/messages?deal_id=${dealId}`, {}, { messages: [] }).then((d) => setMessages(d.messages ?? []));
+      apiFetchSafe<{ deliverables?: Deliverable[] }>(`/api/deliverables?deal_id=${dealId}`, {}, { deliverables: [] }).then((d) => setDeliverables(d.deliverables ?? []));
     }, 4000);
     return () => clearInterval(iv);
   }, [dealId]);
@@ -123,9 +118,9 @@ export default function ActiveDealPage() {
 
   async function refreshAll() {
     const [d, m, del] = await Promise.all([
-      fetch(`/api/deals/${dealId}`).then((r) => r.json()),
-      fetch(`/api/messages?deal_id=${dealId}`).then((r) => r.json()),
-      fetch(`/api/deliverables?deal_id=${dealId}`).then((r) => r.json()),
+      apiFetchSafe<{ deal?: SupabaseDeal }>(`/api/deals/${dealId}`, {}, {}),
+      apiFetchSafe<{ messages?: DbMsg[] }>(`/api/messages?deal_id=${dealId}`, {}, { messages: [] }),
+      apiFetchSafe<{ deliverables?: Deliverable[] }>(`/api/deliverables?deal_id=${dealId}`, {}, { deliverables: [] }),
     ]);
     if (d.deal) setDeal(d.deal);
     setMessages(m.messages ?? []);
@@ -135,8 +130,9 @@ export default function ActiveDealPage() {
   async function openProof(storageKey: string) {
     setOpeningProof(storageKey);
     try {
-      const res = await fetch(`/api/upload/signed?key=${encodeURIComponent(storageKey)}`);
-      const data = await res.json() as { url?: string; error?: string };
+      const data = await apiFetchSafe<{ url?: string; error?: string }>(
+        `/api/upload/signed?key=${encodeURIComponent(storageKey)}`, {}, {}
+      );
       if (data.url) window.open(data.url, "_blank", "noopener,noreferrer");
       else alert("Could not open file. Please try again.");
     } finally {
@@ -145,19 +141,19 @@ export default function ActiveDealPage() {
   }
 
   async function patchMilestones(updated: Milestone[]) {
-    await fetch(`/api/deals/${dealId}`, {
+    await apiFetchSafe(`/api/deals/${dealId}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", "x-wallet": wallet ?? "" },
-      body: JSON.stringify({ milestones: updated }),
-    });
+      wallet: wallet ?? "",
+      body: { milestones: updated },
+    }, undefined);
   }
 
   async function postMessage(content: string, msgRole = "user") {
-    await fetch("/api/messages", {
+    await apiFetchSafe("/api/messages", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-wallet": wallet ?? "" },
-      body: JSON.stringify({ deal_id: dealId, role: msgRole, content, wallet }),
-    });
+      wallet: wallet ?? "",
+      body: { deal_id: dealId, role: msgRole, content, wallet },
+    }, undefined);
   }
 
   async function handleUploadProof(file: File, milestoneIndex: number) {
@@ -166,14 +162,14 @@ export default function ActiveDealPage() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        headers: { "x-wallet": wallet, "x-deal-id": dealId, "x-milestone-index": String(milestoneIndex) },
-        body: form,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        alert((err as { error?: string }).error ?? "Upload failed");
+      try {
+        await apiFetch("/api/upload", {
+          method: "POST",
+          rawBody: form,
+          headers: { "x-wallet": wallet, "x-deal-id": dealId, "x-milestone-index": String(milestoneIndex) },
+        });
+      } catch (e) {
+        alert(e instanceof ApiError ? e.message : "Upload failed");
         return;
       }
       const updated = milestones.map((m, i) =>
@@ -260,20 +256,15 @@ export default function ActiveDealPage() {
     setRatingLoading(true);
     setRatingError(null);
 
-    fetch(`/api/ratings?deal_id=${encodeURIComponent(dealId)}`, {
-      headers: { "x-wallet": wallet },
-    })
-      .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
-      .then(({ ok, data }) => {
+    apiFetch<RatingLookup>(`/api/ratings?deal_id=${encodeURIComponent(dealId)}`, { wallet })
+      .then((data) => {
         if (cancelled) return;
-        if (!ok) throw new Error(data?.error ?? "Failed to load review status");
-        setRatingLookup(data as RatingLookup);
-        const submittedStars = (data as RatingLookup).rating?.stars ?? 0;
-        setRatingStars(submittedStars);
-        setRatingText((data as RatingLookup).rating?.review_text ?? "");
+        setRatingLookup(data);
+        setRatingStars(data.rating?.stars ?? 0);
+        setRatingText(data.rating?.review_text ?? "");
       })
       .catch((error) => {
-        if (!cancelled) setRatingError(error instanceof Error ? error.message : "Failed to load review status");
+        if (!cancelled) setRatingError(error instanceof ApiError ? error.message : "Failed to load review status");
       })
       .finally(() => {
         if (!cancelled) setRatingLoading(false);
@@ -296,18 +287,16 @@ export default function ActiveDealPage() {
     setRatingError(null);
 
     try {
-      const res = await fetch("/api/ratings", {
+      const data = await apiFetch<{ id?: string }>("/api/ratings", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-wallet": wallet },
-        body: JSON.stringify({
+        wallet,
+        body: {
           deal_id: dealId,
           ratee_wallet: ratingLookup.ratee_wallet,
           stars: ratingStars,
           review_text: ratingText.trim(),
-        }),
+        },
       });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error ?? "Failed to submit review");
 
       setRatingLookup({
         ...ratingLookup,

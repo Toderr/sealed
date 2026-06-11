@@ -11,6 +11,7 @@ import { useProfileStore } from "@/lib/profile-store";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import { type DealParams, type PublicProfile, type SupabaseDeal } from "@/lib/types";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
+import { apiFetch, apiFetchSafe } from "@/lib/api-client";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
 
@@ -72,14 +73,12 @@ function counterpartyInitials(profile?: CounterpartyProfile | null) {
 async function fetchCounterpartyProfileMap(wallets: string[]) {
   const entries = await Promise.all(
     wallets.map(async (profileWallet) => {
-      try {
-        const res = await fetch(`/api/users/${encodeURIComponent(profileWallet)}/public`);
-        if (!res.ok) return null;
-        const profile = (await res.json()) as CounterpartyProfile;
-        return [profileWallet, profile] as const;
-      } catch {
-        return null;
-      }
+      const profile = await apiFetchSafe<CounterpartyProfile | null>(
+        `/api/users/${encodeURIComponent(profileWallet)}/public`,
+        {},
+        null
+      );
+      return profile ? ([profileWallet, profile] as const) : null;
     })
   );
 
@@ -155,13 +154,10 @@ function HomeContent() {
       // sessionStorage unavailable
     }
 
-    fetch("/api/deals/mirror", {
+    apiFetchSafe("/api/deals/mirror", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-wallet": publicKey.toBase58(),
-      },
-      body: JSON.stringify({
+      wallet: publicKey.toBase58(),
+      body: {
         deal_id: params.dealId,
         seller_wallet: params.sellerWallet ?? null,
         title: dealTitle,
@@ -173,8 +169,8 @@ function HomeContent() {
           status: "Pending",
         })),
         status: "draft",
-      }),
-    }).catch(() => {});
+      },
+    }, undefined);
 
     router.push(`/negotiate/${params.dealId}`);
   }
@@ -389,15 +385,12 @@ function DealsBoldBoard() {
       setLoading(false); // eslint-disable-line react-hooks/set-state-in-effect
       return;
     }
-    fetch("/api/deals/mirror", { headers: { "x-wallet": wallet } })
-      .then((r) => r.json())
+    apiFetchSafe<{ deals?: SupabaseDeal[] }>("/api/deals/mirror", { wallet }, { deals: [] })
       .then((data) => {
         const supabaseDeals: SupabaseDeal[] = data.deals ?? [];
         const sessionDeals = readSessionDeals(wallet);
-        const merged = mergeDedupe(supabaseDeals, sessionDeals);
-        setDeals(merged);
+        setDeals(mergeDedupe(supabaseDeals, sessionDeals));
       })
-      .catch(() => { setDeals(readSessionDeals(wallet)); })
       .finally(() => setLoading(false));
   }, [wallet]);
 

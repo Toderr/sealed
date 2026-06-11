@@ -6,6 +6,7 @@ import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import Link from "next/link";
 import { labelStyle, headingStyle } from "@/lib/typography";
 import type { SupabaseDeal } from "@/lib/types";
+import { apiFetchSafe } from "@/lib/api-client";
 
 function statusStyle(status: string): string {
   switch (status) {
@@ -31,24 +32,16 @@ export default function DealDashboard() {
 
   useEffect(() => {
     if (!wallet) {
-      setLoading(false);
+      setLoading(false); // eslint-disable-line react-hooks/set-state-in-effect
       return;
     }
 
-    // Try Supabase first
-    fetch("/api/deals/mirror", { headers: { "x-wallet": wallet } })
-      .then((r) => r.json())
+    // Try Supabase first; on any error fall back to sessionStorage drafts only.
+    apiFetchSafe<{ deals?: SupabaseDeal[] }>("/api/deals/mirror", { wallet }, { deals: [] })
       .then((data) => {
         const supabaseDeals: SupabaseDeal[] = data.deals ?? [];
-
-        // Merge with any sessionStorage drafts not yet synced
         const sessionDeals = readSessionDeals(wallet);
-        const merged = mergeDedupe(supabaseDeals, sessionDeals);
-        setDeals(merged);
-      })
-      .catch(() => {
-        // Supabase unavailable — use sessionStorage only
-        setDeals(readSessionDeals(wallet));
+        setDeals(mergeDedupe(supabaseDeals, sessionDeals));
       })
       .finally(() => setLoading(false));
   }, [wallet]);

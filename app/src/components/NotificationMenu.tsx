@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
+import { apiFetch, ApiError } from "@/lib/api-client";
 
 type AppNotification = {
   id: string;
@@ -39,16 +40,13 @@ export function NotificationMenu({ wallet }: { wallet: string | null }) {
     setError(null);
 
     try {
-      const res = await fetch("/api/notifications", { headers: { "x-wallet": wallet } });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data?.error ?? "Unable to load notifications.");
-        setNotifications([]);
-        return;
-      }
+      const data = await apiFetch<{ notifications?: AppNotification[] }>(
+        "/api/notifications",
+        { wallet }
+      );
       setNotifications(data.notifications ?? []);
-    } catch {
-      setError("Unable to load notifications.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to load notifications.");
       setNotifications([]);
     } finally {
       setLoading(false);
