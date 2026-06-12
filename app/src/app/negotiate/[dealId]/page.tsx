@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
@@ -30,7 +30,9 @@ import { mockEscrow } from "@/lib/mock-escrow";
 import { PublicKey } from "@solana/web3.js";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
+import { apiFetch, apiFetchSafe } from "@/lib/api-client";
+import { useApi, POLL_MS } from "@/lib/swr";
+import { useDeal } from "@/lib/hooks/use-deal";
 import type { NegotiationBoundaries } from "@/memory/types";
 import { AgentRole } from "@/agents/types";
 import { ArrowLeft } from "lucide-react";
@@ -155,7 +157,7 @@ function renegotiationNoticeFromMessages(messages: DbMsg[]): RenegotiationNotice
 
 export default function NegotiateRoom() {
   const params = useParams();
-  const dealId = Array.isArray(params.dealId) ? params.dealId[0] : params.dealId;
+  const dealId = (Array.isArray(params.dealId) ? params.dealId[0] : params.dealId) ?? null;
   const router = useRouter();
 
   const { publicKey, signTransaction } = useWallet();
@@ -166,8 +168,17 @@ export default function NegotiateRoom() {
   const { profile } = useProfileStore(wallet);
   const { deals, addDeal, updateDeal } = useDealsStore(publicKey ?? null);
 
-  const [deal, setDeal] = useState<SupabaseDeal | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // Deal state machine (load + 4s poll + focus/reconnect revalidation + Realtime
+  // + storage sync + optimistic writes with rollback) lives in useDeal.
+  const {
+    deal,
+    loadError: dealLoadError,
+    applyServerPatch,
+    patchDeal,
+  } = useDeal(dealId);
+  // Separate "loading timed out" message, set only by the 10s fallback below.
+  const [timeoutError, setTimeoutError] = useState<string | null>(null);
+  const loadError = dealLoadError ?? timeoutError;
   const [cpProfile, setCpProfile] = useState<PublicProfile | null>(null);
   const [cpHandle, setCpHandle] = useState<string | null>(null);
   const [negState, setNegState] = useState<NegState>({ kind: "idle" });
@@ -182,78 +193,19 @@ export default function NegotiateRoom() {
   // Seller's chosen negotiation mode ("choice" = not decided yet)
   const [sellerView, setSellerView] = useState<"choice" | "manual" | "agent-waiting">("choice");
 
-  // Re-push a sessionStorage deal to Supabase so counterparties on other devices can load it
-  function retryMirrorSync(local: SupabaseDeal) {
-    if (!local.buyer_wallet) return;
-    apiFetchSafe("/api/deals/mirror", {
-      method: "POST",
-      wallet: local.buyer_wallet,
-      body: {
-        deal_id: local.deal_id,
-        seller_wallet: local.seller_wallet ?? null,
-        title: local.title,
-        description: local.description ?? null,
-        total_amount_usdc: local.total_amount_usdc,
-        milestones: local.milestones ?? [],
-        status: local.status ?? "draft",
-      },
-    }, undefined); // best-effort
-  }
-
-  // Fetch deal — tries Supabase first, falls back to sessionStorage
+  // Load (Supabase-first → sessionStorage fallback → mirror-retry) now lives in
+  // useDeal's fetcher. This effect only preserves the old 10s "loading timed
+  // out" guard: if useDeal still has no deal after 10s, surface the message
+  // (the fetcher's own sessionStorage fallback covers the recoverable cases).
   useEffect(() => {
     if (!dealId) return;
-    let cancelled = false;
-
-    function trySessionStorage() {
-      try {
-        const raw = sessionStorage.getItem(`deal:${dealId}`);
-        if (raw) return JSON.parse(raw) as SupabaseDeal;
-      } catch {}
-      return null;
-    }
-
+    setTimeoutError(null);
     const timer = setTimeout(() => {
-      if (cancelled) return;
-      const local = trySessionStorage();
-      if (local) setDeal(local);
-      else setLoadError("Loading timed out — please refresh the page.");
+      if (!deal) setTimeoutError("Loading timed out — please refresh the page.");
     }, 10000);
-
-    apiFetch<{ deal?: SupabaseDeal; error?: string }>(`/api/deals/${dealId}`)
-      .then((data) => {
-        clearTimeout(timer);
-        if (cancelled) return;
-        if (data.error || !data.deal) {
-          const local = trySessionStorage();
-          if (local) {
-            setDeal(local);
-            // Retry mirror sync so counterparties on other devices can find this deal
-            retryMirrorSync(local);
-          } else {
-            setLoadError(data.error ?? "Deal not found");
-          }
-        } else {
-          setDeal(data.deal);
-        }
-      })
-      .catch(() => {
-        clearTimeout(timer);
-        if (cancelled) return;
-        const local = trySessionStorage();
-        if (local) {
-          setDeal(local);
-          retryMirrorSync(local);
-        } else {
-          setLoadError("Failed to load deal. Please check your connection.");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [dealId]);
+    return () => clearTimeout(timer);
+    // Re-arm whenever the deal arrives (clears any pending timeout) or id changes.
+  }, [dealId, deal]);
 
   // If Supabase returned the deal before the seller PATCH propagated, seller_wallet
   // may still be empty. Check sessionStorage and patch local state so the seller
@@ -265,61 +217,44 @@ export default function NegotiateRoom() {
       if (!raw) return;
       const local = JSON.parse(raw) as { seller_wallet?: string };
       if (local.seller_wallet === wallet) {
-        setDeal((prev) => (prev ? { ...prev, seller_wallet: wallet } : prev));
+        applyServerPatch((prev) => (prev ? { ...prev, seller_wallet: wallet } : prev));
       }
     } catch {}
-  }, [wallet, deal]);
+  }, [wallet, deal, applyServerPatch]);
 
-  // Poll deal every 4 s — keeps both parties in sync.
-  // Uses setDeal(prev => ...) to avoid stale-closure comparison bugs.
-  // Depends only on dealId so the interval never restarts mid-poll.
+  // Supabase cross-device sync is now useDeal's refreshInterval poll (+ focus/
+  // reconnect revalidation). This interval only re-checks the same-device
+  // localStorage signals the old poll read inline, patching the cached deal.
+  // Depends only on dealId so it never restarts mid-cycle.
   useEffect(() => {
     if (!dealId) return;
-
     const interval = setInterval(() => {
-      // Check localStorage signals first (same-device, instant)
       try {
         const joined = localStorage.getItem(`sealed:seller-joined:${dealId}`);
         if (joined) {
-          setDeal((prev) => {
+          applyServerPatch((prev) => {
             if (!prev || (prev.seller_wallet ?? "") === joined) return prev;
             return { ...prev, seller_wallet: joined };
           });
         }
         const agreed = localStorage.getItem(`sealed:seller-agreed:${dealId}`);
         if (agreed) {
-          setDeal((prev) => {
+          applyServerPatch((prev) => {
             if (!prev || prev.status === "seller-agreed") return prev;
             return { ...prev, status: "seller-agreed" };
           });
         }
         const escalated = localStorage.getItem(`sealed:deal-escalated:${dealId}`);
         if (escalated) {
-          setDeal((prev) => {
+          applyServerPatch((prev) => {
             if (!prev || prev.status === "escalated") return prev;
             return { ...prev, status: "escalated" };
           });
         }
       } catch {}
-
-      // Also poll Supabase for cross-device sync
-      apiFetch<{ deal?: SupabaseDeal }>(`/api/deals/${dealId}`)
-        .then((data) => {
-          console.log("[poll] status from Supabase:", data.deal?.status ?? "NOT FOUND");
-          if (!data.deal) return; // Don't retryMirrorSync here — it would overwrite seller_wallet
-          const updated = data.deal;
-          setDeal((prev) => {
-            if (!prev) return updated;
-            const sellerChanged = (updated.seller_wallet ?? "") !== (prev.seller_wallet ?? "");
-            const statusChanged = updated.status !== prev.status;
-            return sellerChanged || statusChanged ? updated : prev;
-          });
-        })
-        .catch((e) => console.error("[poll] error:", e));
-    }, 4000);
-
+    }, POLL_MS);
     return () => clearInterval(interval);
-  }, [dealId]); // stable — never restarts
+  }, [dealId, applyServerPatch]);
 
   // Supabase Realtime — instant cross-device updates (fallback: 4s poll above)
   useEffect(() => {
@@ -333,7 +268,7 @@ export default function NegotiateRoom() {
         { event: "UPDATE", schema: "public", table: "sealed_deals", filter: `deal_id=eq.${dealId}` },
         (payload) => {
           const updated = payload.new as SupabaseDeal;
-          setDeal((prev) => {
+          applyServerPatch((prev) => {
             if (!prev) return updated;
             const changed =
               updated.status !== prev.status ||
@@ -345,26 +280,26 @@ export default function NegotiateRoom() {
       .subscribe();
 
     return () => { supabaseBrowser.removeChannel(channel); };
-  }, [dealId]);
+  }, [dealId, applyServerPatch]);
 
   // Instant cross-tab detection via localStorage storage event
   useEffect(() => {
     if (!dealId) return;
     function handleStorage(e: StorageEvent) {
       if (e.key === `sealed:seller-joined:${dealId}` && e.newValue) {
-        setDeal((prev) => {
+        applyServerPatch((prev) => {
           if (!prev || (prev.seller_wallet ?? "") === e.newValue) return prev;
           return { ...prev, seller_wallet: e.newValue! };
         });
       }
       if (e.key === `sealed:seller-agreed:${dealId}` && e.newValue) {
-        setDeal((prev) => {
+        applyServerPatch((prev) => {
           if (!prev || prev.status === "seller-agreed") return prev;
           return { ...prev, status: "seller-agreed" };
         });
       }
       if (e.key === `sealed:deal-escalated:${dealId}` && e.newValue) {
-        setDeal((prev) => {
+        applyServerPatch((prev) => {
           if (!prev || prev.status === "escalated") return prev;
           return { ...prev, status: "escalated" };
         });
@@ -372,35 +307,36 @@ export default function NegotiateRoom() {
     }
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
-  }, [dealId]);
+  }, [dealId, applyServerPatch]);
 
   // Load the shared renegotiation request so the counterparty sees why the
-  // terms were reopened, even on a different device.
+  // terms were reopened, even on a different device. SWR polls messages only
+  // while escalated (null key otherwise); the notice is derived from them.
+  const isEscalated = deal?.status === "escalated";
+  const noticeMessages = useApi<{ messages?: DbMsg[] }>(
+    isEscalated && dealId ? `/api/messages?deal_id=${dealId}` : null,
+    null,
+    { refreshInterval: POLL_MS }
+  );
+  // The old code did an extra one-shot re-fetch 1200ms after escalation to
+  // catch the counterparty's request before the 4s cadence; mutate() reproduces
+  // it exactly (same endpoint, same timing, just an early revalidation).
+  const refetchNotice = noticeMessages.mutate;
   useEffect(() => {
-    if (!dealId || deal?.status !== "escalated") {
+    if (!isEscalated) return;
+    const retry = window.setTimeout(() => void refetchNotice(), 1200);
+    return () => window.clearTimeout(retry);
+  }, [isEscalated, refetchNotice]);
+  // Clear the notice when leaving escalated; otherwise set it from server data
+  // when present (never overwrite an optimistic local notice with null).
+  useEffect(() => {
+    if (!isEscalated) {
       setRenegotiationNotice(null);
       return;
     }
-
-    let cancelled = false;
-    async function loadNotice() {
-      try {
-        const data = await apiFetch<{ messages?: DbMsg[] }>(`/api/messages?deal_id=${dealId}`);
-        if (cancelled) return;
-        const next = renegotiationNoticeFromMessages(data.messages ?? []);
-        if (next) setRenegotiationNotice(next);
-      } catch {}
-    }
-
-    loadNotice();
-    const retry = window.setTimeout(loadNotice, 1200);
-    const interval = window.setInterval(loadNotice, 4000);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(retry);
-      window.clearInterval(interval);
-    };
-  }, [dealId, deal?.status]);
+    const next = renegotiationNoticeFromMessages(noticeMessages.data?.messages ?? []);
+    if (next) setRenegotiationNotice(next);
+  }, [isEscalated, noticeMessages.data]);
 
   // Redirect both parties once escrow is funded or deal is in any post-negotiate state.
   // Covers the case where the mirror call failed silently and Supabase still has
@@ -536,7 +472,6 @@ export default function NegotiateRoom() {
 
   const markDealEscalated = useCallback(async (requestText: string) => {
     if (!deal || !wallet) return false;
-    const previousStatus = deal.status;
     const createdAt = new Date().toISOString();
     const requestedByRole =
       deal.buyer_wallet === wallet ? "buyer" : deal.seller_wallet === wallet ? "seller" : "party";
@@ -546,46 +481,51 @@ export default function NegotiateRoom() {
       localStorage.setItem(`sealed:deal-escalated:${deal.deal_id}`, requestText || "1");
     } catch {}
 
+    // Optimistically show the notice; patchDeal flips status to "escalated"
+    // instantly and auto-rolls-back the cached deal if the PATCH fails.
     setRenegotiationNotice({ content: requestText, wallet, created_at: createdAt });
-    setDeal((prev) => (prev ? { ...prev, status: "escalated" } : prev));
 
     try {
-      try {
-        await apiFetch("/api/messages", {
-          method: "POST",
-          body: {
-            deal_id: deal.deal_id,
-            role: "system",
-            content: `${requestLabel} requested renegotiation:\n\n${requestText}`,
-            wallet,
-            metadata: {
-              type: "renegotiation_request",
-              request: requestText,
-              requested_by: wallet,
-              requested_by_role: requestedByRole,
+      await patchDeal({ status: "escalated" }, async () => {
+        try {
+          await apiFetch("/api/messages", {
+            method: "POST",
+            body: {
+              deal_id: deal.deal_id,
+              role: "system",
+              content: `${requestLabel} requested renegotiation:\n\n${requestText}`,
+              wallet,
+              metadata: {
+                type: "renegotiation_request",
+                request: requestText,
+                requested_by: wallet,
+                requested_by_role: requestedByRole,
+              },
             },
-          },
-        });
-      } catch (error) {
-        console.warn("[renegotiate] Could not persist request message", error);
-      }
+          });
+        } catch (error) {
+          console.warn("[renegotiate] Could not persist request message", error);
+        }
 
-      await apiFetch(`/api/deals/${deal.deal_id}`, {
-        method: "PATCH",
-        wallet,
-        body: { status: "escalated" },
+        // Throws on failure → patchDeal rolls the cached deal back.
+        await apiFetch(`/api/deals/${deal.deal_id}`, {
+          method: "PATCH",
+          wallet,
+          body: { status: "escalated" },
+        });
       });
     } catch (error) {
+      // patchDeal already rolled the deal back; undo the other optimistic
+      // side-effects (notice + localStorage signal) to match the old behavior.
       try {
         localStorage.removeItem(`sealed:deal-escalated:${deal.deal_id}`);
       } catch {}
       setRenegotiationNotice(null);
-      setDeal((prev) => (prev ? { ...prev, status: previousStatus } : prev));
       throw error;
     }
 
     return true;
-  }, [deal, wallet]);
+  }, [deal, wallet, patchDeal]);
 
   const startNegotiation = useCallback(async (renegotiationRequest?: string) => {
     if (!deal || !wallet || !memory) return;
@@ -655,7 +595,7 @@ export default function NegotiateRoom() {
       });
       setNegState({ kind: "done", proposal: data.proposal });
       if (data.proposal.status === "escalated") {
-        setDeal((prev) => (prev ? { ...prev, status: "escalated" } : prev));
+        applyServerPatch((prev) => (prev ? { ...prev, status: "escalated" } : prev));
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Negotiation failed";
@@ -679,7 +619,7 @@ export default function NegotiateRoom() {
         message,
       });
     }
-  }, [deal, wallet, memory, role, dealParams]);
+  }, [deal, wallet, memory, role, dealParams, applyServerPatch]);
 
   // If the seller requests renegotiation, the buyer's room should actively
   // restart the agent flow instead of staying on a stale result.
@@ -820,7 +760,8 @@ export default function NegotiateRoom() {
         status: mirroredDeal.status,
       };
 
-      setDeal((prev) =>
+      // On-chain deploy already succeeded — reflect the funded state locally.
+      applyServerPatch((prev) =>
         prev
           ? {
               ...prev,
@@ -1072,7 +1013,7 @@ export default function NegotiateRoom() {
                               wallet: wallet ?? "",
                               body: { status: "seller-ready" },
                             }, undefined);
-                            setDeal((prev) => prev ? { ...prev, status: "seller-ready" } : prev);
+                            applyServerPatch((prev) => prev ? { ...prev, status: "seller-ready" } : prev);
                             setSellerView("agent-waiting");
                           }}
                           disabled={!memory}
@@ -1140,7 +1081,7 @@ export default function NegotiateRoom() {
                             },
                           }, undefined);
                         }
-                        setDeal((prev) => prev ? {
+                        applyServerPatch((prev) => prev ? {
                           ...prev,
                           status: "seller-agreed",
                           total_amount_usdc: finalAmount,
@@ -1840,20 +1781,13 @@ function NegotiationResult({
 /* ── Shared conversation view ───────────────────────────────────────────── */
 
 function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: boolean }) {
-  const [msgs, setMsgs] = useState<DbMsg[]>([]);
+  // SWR refreshInterval replaces the 4s poll (errors → empty list, same as the
+  // old apiFetchSafe fallback). Memoized so the scroll effect's dep is stable.
+  const { data } = useApi<{ messages?: DbMsg[] }>(
+    `/api/messages?deal_id=${dealId}`, null, { refreshInterval: POLL_MS });
+  const msgs = useMemo(() => data?.messages ?? [], [data]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevMsgCount = useRef(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    function poll() {
-      apiFetchSafe<{ messages?: DbMsg[] }>(`/api/messages?deal_id=${dealId}`, {}, { messages: [] })
-        .then((data) => { if (!cancelled) setMsgs(data.messages ?? []); });
-    }
-    poll();
-    const interval = setInterval(poll, 4000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [dealId]);
 
   useEffect(() => {
     if (msgs.length > prevMsgCount.current) {
