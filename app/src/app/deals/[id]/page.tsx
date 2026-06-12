@@ -63,8 +63,18 @@ export default function ActiveDealPage() {
     dealId ? `/api/deliverables?deal_id=${dealId}` : null, wallet, { refreshInterval: POLL_MS });
 
   const deal = dealQuery.data?.deal ?? null;
-  const loadError = dealQuery.data && !dealQuery.data.deal
-    ? (dealQuery.data.error ?? "Deal not found")
+  // Show the error screen when the deal genuinely can't load: either the route
+  // returned a 2xx body with no deal, or the fetch threw (404, 500, network).
+  // ApiError.message carries the server's {error} ("Deal not found"). Gated on
+  // !deal so a transient blip that SWR retries away just keeps the spinner.
+  const loadError = !deal
+    ? dealQuery.error instanceof ApiError
+      ? dealQuery.error.message
+      : dealQuery.error
+        ? "Failed to load deal"
+        : dealQuery.data && !dealQuery.data.deal
+          ? (dealQuery.data.error ?? "Deal not found")
+          : null
     : null;
   // Memoized so the scroll effect's [messages] dep is stable across renders
   // when the payload is unchanged.
