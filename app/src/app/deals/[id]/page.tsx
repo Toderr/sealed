@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { useAppConnection as useConnection } from "@/lib/use-app-connection";
@@ -15,6 +15,7 @@ import {
 import { MOCK_CHAIN } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
+import { useApi, POLL_MS } from "@/lib/swr";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
@@ -53,11 +54,42 @@ export default function ActiveDealPage() {
   const { connection } = useConnection();
   const wallet = publicKey?.toBase58() ?? null;
 
-  const [deal, setDeal] = useState<SupabaseDeal | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [messages, setMessages] = useState<DbMsg[]>([]);
+  // Polled deal data via SWR (refreshInterval replaces the old 4s setInterval).
+  const dealQuery = useApi<{ deal?: SupabaseDeal; error?: string }>(
+    dealId ? `/api/deals/${dealId}` : null, wallet, { refreshInterval: POLL_MS });
+  const messagesQuery = useApi<{ messages?: DbMsg[] }>(
+    dealId ? `/api/messages?deal_id=${dealId}` : null, wallet, { refreshInterval: POLL_MS });
+  const deliverablesQuery = useApi<{ deliverables?: Deliverable[] }>(
+    dealId ? `/api/deliverables?deal_id=${dealId}` : null, wallet, { refreshInterval: POLL_MS });
+
+  const deal = dealQuery.data?.deal ?? null;
+  // Show the error screen when the deal genuinely can't load: either the route
+  // returned a 2xx body with no deal, or the fetch threw (404, 500, network).
+  // ApiError.message carries the server's {error} ("Deal not found"). Gated on
+  // !deal so a transient blip that SWR retries away just keeps the spinner.
+  const loadError = !deal
+    ? dealQuery.error instanceof ApiError
+      ? dealQuery.error.message
+      : dealQuery.error
+        ? "Failed to load deal"
+        : dealQuery.data && !dealQuery.data.deal
+          ? (dealQuery.data.error ?? "Deal not found")
+          : null
+    : null;
+  // Memoized so the scroll effect's [messages] dep is stable across renders
+  // when the payload is unchanged.
+  const messages = useMemo(
+    () => messagesQuery.data?.messages ?? [],
+    [messagesQuery.data]
+  );
+  const deliverables = deliverablesQuery.data?.deliverables ?? [];
+
+  // Revalidate all three after a write (replaces the old refreshAll()).
+  const refreshAll = async () => {
+    await Promise.all([dealQuery.mutate(), messagesQuery.mutate(), deliverablesQuery.mutate()]);
+  };
+
   const [chatInput, setChatInput] = useState("");
-  const [deliverables, setDeliverables] = useState<Deliverable[]>([]);
   const [uploading, setUploading] = useState<number | null>(null);
   const [approvingIndex, setApprovingIndex] = useState<number | null>(null);
   const [sendingMsg, setSendingMsg] = useState(false);
@@ -88,44 +120,11 @@ export default function ActiveDealPage() {
   );
 
   useEffect(() => {
-    if (!dealId) return;
-    apiFetchSafe<{ deal?: SupabaseDeal; error?: string }>(`/api/deals/${dealId}`, {}, { error: "Failed to load deal" })
-      .then((d) => { if (d.deal) setDeal(d.deal); else setLoadError(d.error ?? "Deal not found"); });
-
-    apiFetchSafe<{ messages?: DbMsg[] }>(`/api/messages?deal_id=${dealId}`, {}, { messages: [] })
-      .then((d) => setMessages(d.messages ?? []));
-
-    apiFetchSafe<{ deliverables?: Deliverable[] }>(`/api/deliverables?deal_id=${dealId}`, {}, { deliverables: [] })
-      .then((d) => setDeliverables(d.deliverables ?? []));
-  }, [dealId]);
-
-  useEffect(() => {
-    if (!dealId) return;
-    const iv = setInterval(() => {
-      apiFetchSafe<{ deal?: SupabaseDeal }>(`/api/deals/${dealId}`, {}, {}).then((d) => { if (d.deal) setDeal(d.deal); });
-      apiFetchSafe<{ messages?: DbMsg[] }>(`/api/messages?deal_id=${dealId}`, {}, { messages: [] }).then((d) => setMessages(d.messages ?? []));
-      apiFetchSafe<{ deliverables?: Deliverable[] }>(`/api/deliverables?deal_id=${dealId}`, {}, { deliverables: [] }).then((d) => setDeliverables(d.deliverables ?? []));
-    }, 4000);
-    return () => clearInterval(iv);
-  }, [dealId]);
-
-  useEffect(() => {
     if (messages.length > prevMsgCount.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
     prevMsgCount.current = messages.length;
   }, [messages]);
-
-  async function refreshAll() {
-    const [d, m, del] = await Promise.all([
-      apiFetchSafe<{ deal?: SupabaseDeal }>(`/api/deals/${dealId}`, {}, {}),
-      apiFetchSafe<{ messages?: DbMsg[] }>(`/api/messages?deal_id=${dealId}`, {}, { messages: [] }),
-      apiFetchSafe<{ deliverables?: Deliverable[] }>(`/api/deliverables?deal_id=${dealId}`, {}, { deliverables: [] }),
-    ]);
-    if (d.deal) setDeal(d.deal);
-    setMessages(m.messages ?? []);
-    setDeliverables(del.deliverables ?? []);
-  }
 
   async function openProof(storageKey: string) {
     setOpeningProof(storageKey);
