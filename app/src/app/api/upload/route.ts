@@ -1,6 +1,6 @@
-import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
-import { walletOrError } from "@/lib/auth";
+import { requireWallet } from "@/lib/auth";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 import { randomUUID } from "crypto";
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -20,9 +20,8 @@ function detectType(buf: Buffer): { mime: string; ext: string } | null {
   return null;
 }
 
-export async function POST(request: NextRequest) {
-  const walletHeader = walletOrError(request);
-  if (walletHeader instanceof Response) return walletHeader;
+export const POST = withRoute(async (request) => {
+  const walletHeader = requireWallet(request);
 
   const dealId = request.headers.get("x-deal-id") ?? "standalone";
   const milestoneIndex = parseInt(request.headers.get("x-milestone-index") ?? "0", 10);
@@ -31,16 +30,16 @@ export async function POST(request: NextRequest) {
   try {
     formData = await request.formData();
   } catch {
-    return Response.json({ error: "Invalid form data" }, { status: 400 });
+    throw new HttpError(400, "Invalid form data");
   }
 
   const file = formData.get("file") as File | null;
   if (!file) {
-    return Response.json({ error: "No file provided" }, { status: 400 });
+    throw new HttpError(400, "No file provided");
   }
 
   if (file.size > MAX_SIZE) {
-    return Response.json({ error: "File exceeds 10 MB limit" }, { status: 413 });
+    throw new HttpError(413, "File exceeds 10 MB limit");
   }
 
   const arrayBuffer = await file.arrayBuffer();
@@ -49,10 +48,7 @@ export async function POST(request: NextRequest) {
   // Step 1: Magic bytes validation
   const detected = detectType(buf);
   if (!detected) {
-    return Response.json(
-      { error: "File type not allowed. Accepted: PDF, DOCX, PNG, JPG" },
-      { status: 415 }
-    );
+    throw new HttpError(415, "File type not allowed. Accepted: PDF, DOCX, PNG, JPG");
   }
 
   // Step 2: Re-encode images to strip EXIF/payloads
@@ -60,11 +56,8 @@ export async function POST(request: NextRequest) {
     try {
       const sharp = (await import("sharp")).default;
       buf = (await sharp(buf).toBuffer()) as Buffer<ArrayBuffer>;
-    } catch (e) {
-      return Response.json(
-        { error: "Image processing failed" },
-        { status: 422 }
-      );
+    } catch {
+      throw new HttpError(422, "Image processing failed");
     }
   }
 
@@ -75,10 +68,7 @@ export async function POST(request: NextRequest) {
       const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<unknown>;
       await pdfParse(buf);
     } catch {
-      return Response.json(
-        { error: "PDF could not be validated" },
-        { status: 422 }
-      );
+      throw new HttpError(422, "PDF could not be validated");
     }
   }
 
@@ -93,7 +83,7 @@ export async function POST(request: NextRequest) {
 
   if (storageError) {
     console.error("[upload] storage error", storageError);
-    return Response.json({ error: "Storage upload failed" }, { status: 500 });
+    throw new HttpError(500, "Storage upload failed");
   }
 
   // Step 5: Record in sealed_deliverables
@@ -114,14 +104,14 @@ export async function POST(request: NextRequest) {
 
   if (dbError) {
     console.error("[upload] db error", dbError);
-    return Response.json({ error: "Failed to record file" }, { status: 500 });
+    throw new HttpError(500, "Failed to record file");
   }
 
-  return Response.json({
+  return json({
     id: (record as { id: string }).id,
     original_name: file.name,
     file_type: detected.mime,
     size_bytes: buf.length,
     storage_key: storagePath,
   });
-}
+});

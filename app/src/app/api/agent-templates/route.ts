@@ -6,45 +6,46 @@ import {
   deleteTemplate,
   setActive,
 } from "@/lib/agent-template-store";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 
-export async function GET(request: NextRequest) {
+export const GET = withRoute(async (request: NextRequest) => {
   const wallet = request.nextUrl.searchParams.get("wallet");
-  if (!wallet) return Response.json({ error: "Missing wallet" }, { status: 400 });
+  if (!wallet) throw new HttpError(400, "Missing wallet");
 
   const templates = await getTemplates(wallet);
-  return Response.json({ templates });
-}
+  return json({ templates });
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withRoute(async (request: NextRequest) => {
   const body = await request.json();
   const { wallet, ...data } = body;
-  if (!wallet) return Response.json({ error: "Missing wallet" }, { status: 400 });
+  if (!wallet) throw new HttpError(400, "Missing wallet");
 
   const result = await createTemplate(wallet, data);
-  if (!result.ok) return Response.json({ error: result.error }, { status: 422 });
-  return Response.json({ template: result.template });
-}
+  if (!result.ok) throw new HttpError(422, result.error);
+  return json({ template: result.template });
+});
 
-export async function PATCH(request: NextRequest) {
+export const PATCH = withRoute(async (request: NextRequest) => {
   const body = await request.json();
   const { id, wallet, action, ...data } = body;
-  if (!id || !wallet) return Response.json({ error: "Missing id or wallet" }, { status: 400 });
+  if (!id || !wallet) throw new HttpError(400, "Missing id or wallet");
 
   if (action === "set-active") {
     await setActive(id, wallet);
-    return Response.json({ ok: true });
+    return json({ ok: true });
   }
 
   const result = await updateTemplate(id, wallet, data);
-  if (!result.ok) return Response.json({ error: result.error }, { status: 500 });
-  return Response.json({ ok: true });
-}
+  if (!result.ok) throw new HttpError(500, result.error);
+  return json({ ok: true });
+});
 
-export async function DELETE(request: NextRequest) {
+export const DELETE = withRoute(async (request: NextRequest) => {
   const body = await request.json();
   const { id, wallet } = body;
-  if (!id || !wallet) return Response.json({ error: "Missing id or wallet" }, { status: 400 });
+  if (!id || !wallet) throw new HttpError(400, "Missing id or wallet");
 
   await deleteTemplate(id, wallet);
-  return Response.json({ ok: true });
-}
+  return json({ ok: true });
+});

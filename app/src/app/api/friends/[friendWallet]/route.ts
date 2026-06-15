@@ -1,17 +1,14 @@
-import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
-import { walletOrError } from "@/lib/auth";
+import { requireWallet } from "@/lib/auth";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ friendWallet: string }> }
-) {
-  const wallet = walletOrError(req);
-  if (wallet instanceof Response) return wallet;
+export const PATCH = withRoute<{ params: Promise<{ friendWallet: string }> }>(
+  async (req, { params }) => {
+  const wallet = requireWallet(req);
 
   const { friendWallet } = await params;
   const { action } = (await req.json()) as { action?: "accept" | "decline" };
-  if (!action) return Response.json({ error: "action required" }, { status: 400 });
+  if (!action) throw new HttpError(400, "action required");
 
   // Find the incoming request (they sent to us)
   const { data: row, error: findErr } = await supabase
@@ -22,30 +19,28 @@ export async function PATCH(
     .eq("status", "pending")
     .maybeSingle();
 
-  if (findErr) return Response.json({ error: findErr.message }, { status: 500 });
-  if (!row) return Response.json({ error: "Request not found" }, { status: 404 });
+  if (findErr) throw new HttpError(500, findErr.message);
+  if (!row) throw new HttpError(404, "Request not found");
 
   if (action === "accept") {
     const { error } = await supabase
       .from(table("friends"))
       .update({ status: "accepted" })
       .eq("id", row.id);
-    if (error) return Response.json({ error: error.message }, { status: 500 });
-    return Response.json({ ok: true, status: "accepted" });
+    if (error) throw new HttpError(500, error.message);
+    return json({ ok: true, status: "accepted" });
   }
 
   // decline — delete the row
   const { error } = await supabase.from(table("friends")).delete().eq("id", row.id);
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ ok: true, status: "declined" });
-}
+  if (error) throw new HttpError(500, error.message);
+  return json({ ok: true, status: "declined" });
+  }
+);
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ friendWallet: string }> }
-) {
-  const wallet = walletOrError(req);
-  if (wallet instanceof Response) return wallet;
+export const DELETE = withRoute<{ params: Promise<{ friendWallet: string }> }>(
+  async (req, { params }) => {
+  const wallet = requireWallet(req);
 
   const { friendWallet } = await params;
 
@@ -57,6 +52,7 @@ export async function DELETE(
       `and(wallet.eq.${wallet},friend_wallet.eq.${friendWallet}),and(wallet.eq.${friendWallet},friend_wallet.eq.${wallet})`
     );
 
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ ok: true });
-}
+  if (error) throw new HttpError(500, error.message);
+  return json({ ok: true });
+  }
+);

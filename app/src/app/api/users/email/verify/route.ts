@@ -1,12 +1,12 @@
-import { NextRequest } from "next/server";
 import { verifyEmail } from "@/lib/sealed-users";
+import { withRoute, json, HttpError } from "@/lib/api-error";
 
-export async function POST(request: NextRequest) {
+export const POST = withRoute(async (request) => {
   const { wallet, otp } = await request.json();
-  if (!wallet || !otp) return Response.json({ error: "Missing fields" }, { status: 400 });
+  if (!wallet || !otp) throw new HttpError(400, "Missing fields");
 
   const ok = await verifyEmail(wallet, otp);
-  if (!ok) return Response.json({ error: "Invalid or expired code" }, { status: 400 });
+  if (!ok) throw new HttpError(400, "Invalid or expired code");
 
-  return Response.json({ ok: true });
-}
+  return json({ ok: true });
+});

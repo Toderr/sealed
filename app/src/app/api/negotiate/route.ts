@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { runNegotiation } from "@/negotiation/engine";
 import { defaultSellerBoundaries } from "@/negotiation/types";
 import type { DealParams } from "@/lib/types";
@@ -7,6 +7,7 @@ import { dispatchLlm, getLlmOptsFromEnv, getLlmOptsFromRequest } from "@/lib/llm
 import { supabase, table } from "@/lib/supabase";
 import { AgentRole } from "@/agents/types";
 import type { Proposal } from "@/negotiation/types";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 
 interface NegotiateRequest {
   proposalId: string;
@@ -99,7 +100,7 @@ function buildEscalatedProposal(body: NegotiateRequest, reason: string): Proposa
   };
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withRoute(async (request: NextRequest) => {
   let body: NegotiateRequest | null = null;
 
   try {
@@ -110,10 +111,7 @@ export async function POST(request: NextRequest) {
       !body?.initialTerms ||
       !body?.buyerBoundaries
     ) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
-      );
+      throw new HttpError(400, "Missing required fields");
     }
 
     // Apply buyer's saved persona to their negotiation boundaries
@@ -136,7 +134,7 @@ export async function POST(request: NextRequest) {
     // Buyer's agent uses their own LLM config (from client headers)
     const buyerLlm = getLlmOptsFromRequest(request);
     if (!buyerLlm) {
-      return NextResponse.json({ error: "No LLM provider configured" }, { status: 500 });
+      throw new HttpError(500, "No LLM provider configured");
     }
 
     const serverLlm = getLlmOptsFromEnv();
@@ -196,11 +194,12 @@ export async function POST(request: NextRequest) {
       sellerCallLlm
     );
 
-    return NextResponse.json({ proposal });
+    return json({ proposal });
   } catch (err) {
+    if (err instanceof HttpError) throw err;
     console.error("Negotiation failed:", err);
     if (body?.initialTerms && isRateLimitedNegotiationError(err)) {
-      return NextResponse.json({
+      return json({
         proposal: buildEscalatedProposal(
           body,
           "The automated negotiation paused before reaching a clear agreement."
@@ -208,11 +207,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json(
-      {
-        error: err instanceof Error ? err.message : "Unknown negotiation error",
-      },
-      { status: 500 }
-    );
+    throw new HttpError(500, err instanceof Error ? err.message : "Unknown negotiation error");
   }
-}
+});

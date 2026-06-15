@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { VERIFIER_SYSTEM_PROMPT } from "@/agents/prompts/verifier";
 import type { ProofType, VerifierReview } from "@/lib/types";
 import { dispatchLlm, getLlmOptsFromRequest, type LlmMessage } from "@/lib/llm-dispatch";
 import { extractJson } from "@/lib/extract-json";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 
 interface VerifyRequest {
   milestoneDescription: string;
@@ -39,28 +40,22 @@ function buildUserMessage(body: VerifyRequest): LlmMessage {
   };
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withRoute(async (request: NextRequest) => {
   try {
     const body = (await request.json()) as VerifyRequest;
     if (!body?.milestoneDescription || !body?.proofType || !body?.proofData) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
-      );
+      throw new HttpError(400, "Missing required fields");
     }
     if (
       body.proofType === "image" &&
       !body.proofData.startsWith("data:image/")
     ) {
-      return NextResponse.json(
-        { error: "Image proof must be a data URL" },
-        { status: 400 }
-      );
+      throw new HttpError(400, "Image proof must be a data URL");
     }
 
     const llm = getLlmOptsFromRequest(request);
     if (!llm) {
-      return NextResponse.json({ error: "No LLM provider configured" }, { status: 500 });
+      throw new HttpError(500, "No LLM provider configured");
     }
 
     const raw = await dispatchLlm({
@@ -76,14 +71,10 @@ export async function POST(request: NextRequest) {
       reviewedAt: Math.floor(Date.now() / 1000),
     };
 
-    return NextResponse.json({ review });
+    return json({ review });
   } catch (err) {
+    if (err instanceof HttpError) throw err;
     console.error("Milestone verification failed:", err);
-    return NextResponse.json(
-      {
-        error: err instanceof Error ? err.message : "Unknown verification error",
-      },
-      { status: 500 }
-    );
+    throw new HttpError(500, err instanceof Error ? err.message : "Unknown verification error");
   }
-}
+});

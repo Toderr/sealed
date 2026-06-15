@@ -1,9 +1,9 @@
-import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 
-export async function GET(request: NextRequest) {
+export const GET = withRoute(async (request) => {
   const dealId = request.nextUrl.searchParams.get("deal_id");
-  if (!dealId) return Response.json({ error: "Missing deal_id" }, { status: 400 });
+  if (!dealId) throw new HttpError(400, "Missing deal_id");
 
   const { data, error } = await supabase
     .from(table("deliverables"))
@@ -11,6 +11,6 @@ export async function GET(request: NextRequest) {
     .eq("deal_id", dealId)
     .order("created_at", { ascending: false });
 
-  if (error) return Response.json({ deliverables: [] });
-  return Response.json({ deliverables: data ?? [] });
-}
+  if (error) return json({ deliverables: [] });
+  return json({ deliverables: data ?? [] });
+});

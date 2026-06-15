@@ -1,8 +1,8 @@
-import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/admin";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 
-export async function GET(request: NextRequest) {
+export const GET = withRoute(async (request) => {
   const wallet = request.headers.get("x-wallet");
   const guard = requireAdmin(wallet);
   if (guard) return guard;
@@ -14,11 +14,11 @@ export async function GET(request: NextRequest) {
     .order("kyc_submitted_at", { ascending: false })
     .limit(100);
 
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ submissions: data ?? [] });
-}
+  if (error) throw new HttpError(500, error.message);
+  return json({ submissions: data ?? [] });
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withRoute(async (request) => {
   const wallet = request.headers.get("x-wallet");
   const guard = requireAdmin(wallet);
   if (guard) return guard;
@@ -30,10 +30,7 @@ export async function POST(request: NextRequest) {
   };
 
   if (!target_wallet || (decision !== "approved" && decision !== "rejected")) {
-    return Response.json(
-      { error: "target_wallet and decision (approved|rejected) required" },
-      { status: 400 }
-    );
+    throw new HttpError(400, "target_wallet and decision (approved|rejected) required");
   }
 
   const update: Record<string, unknown> = { kyc_status: decision };
@@ -46,6 +43,6 @@ export async function POST(request: NextRequest) {
     .update(update)
     .eq("wallet", target_wallet);
 
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ ok: true, target_wallet, status: decision });
-}
+  if (error) throw new HttpError(500, error.message);
+  return json({ ok: true, target_wallet, status: decision });
+});

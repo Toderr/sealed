@@ -1,6 +1,6 @@
-import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
-import { walletOrError } from "@/lib/auth";
+import { requireWallet } from "@/lib/auth";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 
 type DealRow = {
   deal_id: string;
@@ -31,9 +31,8 @@ type NotificationItem = {
   read: boolean;
 };
 
-export async function GET(request: NextRequest) {
-  const wallet = walletOrError(request);
-  if (wallet instanceof Response) return wallet;
+export const GET = withRoute(async (request) => {
+  const wallet = requireWallet(request);
 
   const [{ data: deals, error: dealsError }, { data: queue }] = await Promise.all([
     supabase
@@ -51,7 +50,7 @@ export async function GET(request: NextRequest) {
   ]);
 
   if (dealsError) {
-    return Response.json({ error: dealsError.message }, { status: 500 });
+    throw new HttpError(500, dealsError.message);
   }
 
   const notifications = [
@@ -61,8 +60,8 @@ export async function GET(request: NextRequest) {
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 20);
 
-  return Response.json({ notifications });
-}
+  return json({ notifications });
+});
 
 function synthesizeDealNotifications(deals: DealRow[], wallet: string): NotificationItem[] {
   const items: NotificationItem[] = [];
