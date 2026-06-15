@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useMemo, useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ChatInterface, { PartialDeal } from "@/components/ChatInterface";
 import SettingsModal from "@/components/SettingsModal";
@@ -11,13 +11,11 @@ import { useProfileStore } from "@/lib/profile-store";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import { type DealParams, type PublicProfile, type SupabaseDeal } from "@/lib/types";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
-import { apiFetch, apiFetchSafe } from "@/lib/api-client";
+import { apiFetchSafe } from "@/lib/api-client";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
 
 import WalletMultiButton from "@/components/AppWalletButton";
-
-type View = "chat" | "deals";
 
 type CounterpartyProfile = Pick<PublicProfile, "handle" | "display_name" | "avatar_url">;
 
@@ -94,12 +92,12 @@ export default function Home() {
 }
 
 function HomeContent() {
-  const searchParams = useSearchParams();
-  const view: View = searchParams.get("view") === "chat" ? "chat" : "deals";
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [livePartial, setLivePartial] = useState<PartialDeal | null>(null);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [liveDeal, setLiveDeal] = useState<DealParams | null>(null);
+  // New Deal opens an inline collapse composer on the board (no separate page/tab).
+  const [composerOpen, setComposerOpen] = useState(false);
 
   const { publicKey } = useWallet();
   const { profile, loaded: profileLoaded } = useProfileStore(
@@ -175,44 +173,49 @@ function HomeContent() {
     router.push(`/negotiate/${params.dealId}`);
   }
 
-  function handleViewChange(nextView: View) {
-    router.replace(nextView === "chat" ? "/app?view=chat" : "/app", {
-      scroll: false,
-    });
+  function closeComposer() {
+    setComposerOpen(false);
+    // Reset the live-draft state so reopening starts clean.
+    setHasInteracted(false);
+    setLivePartial(null);
+    setLiveDeal(null);
   }
+
+  // The inline New Deal composer: the existing chat experience, hosted in the
+  // board's collapse panel instead of a separate page.
+  const composer = (
+    <div style={{ display: "grid", gridTemplateColumns: hasInteracted ? "1fr 360px" : "1fr", height: "100%", overflow: "hidden", transition: "grid-template-columns 0.35s ease" }}>
+      <div style={{ overflow: "hidden", borderRight: hasInteracted ? "1px solid var(--card-border-subtle)" : "none", transition: "border-color 0.35s ease" }}>
+        <ChatInterface
+          onDealCreated={handleDealDrafted}
+          onPartialDeal={setLivePartial}
+          onFirstMessage={() => setHasInteracted(true)}
+        />
+      </div>
+      {hasInteracted && (
+        <LiveDealSheet
+          partial={livePartial}
+          deal={liveDeal}
+          onInvite={handleInviteCounterparty}
+        />
+      )}
+    </div>
+  );
 
   return (
     <div className="flex flex-col h-screen" style={{ position: "relative", background: "var(--background)" }}>
-      {view === "deals" && <SealedBackdrop />}
+      <SealedBackdrop />
 
       {/* App Header */}
-      <AppHeader
-        activeView={view}
-        onViewChange={handleViewChange}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
+      <AppHeader onOpenSettings={() => setSettingsOpen(true)} />
 
       <main className="flex-1 overflow-hidden" style={{ position: "relative", zIndex: 1 }}>
-        {view === "chat" ? (
-          <div style={{ display: "grid", gridTemplateColumns: hasInteracted ? "1fr 360px" : "1fr", height: "100%", overflow: "hidden", transition: "grid-template-columns 0.35s ease" }}>
-            <div style={{ overflow: "hidden", borderRight: hasInteracted ? "1px solid var(--card-border-subtle)" : "none", transition: "border-color 0.35s ease" }}>
-              <ChatInterface
-                onDealCreated={handleDealDrafted}
-                onPartialDeal={setLivePartial}
-                onFirstMessage={() => setHasInteracted(true)}
-              />
-            </div>
-            {hasInteracted && (
-              <LiveDealSheet
-                partial={livePartial}
-                deal={liveDeal}
-                onInvite={handleInviteCounterparty}
-              />
-            )}
-          </div>
-        ) : (
-          <DealsBoldBoard />
-        )}
+        <DealsBoldBoard
+          onNewDeal={() => setComposerOpen((o) => !o)}
+          composerOpen={composerOpen}
+          onCloseComposer={closeComposer}
+          composer={composer}
+        />
       </main>
 
       {settingsOpen && (
@@ -224,12 +227,8 @@ function HomeContent() {
 
 /* ── AppHeader ── */
 function AppHeader({
-  activeView,
-  onViewChange,
   onOpenSettings,
 }: {
-  activeView: View;
-  onViewChange: (v: View) => void;
   onOpenSettings: () => void;
 }) {
   const { publicKey } = useWallet();
@@ -241,9 +240,9 @@ function AppHeader({
     : null;
   const profileLabel = atDisplayHandle(profile?.username) ?? profile?.name ?? "Profile";
 
-  const tabs: { id: string; label: string; href?: string; view?: View }[] = [
-    { id: "deals", label: "Deals", view: "deals" },
-    { id: "new", label: "New Deal", view: "chat" },
+  // "New Deal" is no longer a tab — it opens the inline composer on the board.
+  const tabs: { id: string; label: string; href?: string }[] = [
+    { id: "deals", label: "Deals", href: "/app" },
     { id: "agent", label: "Agent", href: wallet ? `/profile/${wallet}?tab=agent` : "/profile" },
     { id: "profile", label: "Profile", href: wallet ? `/profile/${wallet}` : "/profile" },
   ];
@@ -268,7 +267,7 @@ function AppHeader({
         </div>
         <nav style={{ display: "flex", gap: 2 }}>
           {tabs.map((t) => {
-            const isActive = t.view ? activeView === t.view : false;
+            const isActive = t.id === "deals"; // this page is the deals board
             const style: React.CSSProperties = {
               padding: "0 11px",
               height: 30,
@@ -283,17 +282,10 @@ function AppHeader({
               display: "inline-flex",
               alignItems: "center",
             };
-            if (t.href) {
-              return (
-                <Link key={t.id} href={t.href} style={style}>
-                  {t.label}
-                </Link>
-              );
-            }
             return (
-              <button key={t.id} onClick={() => t.view && onViewChange(t.view)} style={style}>
+              <Link key={t.id} href={t.href!} style={style}>
                 {t.label}
-              </button>
+              </Link>
             );
           })}
         </nav>
@@ -361,7 +353,17 @@ function AppHeader({
 }
 
 /* ── Deals Bold Board ── */
-function DealsBoldBoard() {
+function DealsBoldBoard({
+  onNewDeal,
+  composerOpen,
+  onCloseComposer,
+  composer,
+}: {
+  onNewDeal: () => void;
+  composerOpen: boolean;
+  onCloseComposer: () => void;
+  composer: React.ReactNode;
+}) {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
 
@@ -369,6 +371,8 @@ function DealsBoldBoard() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [counterpartyProfiles, setCounterpartyProfiles] = useState<Record<string, CounterpartyProfile>>({});
+  // Clicking a deal card opens this in the right-side detail panel.
+  const [panelDeal, setPanelDeal] = useState<SupabaseDeal | null>(null);
 
   const counterpartyWallets = useMemo(() => {
     return Array.from(
@@ -468,12 +472,18 @@ function DealsBoldBoard() {
                 style={{ background: "transparent", border: 0, outline: "none", fontSize: 12, color: "var(--primary)", width: 180 }}
               />
             </div>
+            <NewDealButton open={composerOpen} onClick={onNewDeal} />
           </div>
         </div>
       </div>
 
-      {/* Board */}
-      <div style={{ flex: 1, overflow: "auto", padding: "20px 24px 32px" }}>
+      {/* Inline New Deal composer — collapses in between the header and the board. */}
+      <BoardComposer open={composerOpen} onClose={onCloseComposer}>
+        {composer}
+      </BoardComposer>
+
+      {/* Board — hidden while the composer is open so the chat owns the space. */}
+      <div style={{ flex: 1, overflow: "auto", padding: "20px 24px 32px", display: composerOpen ? "none" : "block" }}>
         {loading ? (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
             <div style={{ display: "flex", gap: 4 }}>
@@ -512,6 +522,7 @@ function DealsBoldBoard() {
                       youAction={lane.id === "you"}
                       myWallet={wallet}
                       href={dealHref(d)}
+                      onOpen={setPanelDeal}
                       counterpartyProfile={
                         getCounterpartyWallet(d, wallet)
                           ? counterpartyProfiles[getCounterpartyWallet(d, wallet) as string]
@@ -538,7 +549,225 @@ function DealsBoldBoard() {
           </div>
         )}
       </div>
+
+      {/* Right-side detail panel — opens on deal-card click, links to full page. */}
+      <DealDetailPanel deal={panelDeal} myWallet={wallet} onClose={() => setPanelDeal(null)} />
     </div>
+  );
+}
+
+/* ── New Deal button (board header, top-right) ── */
+function NewDealButton({ open, onClick }: { open: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="btn-primary"
+      style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 32, padding: "0 14px", borderRadius: 7, fontSize: 13, fontWeight: 510 }}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? "rotate(45deg)" : "none", transition: "transform 0.2s ease" }}>
+        <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+      </svg>
+      {open ? "Close" : "New Deal"}
+    </button>
+  );
+}
+
+/* ── Inline collapse composer host — slides down between header and board ── */
+function BoardComposer({
+  open,
+  children,
+  onClose,
+}: {
+  open: boolean;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  // Smooth open/close via a grid-rows 0fr↔1fr transition (animates real content
+  // height with no max-height jank, both directions). The wrapper stays mounted
+  // so closing animates too.
+  return (
+    <div
+      style={{
+        flex: open ? 1 : "0 0 auto",
+        minHeight: 0,
+        display: "grid",
+        gridTemplateRows: open ? "1fr" : "0fr",
+        opacity: open ? 1 : 0,
+        borderBottom: open ? "1px solid var(--card-border-subtle)" : "1px solid transparent",
+        background: "var(--panel)",
+        transition: "grid-template-rows 0.32s cubic-bezier(0.4,0,0.2,1), opacity 0.25s ease, border-color 0.32s ease",
+      }}
+      aria-hidden={!open}
+    >
+      <div style={{ overflow: "hidden", minHeight: 0 }}>
+        <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 16px 0", flexShrink: 0 }}>
+            <button
+              onClick={onClose}
+              aria-label="Close composer"
+              style={{ background: "transparent", border: 0, color: "var(--muted)", cursor: "pointer", fontSize: 18, lineHeight: 1 }}
+            >
+              ×
+            </button>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Right-side deal detail panel (quick view + link to full page) ── */
+function DealDetailPanel({
+  deal,
+  myWallet,
+  onClose,
+}: {
+  deal: SupabaseDeal | null;
+  myWallet: string | null;
+  onClose: () => void;
+}) {
+  const open = !!deal;
+  return (
+    <>
+      {/* scrim */}
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 40,
+          background: "rgba(0,0,0,0.4)",
+          opacity: open ? 1 : 0,
+          pointerEvents: open ? "auto" : "none",
+          transition: "opacity 0.25s ease",
+        }}
+        aria-hidden={!open}
+      />
+      {/* panel */}
+      <aside
+        style={{
+          position: "fixed",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: "min(420px, 92vw)",
+          zIndex: 41,
+          background: "var(--panel)",
+          borderLeft: "1px solid var(--card-border)",
+          boxShadow: "var(--shadow-dialog)",
+          transform: open ? "translateX(0)" : "translateX(100%)",
+          transition: "transform 0.3s cubic-bezier(0.4,0,0.2,1)",
+          display: "flex",
+          flexDirection: "column",
+        }}
+        role="dialog"
+        aria-label="Deal detail"
+      >
+        {deal && <DealDetailPanelBody deal={deal} myWallet={myWallet} onClose={onClose} />}
+      </aside>
+    </>
+  );
+}
+
+function DealDetailPanelBody({
+  deal,
+  myWallet,
+  onClose,
+}: {
+  deal: SupabaseDeal;
+  myWallet: string | null;
+  onClose: () => void;
+}) {
+  const role: "buyer" | "seller" | "observer" = !myWallet
+    ? "observer"
+    : deal.buyer_wallet === myWallet ? "buyer"
+    : deal.seller_wallet === myWallet ? "seller"
+    : "observer";
+  const shortBuyer = `${deal.buyer_wallet.slice(0, 4)}…${deal.buyer_wallet.slice(-4)}`;
+  const shortSeller = deal.seller_wallet
+    ? `${deal.seller_wallet.slice(0, 4)}…${deal.seller_wallet.slice(-4)}`
+    : "Awaiting counterparty";
+
+  const milestones = deal.milestones ?? [];
+  const done = milestones.filter((m) => isMilestoneDone(m.status)).length;
+  const status = inferDealStatus(deal);
+  const releasedAmount = milestones
+    .filter((m) => isMilestoneDone(m.status))
+    .reduce((s, m) => s + (m.amount || 0), 0);
+
+  return (
+    <>
+      {/* header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px", borderBottom: "1px solid var(--card-border-subtle)" }}>
+        <span style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--accent)", fontWeight: 590 }}>Deal detail</span>
+        <button onClick={onClose} aria-label="Close" style={{ background: "transparent", border: 0, color: "var(--muted)", cursor: "pointer", fontSize: 20, lineHeight: 1 }}>×</button>
+      </div>
+
+      {/* body */}
+      <div style={{ flex: 1, overflow: "auto", padding: "18px" }}>
+        <h2 style={{ fontSize: 18, fontWeight: 590, color: "var(--primary)", margin: 0 }}>{deal.title || deal.deal_id}</h2>
+        <div style={{ display: "flex", gap: 8, margin: "12px 0 16px" }}>
+          <span style={{ fontSize: 12, fontWeight: 510, padding: "3px 10px", borderRadius: 7, background: "var(--surface)", border: "1px solid var(--card-border)", color: "var(--primary)" }}>
+            {status}
+          </span>
+        </div>
+
+        {/* parties */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+          {[
+            { label: "Buyer", val: shortBuyer, you: role === "buyer" },
+            { label: "Seller", val: shortSeller, you: role === "seller" },
+          ].map((p) => (
+            <div key={p.label} style={{ padding: "10px 12px", background: "var(--surface)", borderRadius: 10, border: "1px solid var(--card-border)" }}>
+              <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--subtle)" }}>{p.label}{p.you ? " · you" : ""}</div>
+              <div style={{ fontSize: 13, color: "var(--primary)", fontFamily: "ui-monospace, monospace", marginTop: 3 }}>{p.val}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* total + released */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: 10, border: "1px solid var(--card-border)" }}>
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>Total</div>
+            <div style={{ fontSize: 15, fontWeight: 590, color: "var(--primary)", fontFamily: "ui-monospace, monospace", marginTop: 2 }}>{deal.total_amount_usdc.toLocaleString()}</div>
+          </div>
+          <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: 10, border: "1px solid var(--card-border)" }}>
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>Released</div>
+            <div style={{ fontSize: 15, fontWeight: 590, color: "var(--success)", fontFamily: "ui-monospace, monospace", marginTop: 2 }}>{releasedAmount.toLocaleString()}</div>
+          </div>
+        </div>
+
+        {/* milestones */}
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--subtle)", marginBottom: 8 }}>
+            Milestones · {done}/{milestones.length}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {milestones.map((m, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", background: "var(--surface)", borderRadius: 9, border: "1px solid var(--card-border)" }}>
+                <span style={{ fontSize: 12, color: "var(--foreground)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i + 1}. {m.description}</span>
+                <span style={{ fontSize: 11, color: isMilestoneDone(m.status) ? "var(--success)" : "var(--muted)", flexShrink: 0, marginLeft: 8 }}>{m.status || "Pending"}</span>
+              </div>
+            ))}
+            {milestones.length === 0 && (
+              <div style={{ fontSize: 12, color: "var(--subtle)" }}>No milestones yet.</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* footer — link to the full page (the panel is a quick view) */}
+      <div style={{ padding: "14px 18px", borderTop: "1px solid var(--card-border-subtle)" }}>
+        <Link
+          href={dealHref(deal)}
+          className="btn-primary"
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 38, borderRadius: 8, fontSize: 13, fontWeight: 510, textDecoration: "none" }}
+        >
+          Open full page →
+        </Link>
+      </div>
+    </>
   );
 }
 
@@ -548,6 +777,7 @@ function DealCardBold({
   youAction,
   myWallet,
   href,
+  onOpen,
   counterpartyProfile,
 }: {
   deal: SupabaseDeal;
@@ -555,6 +785,7 @@ function DealCardBold({
   youAction: boolean;
   myWallet: string | null;
   href: string;
+  onOpen?: (deal: SupabaseDeal) => void;
   counterpartyProfile?: CounterpartyProfile | null;
 }) {
   const isBuyer = deal.buyer_wallet === myWallet;
@@ -599,6 +830,9 @@ function DealCardBold({
   return (
     <Link
       href={href}
+      // When a panel handler is supplied, intercept the click to open the
+      // right-side detail panel instead of navigating to the full page.
+      onClick={onOpen ? (e) => { e.preventDefault(); onOpen(deal); } : undefined}
       className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
       style={{
         display: "block",
