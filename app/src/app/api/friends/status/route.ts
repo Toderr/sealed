@@ -1,17 +1,17 @@
-import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
 import { getWallet } from "@/lib/auth";
+import { json, withRoute } from "@/lib/api-error";
 
 // GET /api/friends/status?with=<wallet>
 // Returns the friendship status between x-wallet and ?with=
-export async function GET(req: NextRequest) {
+export const GET = withRoute(async (req) => {
   const myWallet = getWallet(req);
-  if (!myWallet) return Response.json({ status: "none" });
+  if (!myWallet) return json({ status: "none" });
 
   const url = new URL(req.url);
   const theirWallet = url.searchParams.get("with");
-  if (!theirWallet) return Response.json({ status: "none" });
-  if (theirWallet === myWallet) return Response.json({ status: "self" });
+  if (!theirWallet) return json({ status: "none" });
+  if (theirWallet === myWallet) return json({ status: "self" });
 
   const { data } = await supabase
     .from(table("friends"))
@@ -21,13 +21,13 @@ export async function GET(req: NextRequest) {
     )
     .maybeSingle();
 
-  if (!data) return Response.json({ status: "none" });
+  if (!data) return json({ status: "none" });
 
-  if (data.status === "accepted") return Response.json({ status: "friends", id: data.id });
+  if (data.status === "accepted") return json({ status: "friends", id: data.id });
   if (data.status === "pending" && data.wallet === myWallet)
-    return Response.json({ status: "outgoing", id: data.id });
+    return json({ status: "outgoing", id: data.id });
   if (data.status === "pending" && data.wallet !== myWallet)
-    return Response.json({ status: "incoming", id: data.id });
+    return json({ status: "incoming", id: data.id });
 
-  return Response.json({ status: "none" });
-}
+  return json({ status: "none" });
+});

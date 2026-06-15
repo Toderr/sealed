@@ -1,20 +1,20 @@
-import { NextRequest } from "next/server";
 import { drainQueue } from "@/lib/notify";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
+export const GET = withRoute(async (request) => {
   const auth = request.headers.get("authorization");
   const secret = process.env.CRON_SECRET;
 
   if (secret && auth !== `Bearer ${secret}`) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+    throw new HttpError(401, "Unauthorized");
   }
 
   const result = await drainQueue();
-  return Response.json(result);
-}
+  return json(result);
+});
 
-export async function POST(request: NextRequest) {
-  return GET(request);
-}
+export const POST = withRoute(async (request) => {
+  return GET(request, undefined);
+});

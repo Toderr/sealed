@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
 import { dispatchLlm } from "@/lib/llm-dispatch";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 
 // Always use a reliable paid model for agent responses.
 // Ignores OPENROUTER_MODEL env var on purpose — free-tier models hit rate limits
@@ -34,7 +35,7 @@ async function saveMessage(dealId: string, role: string, content: string, wallet
   } catch {}
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withRoute(async (request: NextRequest) => {
   const body = await request.json() as {
     dealId: string;
     messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
   const { dealId, messages, isOpening, sellerWallet, dealContext } = body;
 
   if (!dealId) {
-    return NextResponse.json({ error: "dealId required" }, { status: 400 });
+    throw new HttpError(400, "dealId required");
   }
 
   // Prefer client-supplied context; fall back to Supabase fetch
@@ -106,7 +107,7 @@ Be concise and professional. Respond in the same language the seller uses.`;
 
   const llm = getServerLlm();
   if (!llm) {
-    return NextResponse.json({ error: "No LLM provider configured on the server" }, { status: 500 });
+    throw new HttpError(500, "No LLM provider configured on the server");
   }
 
   // Opening message: agent introduces itself and summarizes the contract
@@ -150,9 +151,10 @@ Be concise and professional. Respond in the same language the seller uses.`;
       await saveMessage(dealId, "assistant", cleanResponse, buyerWallet);
     }
 
-    return NextResponse.json({ response: cleanResponse, agreed, agreedTerms });
+    return json({ response: cleanResponse, agreed, agreedTerms });
   } catch (err) {
+    if (err instanceof HttpError) throw err;
     const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    throw new HttpError(500, message);
   }
-}
+});

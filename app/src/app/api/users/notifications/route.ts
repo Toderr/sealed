@@ -1,11 +1,11 @@
-import { NextRequest } from "next/server";
 import { updateNotifications } from "@/lib/sealed-users";
 import type { NotificationPrefs } from "@/lib/types";
+import { withRoute, json, HttpError } from "@/lib/api-error";
 
-export async function PATCH(request: NextRequest) {
+export const PATCH = withRoute(async (request) => {
   const { wallet, notify_on } = await request.json();
-  if (!wallet || !notify_on) return Response.json({ error: "Missing fields" }, { status: 400 });
+  if (!wallet || !notify_on) throw new HttpError(400, "Missing fields");
 
   await updateNotifications(wallet, notify_on as NotificationPrefs);
-  return Response.json({ ok: true });
-}
+  return json({ ok: true });
+});

@@ -1,9 +1,9 @@
-import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 
-export async function GET(request: NextRequest) {
+export const GET = withRoute(async (request) => {
   const dealId = request.nextUrl.searchParams.get("deal_id");
-  if (!dealId) return Response.json({ error: "Missing deal_id" }, { status: 400 });
+  if (!dealId) throw new HttpError(400, "Missing deal_id");
 
   const { data, error } = await supabase
     .from(table("messages"))
@@ -11,20 +11,20 @@ export async function GET(request: NextRequest) {
     .eq("deal_id", dealId)
     .order("created_at", { ascending: true });
 
-  if (error) return Response.json({ messages: [] });
-  return Response.json({ messages: data ?? [] });
-}
+  if (error) return json({ messages: [] });
+  return json({ messages: data ?? [] });
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withRoute(async (request) => {
   const body = await request.json();
   const { deal_id, role, content, wallet, metadata } = body;
 
   if (!deal_id || !role || !content) {
-    return Response.json({ error: "Missing fields" }, { status: 400 });
+    throw new HttpError(400, "Missing fields");
   }
 
   if (!["user", "assistant", "system", "tool"].includes(role)) {
-    return Response.json({ error: "Invalid role" }, { status: 400 });
+    throw new HttpError(400, "Invalid role");
   }
 
   const safeMetadata =
@@ -38,6 +38,6 @@ export async function POST(request: NextRequest) {
     .select()
     .single();
 
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ message: data });
-}
+  if (error) throw new HttpError(500, error.message);
+  return json({ message: data });
+});

@@ -1,6 +1,6 @@
-import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
 import { getWallet } from "@/lib/auth";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 import { randomUUID } from "crypto";
 
 const MAGIC_PDF = [0x25, 0x50, 0x44, 0x46];
@@ -12,30 +12,27 @@ function isAllowedKycFile(buf: Buffer): boolean {
   return checks.some((magic) => magic.every((b, i) => buf[i] === b));
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withRoute(async (request) => {
   const callerWallet = getWallet(request);
   const body = await request.json();
   const { wallet, documentBase64, mimeType } = body;
 
   if (!wallet || !documentBase64) {
-    return Response.json({ error: "Missing required fields" }, { status: 400 });
+    throw new HttpError(400, "Missing required fields");
   }
 
   if (!callerWallet || callerWallet !== wallet) {
-    return Response.json({ error: "Unauthorized" }, { status: 403 });
+    throw new HttpError(403, "Unauthorized");
   }
 
   const buf = Buffer.from(documentBase64, "base64");
 
   if (!isAllowedKycFile(buf)) {
-    return Response.json(
-      { error: "Only PDF, JPG, or PNG documents accepted for KYC" },
-      { status: 415 }
-    );
+    throw new HttpError(415, "Only PDF, JPG, or PNG documents accepted for KYC");
   }
 
   if (buf.length > 10 * 1024 * 1024) {
-    return Response.json({ error: "File exceeds 10 MB" }, { status: 413 });
+    throw new HttpError(413, "File exceeds 10 MB");
   }
 
   const uuid = randomUUID();
@@ -47,7 +44,7 @@ export async function POST(request: NextRequest) {
     .upload(storagePath, blob);
 
   if (storageError) {
-    return Response.json({ error: "Storage failed" }, { status: 500 });
+    throw new HttpError(500, "Storage failed");
   }
 
   await supabase
@@ -59,5 +56,5 @@ export async function POST(request: NextRequest) {
     })
     .eq("wallet", wallet);
 
-  return Response.json({ status: "pending" });
-}
+  return json({ status: "pending" });
+});

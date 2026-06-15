@@ -1,10 +1,10 @@
-import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 
-export async function GET(request: NextRequest) {
+export const GET = withRoute(async (request) => {
   const key = request.nextUrl.searchParams.get("key");
   if (!key) {
-    return Response.json({ error: "Missing key" }, { status: 400 });
+    throw new HttpError(400, "Missing key");
   }
 
   const { data, error } = await supabase.storage
@@ -12,8 +12,8 @@ export async function GET(request: NextRequest) {
     .createSignedUrl(key, 3600);
 
   if (error || !data) {
-    return Response.json({ error: "Failed to generate URL" }, { status: 500 });
+    throw new HttpError(500, "Failed to generate URL");
   }
 
-  return Response.json({ url: data.signedUrl });
-}
+  return json({ url: data.signedUrl });
+});

@@ -1,7 +1,7 @@
-import { NextRequest } from "next/server";
 import sharp from "sharp";
 import { supabase, table } from "@/lib/supabase";
-import { walletOrError } from "@/lib/auth";
+import { requireWallet } from "@/lib/auth";
+import { withRoute, json, HttpError } from "@/lib/api-error";
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
 const MAGIC_JPEG = [0xff, 0xd8, 0xff];
@@ -14,24 +14,23 @@ function isImage(buf: Buffer): boolean {
   );
 }
 
-export async function POST(request: NextRequest) {
-  const wallet = walletOrError(request);
-  if (wallet instanceof Response) return wallet;
+export const POST = withRoute(async (request) => {
+  const wallet = requireWallet(request);
 
   let formData: FormData;
   try {
     formData = await request.formData();
   } catch {
-    return Response.json({ error: "Invalid form data" }, { status: 400 });
+    throw new HttpError(400, "Invalid form data");
   }
 
   const file = formData.get("file") as File | null;
-  if (!file) return Response.json({ error: "No file" }, { status: 400 });
-  if (file.size > MAX_SIZE) return Response.json({ error: "File exceeds 5 MB" }, { status: 413 });
+  if (!file) throw new HttpError(400, "No file");
+  if (file.size > MAX_SIZE) throw new HttpError(413, "File exceeds 5 MB");
 
   const buf = Buffer.from(await file.arrayBuffer());
   if (!isImage(buf)) {
-    return Response.json({ error: "Only PNG and JPG are accepted" }, { status: 415 });
+    throw new HttpError(415, "Only PNG and JPG are accepted");
   }
 
   // Resize to 256×256 JPEG, strip metadata
@@ -42,7 +41,7 @@ export async function POST(request: NextRequest) {
       .jpeg({ quality: 80, mozjpeg: true })
       .toBuffer();
   } catch {
-    return Response.json({ error: "Image processing failed" }, { status: 422 });
+    throw new HttpError(422, "Image processing failed");
   }
 
   const avatarUrl = `data:image/jpeg;base64,${resized.toString("base64")}`;
@@ -56,8 +55,8 @@ export async function POST(request: NextRequest) {
     );
 
   if (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    throw new HttpError(500, error.message);
   }
 
-  return Response.json({ avatarUrl });
-}
+  return json({ avatarUrl });
+});

@@ -1,23 +1,15 @@
 // Accepts both NextRequest and the standard Request (route handlers use either).
 // We only read `.headers.get`, which both provide.
+import { HttpError } from "@/lib/api-error";
+
 type HeaderReq = Pick<Request, "headers">;
 
 // Solana pubkey: base58 charset (no 0, O, I, l), 32–44 chars.
 const BASE58_PUBKEY = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 /**
- * A thrown HTTP error. Routes catch this and turn it into a Response.
- * Lets `requireWallet` fail fast instead of every caller hand-rolling a return.
- */
-export class ApiError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
-
-/**
- * Read + validate the `x-wallet` header. Throws ApiError on failure:
+ * Read + validate the `x-wallet` header. Throws HttpError on failure (caught by
+ * withRoute → Response). Use inside a withRoute()-wrapped handler.
  *   - missing header    → 401 (you didn't identify yourself)
  *   - malformed address → 400 (you sent something, but it isn't a wallet)
  *
@@ -27,10 +19,10 @@ export class ApiError extends Error {
 export function requireWallet(req: HeaderReq): string {
   const wallet = req.headers.get("x-wallet");
   if (!wallet) {
-    throw new ApiError(401, "Missing x-wallet header");
+    throw new HttpError(401, "Missing x-wallet header");
   }
   if (!BASE58_PUBKEY.test(wallet)) {
-    throw new ApiError(400, "Invalid wallet address");
+    throw new HttpError(400, "Invalid wallet address");
   }
   return wallet;
 }

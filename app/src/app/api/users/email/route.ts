@@ -1,10 +1,10 @@
-import { NextRequest } from "next/server";
 import { updateEmail } from "@/lib/sealed-users";
 import { sendEmail } from "@/lib/notify";
+import { withRoute, json, HttpError } from "@/lib/api-error";
 
-export async function POST(request: NextRequest) {
+export const POST = withRoute(async (request) => {
   const { wallet, email } = await request.json();
-  if (!wallet || !email) return Response.json({ error: "Missing fields" }, { status: 400 });
+  if (!wallet || !email) throw new HttpError(400, "Missing fields");
 
   const otp = await updateEmail(wallet, email);
 
@@ -19,5 +19,5 @@ export async function POST(request: NextRequest) {
     </div>`
   );
 
-  return Response.json({ ok: true });
-}
+  return json({ ok: true });
+});

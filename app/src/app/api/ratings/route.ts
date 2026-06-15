@@ -1,7 +1,7 @@
-import { NextRequest } from "next/server";
 import { submitRating } from "@/lib/reputation";
 import { supabase, table } from "@/lib/supabase";
-import { walletOrError } from "@/lib/auth";
+import { requireWallet } from "@/lib/auth";
+import { HttpError, withRoute, json, requireString } from "@/lib/api-error";
 
 type RatingMilestone = { status?: string };
 
@@ -38,24 +38,15 @@ function counterpartyFor(deal: Awaited<ReturnType<typeof getDealForRating>>, wal
   return null;
 }
 
-export async function GET(request: NextRequest) {
-  const raterWallet = walletOrError(request);
-  if (raterWallet instanceof Response) return raterWallet;
-
-  const dealId = request.nextUrl.searchParams.get("deal_id");
-  if (!dealId) {
-    return Response.json({ error: "Missing deal_id" }, { status: 400 });
-  }
+export const GET = withRoute(async (request) => {
+  const raterWallet = requireWallet(request);
+  const dealId = requireString(request.nextUrl.searchParams.get("deal_id"), "deal_id");
 
   const deal = await getDealForRating(dealId);
-  if (!deal) {
-    return Response.json({ error: "Deal not found" }, { status: 404 });
-  }
+  if (!deal) throw new HttpError(404, "Deal not found");
 
   const rateeWallet = counterpartyFor(deal, raterWallet);
-  if (!rateeWallet) {
-    return Response.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!rateeWallet) throw new HttpError(403, "Forbidden");
 
   const { data: rating } = await supabase
     .from(table("ratings"))
@@ -64,53 +55,50 @@ export async function GET(request: NextRequest) {
     .eq("rater_wallet", raterWallet)
     .maybeSingle();
 
-  return Response.json({
+  return json({
     rating: rating ?? null,
     canRate: isDealCompleted(deal.status, deal.milestones) && !rating,
     ratee_wallet: rateeWallet,
   });
-}
+});
 
-export async function POST(request: NextRequest) {
-  const rater_wallet = walletOrError(request);
-  if (rater_wallet instanceof Response) return rater_wallet;
+export const POST = withRoute(async (request) => {
+  const rater_wallet = requireWallet(request);
 
   const body = await request.json();
   const { deal_id, ratee_wallet, stars, review_text } = body;
 
   if (!deal_id || !ratee_wallet || !stars) {
-    return Response.json({ error: "Missing required fields" }, { status: 400 });
+    throw new HttpError(400, "Missing required fields");
   }
 
   if (typeof deal_id !== "string" || typeof ratee_wallet !== "string") {
-    return Response.json({ error: "Invalid rating payload" }, { status: 400 });
+    throw new HttpError(400, "Invalid rating payload");
   }
 
   if (rater_wallet === ratee_wallet) {
-    return Response.json({ error: "Cannot rate yourself" }, { status: 400 });
+    throw new HttpError(400, "Cannot rate yourself");
   }
 
   if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
-    return Response.json({ error: "Stars must be between 1 and 5" }, { status: 400 });
+    throw new HttpError(400, "Stars must be between 1 and 5");
   }
 
   if (review_text !== undefined && typeof review_text !== "string") {
-    return Response.json({ error: "Review text must be a string" }, { status: 400 });
+    throw new HttpError(400, "Review text must be a string");
   }
 
   try {
     const deal = await getDealForRating(deal_id);
-    if (!deal) {
-      return Response.json({ error: "Deal not found" }, { status: 404 });
-    }
+    if (!deal) throw new HttpError(404, "Deal not found");
 
     const expectedRatee = counterpartyFor(deal, rater_wallet);
     if (!expectedRatee || expectedRatee !== ratee_wallet) {
-      return Response.json({ error: "Forbidden" }, { status: 403 });
+      throw new HttpError(403, "Forbidden");
     }
 
     if (!isDealCompleted(deal.status, deal.milestones)) {
-      return Response.json({ error: "Deal must be completed before rating" }, { status: 400 });
+      throw new HttpError(400, "Deal must be completed before rating");
     }
 
     const result = await submitRating(
@@ -121,12 +109,13 @@ export async function POST(request: NextRequest) {
       (review_text ?? "").slice(0, 500)
     );
 
-    return Response.json({ ok: true, revealed: result.revealed });
+    return json({ ok: true, revealed: result.revealed });
   } catch (e) {
+    if (e instanceof HttpError) throw e; // preserve 404/403/400 above
     const err = e as Error;
     if (err.message?.includes("unique") || err.message?.includes("23505")) {
-      return Response.json({ error: "Already rated this deal" }, { status: 409 });
+      throw new HttpError(409, "Already rated this deal");
     }
-    return Response.json({ error: "Failed to submit rating" }, { status: 500 });
+    throw new HttpError(500, "Failed to submit rating");
   }
-}
+});

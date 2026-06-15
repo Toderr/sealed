@@ -1,10 +1,9 @@
-import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
-import { walletOrError } from "@/lib/auth";
+import { requireWallet } from "@/lib/auth";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 
-export async function POST(request: NextRequest) {
-  const wallet = walletOrError(request);
-  if (wallet instanceof Response) return wallet;
+export const POST = withRoute(async (request) => {
+  const wallet = requireWallet(request);
 
   const body = await request.json();
   const {
@@ -33,10 +32,7 @@ export async function POST(request: NextRequest) {
     typeof total_amount_usdc !== "number" ||
     !Array.isArray(milestones)
   ) {
-    return Response.json(
-      { error: "deal_id, title, total_amount_usdc, milestones required" },
-      { status: 400 }
-    );
+    throw new HttpError(400, "deal_id, title, total_amount_usdc, milestones required");
   }
 
   // If deal already exists, verify the caller is the original buyer
@@ -47,7 +43,7 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (existing && existing.buyer_wallet !== wallet) {
-    return Response.json({ error: "Forbidden" }, { status: 403 });
+    throw new HttpError(403, "Forbidden");
   }
 
   const { data, error } = await supabase
@@ -69,7 +65,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    throw new HttpError(500, error.message);
   }
 
   if (tx_signature) {
@@ -82,12 +78,11 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  return Response.json({ ok: true, deal: data });
-}
+  return json({ ok: true, deal: data });
+});
 
-export async function GET(request: NextRequest) {
-  const wallet = walletOrError(request);
-  if (wallet instanceof Response) return wallet;
+export const GET = withRoute(async (request) => {
+  const wallet = requireWallet(request);
 
   const { data, error } = await supabase
     .from(table("deals"))
@@ -96,6 +91,6 @@ export async function GET(request: NextRequest) {
     .order("created_at", { ascending: false })
     .limit(100);
 
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ deals: data ?? [] });
-}
+  if (error) throw new HttpError(500, error.message);
+  return json({ deals: data ?? [] });
+});

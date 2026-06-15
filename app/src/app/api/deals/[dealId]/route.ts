@@ -1,7 +1,7 @@
-import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
 import { incrementDeal } from "@/lib/reputation";
-import { walletOrError } from "@/lib/auth";
+import { requireWallet } from "@/lib/auth";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 
 type DealMilestone = {
   description: string;
@@ -73,30 +73,26 @@ function allMilestonesReleased(milestones: DealMilestone[]) {
   );
 }
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ dealId: string }> }
-) {
-  const { dealId } = await params;
+export const GET = withRoute<{ params: Promise<{ dealId: string }> }>(
+  async (_req, { params }) => {
+    const { dealId } = await params;
 
-  const { data, error } = await supabase
-    .from(table("deals"))
-    .select("*")
-    .eq("deal_id", dealId)
-    .single();
+    const { data, error } = await supabase
+      .from(table("deals"))
+      .select("*")
+      .eq("deal_id", dealId)
+      .single();
 
-  if (error || !data) {
-    return Response.json({ error: "Deal not found" }, { status: 404 });
+    if (error || !data) {
+      throw new HttpError(404, "Deal not found");
+    }
+    return json({ deal: data });
   }
-  return Response.json({ deal: data });
-}
+);
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ dealId: string }> }
-) {
-  const wallet = walletOrError(req);
-  if (wallet instanceof Response) return wallet;
+export const PATCH = withRoute<{ params: Promise<{ dealId: string }> }>(
+  async (req, { params }) => {
+  const wallet = requireWallet(req);
 
   const { dealId } = await params;
 
@@ -107,13 +103,13 @@ export async function PATCH(
     .single();
 
   if (!existing) {
-    return Response.json({ error: "Deal not found" }, { status: 404 });
+    throw new HttpError(404, "Deal not found");
   }
 
   const body = (await req.json()) as Record<string, unknown>;
   const keys = Object.keys(body);
   if (keys.some((key) => !PATCH_FIELDS.has(key))) {
-    return Response.json({ error: "Unsupported deal update field" }, { status: 400 });
+    throw new HttpError(400, "Unsupported deal update field");
   }
 
   // Block changing seller_wallet to a DIFFERENT wallet, but allow idempotent re-set
@@ -122,11 +118,11 @@ export async function PATCH(
     body.seller_wallet &&
     (typeof body.seller_wallet !== "string" || body.seller_wallet.length < 32)
   ) {
-    return Response.json({ error: "Invalid seller wallet" }, { status: 400 });
+    throw new HttpError(400, "Invalid seller wallet");
   }
 
   if (body.seller_wallet && existing.seller_wallet && body.seller_wallet !== existing.seller_wallet) {
-    return Response.json({ error: "Counterparty already assigned" }, { status: 409 });
+    throw new HttpError(409, "Counterparty already assigned");
   }
 
   // Allow a new wallet to join as seller when the slot is empty and they're
@@ -144,7 +140,7 @@ export async function PATCH(
     Object.keys(body).every((k) => sellerJoinAllowedFields.has(k));
 
   if (!isJoiningAsSeller && existing.buyer_wallet !== wallet && existing.seller_wallet !== wallet) {
-    return Response.json({ error: "Forbidden" }, { status: 403 });
+    throw new HttpError(403, "Forbidden");
   }
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -154,28 +150,28 @@ export async function PATCH(
   if (body.status !== undefined) {
     const nextStatus = normalizeDealStatus(body.status);
     if (!nextStatus) {
-      return Response.json({ error: "Invalid deal status" }, { status: 400 });
+      throw new HttpError(400, "Invalid deal status");
     }
     patch.status = nextStatus;
   }
 
   if (body.title !== undefined) {
     if (typeof body.title !== "string" || body.title.trim().length === 0) {
-      return Response.json({ error: "Invalid title" }, { status: 400 });
+      throw new HttpError(400, "Invalid title");
     }
     patch.title = body.title;
   }
 
   if (body.description !== undefined) {
     if (body.description !== null && typeof body.description !== "string") {
-      return Response.json({ error: "Invalid description" }, { status: 400 });
+      throw new HttpError(400, "Invalid description");
     }
     patch.description = body.description;
   }
 
   if (body.total_amount_usdc !== undefined) {
     if (typeof body.total_amount_usdc !== "number" || !Number.isFinite(body.total_amount_usdc)) {
-      return Response.json({ error: "Invalid total amount" }, { status: 400 });
+      throw new HttpError(400, "Invalid total amount");
     }
     patch.total_amount_usdc = body.total_amount_usdc;
   }
@@ -186,7 +182,7 @@ export async function PATCH(
       : sanitizeMilestones(body.milestones);
 
   if (nextMilestones === null) {
-    return Response.json({ error: "Invalid milestones" }, { status: 400 });
+    throw new HttpError(400, "Invalid milestones");
   }
 
   if (body.milestones !== undefined) {
@@ -198,10 +194,7 @@ export async function PATCH(
   }
 
   if (patch.status === "completed" && !allMilestonesReleased(nextMilestones)) {
-    return Response.json(
-      { error: "All milestones must be released before completing a deal" },
-      { status: 400 }
-    );
+    throw new HttpError(400, "All milestones must be released before completing a deal");
   }
 
   const { data, error } = await supabase
@@ -211,7 +204,7 @@ export async function PATCH(
     .select()
     .single();
 
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) throw new HttpError(500, error.message);
 
   const wasCompleted = normalizeDealStatus(existing.status) === "completed";
   const isCompleted = normalizeDealStatus(data.status) === "completed";
@@ -224,5 +217,6 @@ export async function PATCH(
     }
   }
 
-  return Response.json({ deal: data });
-}
+  return json({ deal: data });
+  }
+);

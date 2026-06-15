@@ -1,15 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { dispatchLlm, getLlmOptsFromEnv } from "@/lib/llm-dispatch";
 import { buildSystemPrompt } from "@/lib/agent-system-prompt";
 import { getWallet } from "@/lib/auth";
+import { HttpError, json, withRoute } from "@/lib/api-error";
 
-export async function POST(request: NextRequest) {
+export const POST = withRoute(async (request: NextRequest) => {
   const { messages } = await request.json();
   const wallet = getWallet(request) ?? undefined;
 
   const llm = getLlmOptsFromEnv();
   if (!llm) {
-    return NextResponse.json({ error: "No LLM provider configured on server" }, { status: 500 });
+    throw new HttpError(500, "No LLM provider configured on server");
   }
 
   const systemPrompt = await buildSystemPrompt(wallet);
@@ -24,10 +25,11 @@ export async function POST(request: NextRequest) {
       })),
       maxTokens: 1024,
     });
-    return NextResponse.json({ response: text });
+    return json({ response: text });
   } catch (err) {
+    if (err instanceof HttpError) throw err;
     const message = err instanceof Error ? err.message : String(err);
     console.error("[agent] LLM call failed:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    throw new HttpError(500, message);
   }
-}
+});
