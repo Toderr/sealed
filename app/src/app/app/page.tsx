@@ -11,6 +11,7 @@ import { useProfileStore } from "@/lib/profile-store";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import { type DealParams, type PublicProfile, type SupabaseDeal, formatUsdc, usdcToLamports } from "@/lib/types";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
+import { useIsSellerMode } from "@/lib/mock-wallet";
 import { useAppConnection as useConnection } from "@/lib/use-app-connection";
 import { PublicKey } from "@solana/web3.js";
 import { buildEnsureAtaIx, buildReleaseMilestoneIx, getUsdcMint, sendTx } from "@/lib/escrow-client";
@@ -109,13 +110,17 @@ function HomeContent() {
   const toast = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
+  // Only buyers create deals — hide New Deal when acting as the seller side.
+  const canCreateDeal = !useIsSellerMode();
 
   // Deep-link: /app?compose=1 (or the legacy ?view=chat) opens the New Deal
   // composer, so links from other pages land users straight in it. Derived as
   // the initial state (not a post-mount effect) to avoid a cascading render;
   // the param is stripped from the URL below so refresh/back won't re-open it.
+  // Sellers can't create deals, so the intent is ignored for them.
   const composeIntent =
-    searchParams.get("compose") === "1" || searchParams.get("view") === "chat";
+    canCreateDeal &&
+    (searchParams.get("compose") === "1" || searchParams.get("view") === "chat");
   const [composerOpen, setComposerOpen] = useState(composeIntent);
 
   // Redirect to onboarding if wallet connected but profile not set up
@@ -196,6 +201,7 @@ function HomeContent() {
   const [composeSession, setComposeSession] = useState(0);
 
   function openComposer() {
+    if (!canCreateDeal) return; // sellers don't create deals
     setComposeSession((n) => n + 1); // fresh ChatInterface on open
     setHasInteracted(false);
     setLivePartial(null);
@@ -247,6 +253,7 @@ function HomeContent() {
 
       <main className="flex-1 overflow-hidden" style={{ position: "relative", zIndex: 1 }}>
         <DealsBoldBoard
+          canCreateDeal={canCreateDeal}
           onNewDeal={toggleComposer}
           composerOpen={composerOpen}
           onCloseComposer={closeComposer}
@@ -390,11 +397,13 @@ function AppHeader({
 
 /* ── Deals Bold Board ── */
 function DealsBoldBoard({
+  canCreateDeal,
   onNewDeal,
   composerOpen,
   onCloseComposer,
   composer,
 }: {
+  canCreateDeal: boolean;
   onNewDeal: () => void;
   composerOpen: boolean;
   onCloseComposer: () => void;
@@ -508,7 +517,7 @@ function DealsBoldBoard({
                 style={{ background: "transparent", border: 0, outline: "none", fontSize: 12, color: "var(--primary)", width: 180 }}
               />
             </div>
-            <NewDealButton open={composerOpen} onClick={onNewDeal} />
+            {canCreateDeal && <NewDealButton open={composerOpen} onClick={onNewDeal} />}
           </div>
         </div>
       </div>

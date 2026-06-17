@@ -133,6 +133,17 @@ export function useMockWallet(): MockWalletContextValue {
   return ctx;
 }
 
+/**
+ * True when the dev Buyer/Seller toggle is set to "seller". Only meaningful in
+ * mock builds (the toggle is dev-only); always false in real builds, where the
+ * provider isn't mounted and there's no per-account "seller side" concept.
+ * Non-throwing so it's safe to call from anywhere.
+ */
+export function useIsSellerMode(): boolean {
+  const ctx = useContext(MockWalletContext);
+  return ctx?.role === "seller";
+}
+
 // Floating dev-only buyer/seller toggle, bottom-left. Lets one tab play both
 // parties without two wallets/browsers.
 function MockRoleSwitcher() {
