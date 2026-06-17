@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState, useEffect } from "react";
+import { Suspense, useMemo, useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import ChatInterface, { PartialDeal } from "@/components/ChatInterface";
@@ -9,9 +9,14 @@ import { useToast } from "@/components/Toast";
 import { NotificationMenu } from "@/components/NotificationMenu";
 import { useProfileStore } from "@/lib/profile-store";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
-import { type DealParams, type PublicProfile, type SupabaseDeal } from "@/lib/types";
+import { type DealParams, type PublicProfile, type SupabaseDeal, formatUsdc, usdcToLamports } from "@/lib/types";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
-import { apiFetchSafe } from "@/lib/api-client";
+import { useAppConnection as useConnection } from "@/lib/use-app-connection";
+import { PublicKey } from "@solana/web3.js";
+import { buildEnsureAtaIx, buildReleaseMilestoneIx, getUsdcMint, sendTx } from "@/lib/escrow-client";
+import { MOCK_CHAIN } from "@/lib/env";
+import { mockEscrow } from "@/lib/mock-escrow";
+import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
 
@@ -701,6 +706,8 @@ function DealDetailPanel({
   );
 }
 
+type PanelMilestone = { description: string; amount: number; status?: string };
+
 function DealDetailPanelBody({
   deal,
   myWallet,
@@ -710,6 +717,15 @@ function DealDetailPanelBody({
   myWallet: string | null;
   onClose: () => void;
 }) {
+  const { publicKey, signTransaction } = useWallet();
+  const { connection } = useConnection();
+  // Local milestone state so upload/release reflect immediately in the panel
+  // (the board's panelDeal is a snapshot). Mirrors deals/[id]'s pattern.
+  const [milestones, setMilestones] = useState<PanelMilestone[]>(deal.milestones ?? []);
+  const [busy, setBusy] = useState<number | null>(null);
+  const [confirmRelease, setConfirmRelease] = useState<number | null>(null);
+  const fileRefs = useRef<Record<number, HTMLInputElement | null>>({});
+
   const role: "buyer" | "seller" | "observer" = !myWallet
     ? "observer"
     : deal.buyer_wallet === myWallet ? "buyer"
@@ -720,12 +736,82 @@ function DealDetailPanelBody({
     ? `${deal.seller_wallet.slice(0, 4)}…${deal.seller_wallet.slice(-4)}`
     : "Awaiting counterparty";
 
-  const milestones = deal.milestones ?? [];
   const done = milestones.filter((m) => isMilestoneDone(m.status)).length;
-  const status = inferDealStatus(deal);
+  const status = inferDealStatus({ ...deal, milestones });
   const releasedAmount = milestones
     .filter((m) => isMilestoneDone(m.status))
     .reduce((s, m) => s + (m.amount || 0), 0);
+  // The next actionable milestone (first not-yet-released), mirroring deals/[id].
+  const currentIndex = milestones.findIndex(
+    (m) => !m.status || m.status === "Pending" || m.status === "In Review"
+  );
+
+  async function patchMilestones(updated: PanelMilestone[]) {
+    await apiFetchSafe(`/api/deals/${deal.deal_id}`, {
+      method: "PATCH", wallet: myWallet ?? "", body: { milestones: updated },
+    }, undefined);
+  }
+
+  async function postMessage(content: string, msgRole = "user") {
+    await apiFetchSafe("/api/messages", {
+      method: "POST", wallet: myWallet ?? "", body: { deal_id: deal.deal_id, role: msgRole, content, wallet: myWallet },
+    }, undefined);
+  }
+
+  // Seller: upload proof → milestone goes "In Review".
+  async function handleUpload(file: File, index: number) {
+    if (!myWallet) return;
+    setBusy(index);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      try {
+        await apiFetch("/api/upload", {
+          method: "POST", rawBody: form,
+          headers: { "x-wallet": myWallet, "x-deal-id": deal.deal_id, "x-milestone-index": String(index) },
+        });
+      } catch (e) {
+        alert(e instanceof ApiError ? e.message : "Upload failed");
+        return;
+      }
+      const updated = milestones.map((m, i) => (i === index ? { ...m, status: "In Review" } : m));
+      setMilestones(updated);
+      await patchMilestones(updated);
+      await postMessage(`📎 Proof submitted for Milestone ${index + 1}: **${milestones[index].description}**. Awaiting buyer review.`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Buyer: release milestone → on-chain release + status "Released".
+  async function handleRelease(index: number) {
+    if (!publicKey || !signTransaction || !deal.seller_wallet) return;
+    setBusy(index);
+    setConfirmRelease(null);
+    try {
+      const sellerPubkey = new PublicKey(deal.seller_wallet);
+      const mint = getUsdcMint();
+      const ensureIx = await buildEnsureAtaIx(publicKey, sellerPubkey, mint);
+      const releaseIx = await buildReleaseMilestoneIx(publicKey, deal.deal_id, index, sellerPubkey);
+      const sig = await sendTx(connection, [ensureIx, releaseIx], signTransaction);
+      const updated = milestones.map((m, i) => (i === index ? { ...m, status: "Released" } : m));
+      if (MOCK_CHAIN) {
+        const allReleased = updated.every((m) => m.status === "Released");
+        mockEscrow.releaseMilestone(deal.deal_id, sellerPubkey.toBase58(), usdcToLamports(milestones[index].amount), allReleased);
+      }
+      setMilestones(updated);
+      await patchMilestones(updated);
+      await postMessage(
+        `✅ Milestone ${index + 1} approved. **${formatUsdc(milestones[index].amount)} USDC** released to seller.\n\nTx: \`${sig.slice(0, 8)}...${sig.slice(-8)}\``,
+        "assistant"
+      );
+    } catch (err) {
+      console.error("Release failed:", err);
+      alert("Failed to release payment. Check console for details.");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <>
@@ -769,18 +855,63 @@ function DealDetailPanelBody({
           </div>
         </div>
 
-        {/* milestones */}
+        {/* milestones + actions */}
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--subtle)", marginBottom: 8 }}>
             Milestones · {done}/{milestones.length}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {milestones.map((m, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", background: "var(--surface)", borderRadius: 9, border: "1px solid var(--card-border)" }}>
-                <span style={{ fontSize: 12, color: "var(--foreground)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i + 1}. {m.description}</span>
-                <span style={{ fontSize: 11, color: isMilestoneDone(m.status) ? "var(--success)" : "var(--muted)", flexShrink: 0, marginLeft: 8 }}>{m.status || "Pending"}</span>
-              </div>
-            ))}
+            {milestones.map((m, i) => {
+              const isReleased = isMilestoneDone(m.status);
+              const isInReview = m.status === "In Review";
+              const isCurrent = i === currentIndex;
+              const working = busy === i;
+              return (
+                <div key={i} style={{ padding: "10px 12px", background: "var(--surface)", borderRadius: 9, border: "1px solid var(--card-border)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <span style={{ fontSize: 12, color: "var(--foreground)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i + 1}. {m.description}</span>
+                    <span style={{ fontSize: 11, color: isReleased ? "var(--success)" : isInReview ? "var(--warning)" : "var(--muted)", flexShrink: 0 }}>{m.status || "Pending"}</span>
+                  </div>
+
+                  {/* Seller: upload proof for the current pending milestone */}
+                  {role === "seller" && isCurrent && !isReleased && !isInReview && (
+                    <>
+                      <input
+                        ref={(el) => { fileRefs.current[i] = el; }}
+                        type="file" style={{ display: "none" }}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f, i); }}
+                      />
+                      <button
+                        onClick={() => fileRefs.current[i]?.click()}
+                        disabled={working}
+                        className="btn-primary"
+                        style={{ marginTop: 8, height: 32, width: "100%", borderRadius: 7, fontSize: 12 }}
+                      >
+                        {working ? "Uploading…" : "Upload proof"}
+                      </button>
+                    </>
+                  )}
+
+                  {/* Buyer: release the milestone once proof is in review */}
+                  {role === "buyer" && isInReview && (
+                    confirmRelease === i ? (
+                      <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+                        <button onClick={() => handleRelease(i)} disabled={working} className="btn-primary" style={{ flex: 1, height: 32, borderRadius: 7, fontSize: 12 }}>
+                          {working ? "Releasing…" : `Confirm release $${formatUsdc(m.amount)}`}
+                        </button>
+                        <button onClick={() => setConfirmRelease(null)} disabled={working} className="btn-ghost" style={{ height: 32, padding: "0 12px", borderRadius: 7, fontSize: 12 }}>
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setConfirmRelease(i)} disabled={working} className="btn-primary" style={{ marginTop: 8, height: 32, width: "100%", borderRadius: 7, fontSize: 12 }}>
+                        Release ${formatUsdc(m.amount)} USDC
+                      </button>
+                    )
+                  )}
+                </div>
+              );
+            })}
             {milestones.length === 0 && (
               <div style={{ fontSize: 12, color: "var(--subtle)" }}>No milestones yet.</div>
             )}
@@ -788,12 +919,12 @@ function DealDetailPanelBody({
         </div>
       </div>
 
-      {/* footer — link to the full page (the panel is a quick view) */}
+      {/* footer — link to the full page for the complete view */}
       <div style={{ padding: "14px 18px", borderTop: "1px solid var(--card-border-subtle)" }}>
         <Link
           href={dealHref(deal)}
-          className="btn-primary"
-          style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 38, borderRadius: 8, fontSize: 13, fontWeight: 510, textDecoration: "none" }}
+          className="btn-ghost"
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 36, borderRadius: 8, fontSize: 13, fontWeight: 510, textDecoration: "none" }}
         >
           Open full page →
         </Link>
@@ -858,12 +989,17 @@ function DealCardBold({
   };
   const tone = statusTone[displayStatus] ?? "neutral";
 
+  // The quick-view panel is only for deals that already have escrow (href →
+  // /deals/...). Pre-escrow deals still need the full negotiation page, so their
+  // cards navigate normally.
+  const usePanel = !!onOpen && href.startsWith("/deals/");
+
   return (
     <Link
       href={href}
-      // When a panel handler is supplied, intercept the click to open the
-      // right-side detail panel instead of navigating to the full page.
-      onClick={onOpen ? (e) => { e.preventDefault(); onOpen(deal); } : undefined}
+      // Post-escrow: intercept the click to open the right-side detail panel
+      // (upload proof / release milestone). Pre-escrow: let the Link navigate.
+      onClick={usePanel ? (e) => { e.preventDefault(); onOpen!(deal); } : undefined}
       className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
       style={{
         display: "block",
