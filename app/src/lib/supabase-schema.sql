@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS sealed_users (
     email_otp         TEXT,
     telegram_chat_id  TEXT,
     telegram_username TEXT,
-    notify_on         JSONB NOT NULL DEFAULT '{"deal_review_needed":true,"milestone_due":true,"deal_accepted":true,"deal_declined":true,"new_deal_invite":true}'::jsonb,
+    notify_on         JSONB NOT NULL DEFAULT '{"deal_review_needed":true,"milestone_due":true,"deal_accepted":true,"deal_declined":true,"new_deal_invite":true,"renegotiation_escalated":true}'::jsonb,
     kyc_status        TEXT NOT NULL DEFAULT 'none' CHECK (kyc_status IN ('none','pending','approved','rejected')),
     kyc_document_url  TEXT,
     kyc_submitted_at  TIMESTAMPTZ,

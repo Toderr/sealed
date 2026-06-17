@@ -106,9 +106,14 @@ function buildEmailContent(
   payload: Record<string, unknown>
 ): { subject: string; html: string } {
   const dealId = payload.deal_id as string | undefined;
-  const reviewUrl = dealId
-    ? `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/deals/${dealId}/review`
-    : `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/app`;
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  // Renegotiation reopens terms in the negotiate room; other deal events go to
+  // the review page. Fall back to the board when there's no deal id.
+  const ctaUrl = dealId
+    ? eventType === "renegotiation_escalated"
+      ? `${base}/negotiate/${dealId}`
+      : `${base}/deals/${dealId}/review`
+    : `${base}/app`;
 
   const messages: Record<string, { subject: string; body: string }> = {
     deal_review_needed: {
@@ -131,6 +136,10 @@ function buildEmailContent(
       subject: "You've been invited to a deal — Sealed Agent",
       body: "Someone wants to seal a deal with you on Sealed Agent.",
     },
+    renegotiation_escalated: {
+      subject: "Renegotiation requested — Sealed Agent",
+      body: "Your counterparty reopened the terms on a deal. Review the requested changes and respond in the negotiation room.",
+    },
   };
 
   const msg = messages[eventType] ?? {
@@ -147,7 +156,7 @@ function buildEmailContent(
     <p style="font-size:13px;color:#8b949e;margin-bottom:32px;">Autonomous B2B escrow on Solana</p>
     <p style="font-size:15px;color:#e6edf3;margin-bottom:8px;">Hey @${handle},</p>
     <p style="font-size:14px;color:#c9d1d9;line-height:1.6;margin-bottom:32px;">${msg.body}</p>
-    <a href="${reviewUrl}" style="display:inline-block;background:#22C55E;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;">View in Sealed Agent →</a>
+    <a href="${ctaUrl}" style="display:inline-block;background:#22C55E;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;">View in Sealed Agent →</a>
     <p style="font-size:12px;color:#484f58;margin-top:40px;">You received this because you have notifications enabled. Manage preferences in your Sealed Agent profile settings.</p>
   </div>
 </body>

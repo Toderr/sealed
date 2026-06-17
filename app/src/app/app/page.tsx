@@ -976,7 +976,7 @@ function DealCardBold({
     draft:          counterparty ? "Counterparty joined" : "Awaiting counterparty",
     "seller-ready": "Counterparty reviewing",
     "seller-agreed":"Ready to fund",
-    escalated:      "Escalated",
+    escalated:      "Renegotiation requested",
     proposed:       "Ready to sign",
     funded:         "Funded",
     in_progress:    "In progress",
