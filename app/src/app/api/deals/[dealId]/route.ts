@@ -1,5 +1,6 @@
 import { supabase, table } from "@/lib/supabase";
 import { incrementDeal } from "@/lib/reputation";
+import { queueNotification } from "@/lib/notify";
 import { requireWallet } from "@/lib/auth";
 import { HttpError, json, withRoute } from "@/lib/api-error";
 
@@ -214,6 +215,24 @@ export const PATCH = withRoute<{ params: Promise<{ dealId: string }> }>(
       await Promise.all(wallets.map((partyWallet) => incrementDeal(partyWallet, "success")));
     } catch (error) {
       console.error("Failed to increment reputation for completed deal", error);
+    }
+  }
+
+  // On a fresh escalation (renegotiation reopened), notify the OTHER party out
+  // of band — the caller (`wallet`) is the one who requested it. Without this an
+  // away-from-app counterparty learns nothing until they next open the app.
+  const wasEscalated = normalizeDealStatus(existing.status) === "escalated";
+  const isEscalated = normalizeDealStatus(data.status) === "escalated";
+  if (!wasEscalated && isEscalated) {
+    const counterparty = [data.buyer_wallet, data.seller_wallet]
+      .filter(Boolean)
+      .find((w) => w !== wallet) as string | undefined;
+    if (counterparty) {
+      try {
+        await queueNotification(counterparty, "renegotiation_escalated", { deal_id: dealId });
+      } catch (error) {
+        console.error("Failed to queue renegotiation notification", error);
+      }
     }
   }
 
