@@ -718,7 +718,7 @@ function ProfileHeader({ activeTab }: { activeTab: SelfProfileTab }) {
           <NavLink href="/app">
             Deals
           </NavLink>
-          <NavLink href="/app?view=chat">
+          <NavLink href="/app?compose=1">
             New Deal
           </NavLink>
           <NavLink href={agentHref} active={activeTab === "agent"}>

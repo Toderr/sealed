@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useMemo, useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import ChatInterface, { PartialDeal } from "@/components/ChatInterface";
 import SettingsModal from "@/components/SettingsModal";
@@ -96,8 +96,6 @@ function HomeContent() {
   const [livePartial, setLivePartial] = useState<PartialDeal | null>(null);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [liveDeal, setLiveDeal] = useState<DealParams | null>(null);
-  // New Deal opens an inline collapse composer on the board (no separate page/tab).
-  const [composerOpen, setComposerOpen] = useState(false);
 
   const { publicKey } = useWallet();
   const { profile, loaded: profileLoaded } = useProfileStore(
@@ -105,6 +103,15 @@ function HomeContent() {
   );
   const toast = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Deep-link: /app?compose=1 (or the legacy ?view=chat) opens the New Deal
+  // composer, so links from other pages land users straight in it. Derived as
+  // the initial state (not a post-mount effect) to avoid a cascading render;
+  // the param is stripped from the URL below so refresh/back won't re-open it.
+  const composeIntent =
+    searchParams.get("compose") === "1" || searchParams.get("view") === "chat";
+  const [composerOpen, setComposerOpen] = useState(composeIntent);
 
   // Redirect to onboarding if wallet connected but profile not set up
   useEffect(() => {
@@ -112,6 +119,12 @@ function HomeContent() {
       router.replace("/onboarding");
     }
   }, [profileLoaded, publicKey, profile, router]);
+
+  // Strip the compose intent param once consumed, so a refresh/back doesn't
+  // force the composer open again.
+  useEffect(() => {
+    if (composeIntent) router.replace("/app", { scroll: false });
+  }, [composeIntent, router]);
 
   // Store drafted deal in state (display in LiveDealSheet; user navigates via button)
   async function handleDealDrafted(params: DealParams): Promise<void> {
@@ -173,6 +186,18 @@ function HomeContent() {
     router.push(`/negotiate/${params.dealId}`);
   }
 
+  // Bumped each time the composer opens so the chat remounts fresh (the old
+  // standalone New Deal page started blank every visit; this matches that).
+  const [composeSession, setComposeSession] = useState(0);
+
+  function openComposer() {
+    setComposeSession((n) => n + 1); // fresh ChatInterface on open
+    setHasInteracted(false);
+    setLivePartial(null);
+    setLiveDeal(null);
+    setComposerOpen(true);
+  }
+
   function closeComposer() {
     setComposerOpen(false);
     // Reset the live-draft state so reopening starts clean.
@@ -181,10 +206,16 @@ function HomeContent() {
     setLiveDeal(null);
   }
 
+  function toggleComposer() {
+    if (composerOpen) closeComposer();
+    else openComposer();
+  }
+
   // The inline New Deal composer: the existing chat experience, hosted in the
-  // board's collapse panel instead of a separate page.
+  // board's collapse panel instead of a separate page. Keyed by composeSession
+  // so each open mounts a fresh ChatInterface (no stale messages on reopen).
   const composer = (
-    <div style={{ display: "grid", gridTemplateColumns: hasInteracted ? "1fr 360px" : "1fr", height: "100%", overflow: "hidden", transition: "grid-template-columns 0.35s ease" }}>
+    <div key={composeSession} style={{ display: "grid", gridTemplateColumns: hasInteracted ? "1fr 360px" : "1fr", height: "100%", overflow: "hidden", transition: "grid-template-columns 0.35s ease" }}>
       <div style={{ overflow: "hidden", borderRight: hasInteracted ? "1px solid var(--card-border-subtle)" : "none", transition: "border-color 0.35s ease" }}>
         <ChatInterface
           onDealCreated={handleDealDrafted}
@@ -211,7 +242,7 @@ function HomeContent() {
 
       <main className="flex-1 overflow-hidden" style={{ position: "relative", zIndex: 1 }}>
         <DealsBoldBoard
-          onNewDeal={() => setComposerOpen((o) => !o)}
+          onNewDeal={toggleComposer}
           composerOpen={composerOpen}
           onCloseComposer={closeComposer}
           composer={composer}
