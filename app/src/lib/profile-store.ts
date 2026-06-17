@@ -130,6 +130,9 @@ export type InvitePayload = {
   dealTitle: string;
   inviterName: string;
   inviterWallet: string;
+  // Which side the INVITER holds. The joiner fills the opposite slot. Optional
+  // for back-compat with older links (absent ⇒ inviter is the buyer).
+  inviterRole?: "buyer" | "seller";
   amount: number;
   currency: string;
   milestoneCount: number;

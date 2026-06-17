@@ -11,7 +11,6 @@ import { useProfileStore } from "@/lib/profile-store";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import { type DealParams, type PublicProfile, type SupabaseDeal, formatUsdc, usdcToLamports } from "@/lib/types";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
-import { useIsSellerMode } from "@/lib/mock-wallet";
 import { useAppConnection as useConnection } from "@/lib/use-app-connection";
 import { PublicKey } from "@solana/web3.js";
 import { buildEnsureAtaIx, buildReleaseMilestoneIx, getUsdcMint, sendTx } from "@/lib/escrow-client";
@@ -102,6 +101,9 @@ function HomeContent() {
   const [livePartial, setLivePartial] = useState<PartialDeal | null>(null);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [liveDeal, setLiveDeal] = useState<DealParams | null>(null);
+  // Which side the creator takes for the deal being drafted. Set via the
+  // LiveDealSheet toggle or by the agent (creator_role in the parsed deal).
+  const [creatorRole, setCreatorRole] = useState<"buyer" | "seller">("buyer");
 
   const { publicKey } = useWallet();
   const { profile, loaded: profileLoaded } = useProfileStore(
@@ -110,17 +112,13 @@ function HomeContent() {
   const toast = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  // Only buyers create deals — hide New Deal when acting as the seller side.
-  const canCreateDeal = !useIsSellerMode();
 
   // Deep-link: /app?compose=1 (or the legacy ?view=chat) opens the New Deal
   // composer, so links from other pages land users straight in it. Derived as
   // the initial state (not a post-mount effect) to avoid a cascading render;
   // the param is stripped from the URL below so refresh/back won't re-open it.
-  // Sellers can't create deals, so the intent is ignored for them.
   const composeIntent =
-    canCreateDeal &&
-    (searchParams.get("compose") === "1" || searchParams.get("view") === "chat");
+    searchParams.get("compose") === "1" || searchParams.get("view") === "chat";
   const [composerOpen, setComposerOpen] = useState(composeIntent);
 
   // Redirect to onboarding if wallet connected but profile not set up
@@ -147,6 +145,8 @@ function HomeContent() {
       return;
     }
     setLiveDeal(params);
+    // The agent can set the creator's side in the parsed deal ("I'm the seller").
+    if (params.creatorRole) setCreatorRole(params.creatorRole);
   }
 
   // Save draft and navigate to negotiation room (called from LiveDealSheet button)
@@ -154,23 +154,32 @@ function HomeContent() {
     if (!publicKey) return;
 
     const dealTitle = params.title ?? params.dealId;
-    // Normalize an empty/whitespace counterparty to null so the slot is genuinely
-    // empty — the deal won't appear on the counterparty's board until they accept
-    // the invite (matches the real invite flow).
-    const sellerWallet = params.sellerWallet?.trim() ? params.sellerWallet.trim() : null;
+    const me = publicKey.toBase58();
+    // The creator takes the slot matching their chosen role; the counterparty
+    // (entered wallet, if any) takes the opposite slot. The lifted toggle state is
+    // the source of truth (falls back to the parsed deal, then buyer). An empty/
+    // whitespace counterparty is normalized to null so the slot is genuinely empty
+    // — the deal won't appear on the counterparty's board until they accept.
+    const role = creatorRole ?? params.creatorRole ?? "buyer";
+    const counterparty = params.sellerWallet?.trim() ? params.sellerWallet.trim() : null;
+    const buyer_wallet = role === "seller" ? counterparty : me;
+    const seller_wallet = role === "seller" ? me : counterparty;
+
+    const milestones = params.milestones.map((m) => ({
+      description: m.description,
+      amount: m.amount,
+      status: "Pending",
+    }));
+    const description = params.milestones.map((m) => m.description).join(" | ");
 
     const draftDeal = {
       deal_id: params.dealId,
-      buyer_wallet: publicKey.toBase58(),
-      seller_wallet: sellerWallet ?? "",
+      buyer_wallet: buyer_wallet ?? "",
+      seller_wallet: seller_wallet ?? "",
       title: dealTitle,
-      description: params.milestones.map((m) => m.description).join(" | "),
+      description,
       total_amount_usdc: params.totalAmount,
-      milestones: params.milestones.map((m) => ({
-        description: m.description,
-        amount: m.amount,
-        status: "Pending",
-      })),
+      milestones,
       status: "draft",
     };
     try {
@@ -181,18 +190,16 @@ function HomeContent() {
 
     apiFetchSafe("/api/deals/mirror", {
       method: "POST",
-      wallet: publicKey.toBase58(),
+      wallet: me, // creator owns the row; mirror binds it to whichever slot they hold
       body: {
         deal_id: params.dealId,
-        seller_wallet: sellerWallet,
+        creator_role: role,
+        buyer_wallet,
+        seller_wallet,
         title: dealTitle,
-        description: params.milestones.map((m) => m.description).join(" | "),
+        description,
         total_amount_usdc: params.totalAmount,
-        milestones: params.milestones.map((m) => ({
-          description: m.description,
-          amount: m.amount,
-          status: "Pending",
-        })),
+        milestones,
         status: "draft",
       },
     }, undefined);
@@ -205,11 +212,11 @@ function HomeContent() {
   const [composeSession, setComposeSession] = useState(0);
 
   function openComposer() {
-    if (!canCreateDeal) return; // sellers don't create deals
     setComposeSession((n) => n + 1); // fresh ChatInterface on open
     setHasInteracted(false);
     setLivePartial(null);
     setLiveDeal(null);
+    setCreatorRole("buyer");
     setComposerOpen(true);
   }
 
@@ -219,6 +226,7 @@ function HomeContent() {
     setHasInteracted(false);
     setLivePartial(null);
     setLiveDeal(null);
+    setCreatorRole("buyer");
   }
 
   function toggleComposer() {
@@ -242,6 +250,8 @@ function HomeContent() {
         <LiveDealSheet
           partial={livePartial}
           deal={liveDeal}
+          creatorRole={creatorRole}
+          onCreatorRoleChange={setCreatorRole}
           onInvite={handleInviteCounterparty}
         />
       )}
@@ -257,7 +267,6 @@ function HomeContent() {
 
       <main className="flex-1 overflow-hidden" style={{ position: "relative", zIndex: 1 }}>
         <DealsBoldBoard
-          canCreateDeal={canCreateDeal}
           onNewDeal={toggleComposer}
           composerOpen={composerOpen}
           onCloseComposer={closeComposer}
@@ -401,13 +410,11 @@ function AppHeader({
 
 /* ── Deals Bold Board ── */
 function DealsBoldBoard({
-  canCreateDeal,
   onNewDeal,
   composerOpen,
   onCloseComposer,
   composer,
 }: {
-  canCreateDeal: boolean;
   onNewDeal: () => void;
   composerOpen: boolean;
   onCloseComposer: () => void;
@@ -521,7 +528,7 @@ function DealsBoldBoard({
                 style={{ background: "transparent", border: 0, outline: "none", fontSize: 12, color: "var(--primary)", width: 180 }}
               />
             </div>
-            {canCreateDeal && <NewDealButton open={composerOpen} onClick={onNewDeal} />}
+            <NewDealButton open={composerOpen} onClick={onNewDeal} />
           </div>
         </div>
       </div>
@@ -1160,10 +1167,14 @@ function StatusPill({ tone, children }: { tone: string; children: React.ReactNod
 function LiveDealSheet({
   partial,
   deal,
+  creatorRole,
+  onCreatorRoleChange,
   onInvite,
 }: {
   partial: PartialDeal | null;
   deal: DealParams | null;
+  creatorRole: "buyer" | "seller";
+  onCreatorRoleChange: (role: "buyer" | "seller") => void;
   onInvite: (params: DealParams) => void;
 }) {
   const CONTRACT_TYPE_LABELS: Record<string, string> = {
@@ -1281,6 +1292,36 @@ function LiveDealSheet({
 
       {/* Footer */}
       <div style={{ padding: "12px 20px 20px", borderTop: "1px solid var(--card-border-subtle)", display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
+        {/* Your side — buyer pays/funds, seller provides. Decides which slot you
+            take; the counterparty fills the other when they join. */}
+        <div>
+          <p style={{ margin: "0 0 6px", fontSize: 11, color: "var(--subtle)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Your side</p>
+          <div style={{ display: "flex", borderRadius: 7, background: "var(--surface)", border: "1px solid var(--card-border)", padding: 2 }}>
+            {([
+              { role: "buyer" as const, label: "I'm buying", sub: "I pay" },
+              { role: "seller" as const, label: "I'm providing", sub: "I get paid" },
+            ]).map((opt) => {
+              const active = creatorRole === opt.role;
+              return (
+                <button
+                  key={opt.role}
+                  onClick={() => onCreatorRoleChange(opt.role)}
+                  style={{
+                    flex: 1, height: 34, borderRadius: 5, border: "none", cursor: "pointer",
+                    background: active ? "var(--surface-hover)" : "transparent",
+                    color: active ? "var(--primary)" : "var(--muted)",
+                    fontSize: 12, fontWeight: 510, display: "flex", flexDirection: "column",
+                    alignItems: "center", justifyContent: "center", lineHeight: 1.15,
+                    transition: "all 150ms",
+                  }}
+                >
+                  {opt.label}
+                  <span style={{ fontSize: 9, color: "var(--subtle)" }}>{opt.sub}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <button
           style={{ height: 36, borderRadius: 7, fontSize: 12, width: "100%", cursor: "pointer", color: "var(--muted)", background: "transparent", border: "1px solid var(--card-border)", display: "flex", alignItems: "center", justifyContent: "center" }}
           onClick={() => {/* milestone editor — future */}}

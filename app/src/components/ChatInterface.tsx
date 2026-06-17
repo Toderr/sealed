@@ -45,6 +45,7 @@ function tryParseDealParams(text: string): DealParams | undefined {
         dealId: parsed.deal_id,
         title: parsed.title ?? parsed.deal_id,
         sellerWallet: parsed.seller_wallet ?? "",
+        creatorRole: parsed.creator_role === "seller" ? "seller" : "buyer",
         totalAmount: parsed.total_amount,
         milestones: parsed.milestones.map(
           (m: { description: string; amount: number }) => ({

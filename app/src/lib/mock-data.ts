@@ -163,13 +163,26 @@ async function handle(
       return json({ deals: mockData.dealsFor(wallet) });
     }
     if (method === "POST") {
-      const b = (body ?? {}) as Partial<MirrorDeal> & { tx_signature?: string };
+      const b = (body ?? {}) as Partial<MirrorDeal> & {
+        tx_signature?: string;
+        creator_role?: "buyer" | "seller";
+      };
       if (!b.deal_id || !b.title) return json({ error: "deal_id, title required" }, 400);
       const existing = mockData.getDeal(b.deal_id);
+      // Honor explicit slots from the body (role-aware creation); fall back to
+      // the caller as buyer for legacy callers. Mirrors the real mirror route.
+      const buyer_wallet =
+        b.creator_role === "seller"
+          ? (b.buyer_wallet ?? existing?.buyer_wallet ?? null)
+          : (b.buyer_wallet ?? existing?.buyer_wallet ?? wallet ?? "");
+      const seller_wallet =
+        b.creator_role === "seller"
+          ? (wallet ?? existing?.seller_wallet ?? null)
+          : (b.seller_wallet ?? existing?.seller_wallet ?? null);
       const deal: MirrorDeal = {
         deal_id: b.deal_id,
-        buyer_wallet: existing?.buyer_wallet ?? wallet ?? "",
-        seller_wallet: b.seller_wallet ?? existing?.seller_wallet ?? null,
+        buyer_wallet: buyer_wallet ?? "",
+        seller_wallet,
         title: b.title,
         description: b.description ?? null,
         total_amount_usdc: b.total_amount_usdc ?? existing?.total_amount_usdc ?? 0,
@@ -198,6 +211,7 @@ async function handle(
       const next: MirrorDeal = {
         ...deal,
         ...(b.seller_wallet !== undefined ? { seller_wallet: b.seller_wallet } : {}),
+        ...(b.buyer_wallet !== undefined ? { buyer_wallet: b.buyer_wallet } : {}),
         ...(b.status !== undefined ? { status: b.status } : {}),
         ...(b.title !== undefined ? { title: b.title } : {}),
         ...(b.description !== undefined ? { description: b.description } : {}),

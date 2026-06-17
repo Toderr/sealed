@@ -4,7 +4,6 @@ import { Suspense, useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
-import { useIsSellerMode } from "@/lib/mock-wallet";
 import { SealedMark } from "@/components/SealedLogo";
 import { NotificationMenu } from "@/components/NotificationMenu";
 import {
@@ -705,8 +704,6 @@ function ProfileHeader({ activeTab }: { activeTab: SelfProfileTab }) {
   const wallet = publicKey?.toBase58() ?? null;
   const profileHref = wallet ? `/profile/${wallet}` : "/profile";
   const agentHref = wallet ? `/profile/${wallet}?tab=agent` : "/profile";
-  // Only buyers create deals — hide New Deal when acting as the seller side.
-  const canCreateDeal = !useIsSellerMode();
 
   return (
     <header className="flex items-center justify-between px-4 sm:px-6 h-14 border-b border-card-border-subtle bg-panel">
@@ -721,11 +718,9 @@ function ProfileHeader({ activeTab }: { activeTab: SelfProfileTab }) {
           <NavLink href="/app">
             Deals
           </NavLink>
-          {canCreateDeal && (
-            <NavLink href="/app?compose=1">
-              New Deal
-            </NavLink>
-          )}
+          <NavLink href="/app?compose=1">
+            New Deal
+          </NavLink>
           <NavLink href={agentHref} active={activeTab === "agent"}>
             Agent
           </NavLink>
@@ -945,6 +940,7 @@ function DealRow({
       dealTitle: deal.title || deal.dealId.replace(/-/g, " "),
       inviterName: profile.name,
       inviterWallet: wallet,
+      inviterRole: (deal.sellerWallet === wallet ? "seller" : "buyer") as "buyer" | "seller",
       amount: deal.totalAmountUsdc,
       currency: "USDC",
       milestoneCount: deal.milestones.length,

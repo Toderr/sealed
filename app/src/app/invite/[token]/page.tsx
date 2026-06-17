@@ -141,30 +141,41 @@ export default function InvitePage() {
     if (!publicKey || !payload) return;
     setAccepted(true);
 
-    const sellerWallet = publicKey.toBase58();
-    let buyerWallet = inviterWallet;
+    const me = publicKey.toBase58();
+    // The inviter holds one slot; I (the joiner) fill the opposite one.
+    // Back-compat: links without inviterRole are from buyers (today's behavior).
+    const inviterRole = payload.inviterRole ?? "buyer";
+    let inviter = inviterWallet;
 
-    if (!isUsableWallet(buyerWallet)) {
-      buyerWallet = await resolveInviterWallet(payload);
-      setResolvedInviterWallet(buyerWallet);
+    if (!isUsableWallet(inviter)) {
+      inviter = await resolveInviterWallet(payload);
+      setResolvedInviterWallet(inviter);
     }
 
-    if (!isUsableWallet(buyerWallet)) {
+    if (!isUsableWallet(inviter)) {
       setAccepted(false);
       alert("This invite link was generated with an incomplete inviter wallet. Ask the inviter to copy a fresh link.");
       return;
     }
 
-    // Signal instantly to buyer's negotiate room tab via localStorage.
-    // Storage event fires in all other tabs of the same origin immediately.
+    // Assign slots by role. If the inviter is the buyer, I'm the seller; if the
+    // inviter is the seller, I'm the buyer (and I'll be the one who funds).
+    const buyerWallet = inviterRole === "buyer" ? inviter : me;
+    const sellerWallet = inviterRole === "buyer" ? me : inviter;
+    const myField = me === sellerWallet ? "seller_wallet" : "buyer_wallet";
+
+    // Signal the inviter's negotiate room tab instantly. Keep the legacy
+    // seller-joined key when I'm the seller (existing listeners), and always
+    // emit the neutral counterparty-joined key (my wallet) for the new flow.
     try {
-      localStorage.setItem(`sealed:seller-joined:${payload.dealId}`, sellerWallet);
+      localStorage.setItem(`sealed:counterparty-joined:${payload.dealId}`, me);
+      if (myField === "seller_wallet") {
+        localStorage.setItem(`sealed:seller-joined:${payload.dealId}`, me);
+      }
     } catch {}
 
     // 1. Fetch full deal from Supabase and save to this browser's sessionStorage
     //    so the negotiate room can load it even before Supabase propagates the PATCH.
-    // Minimal record from the invite token, used when Supabase doesn't have the
-    // deal yet (or the fetch fails) so the negotiate room still loads.
     const minimal = {
       deal_id: payload.dealId,
       buyer_wallet: buyerWallet,
@@ -188,7 +199,7 @@ export default function InvitePage() {
         sessionStorage.setItem(`deal:${payload.dealId}`, JSON.stringify({
           ...supabaseDeal,
           milestones,
-          seller_wallet: sellerWallet,
+          [myField]: me,
         }));
       } else {
         sessionStorage.setItem(`deal:${payload.dealId}`, JSON.stringify(minimal));
@@ -200,12 +211,14 @@ export default function InvitePage() {
       } catch {}
     }
 
-    // 2. Upsert the full deal into Supabase with seller_wallet already set.
-    //    This uses the buyer's wallet (from the invite token) as x-wallet so
-    //    mirror accepts it, and handles the case where the buyer's original
-    //    mirror call never reached Supabase.
+    // 2. Upsert the full deal into Supabase with both slots set. Use the
+    //    INVITER's wallet as x-wallet so the mirror authority check accepts it
+    //    (the inviter owns the row), covering the case where the inviter's
+    //    original mirror call never reached Supabase.
     const dealBody = {
       deal_id: payload.dealId,
+      creator_role: inviterRole,
+      buyer_wallet: buyerWallet,
       seller_wallet: sellerWallet,
       title: payload.dealTitle,
       description: payload.description ?? "",
@@ -213,14 +226,13 @@ export default function InvitePage() {
       milestones: (payload.milestones ?? []).map((m) => ({ ...m, status: "Pending" })),
       status: "draft",
     };
-    // buyer's wallet as x-wallet so mirror accepts it
-    await apiFetchSafe("/api/deals/mirror", { method: "POST", wallet: buyerWallet, body: dealBody }, undefined);
+    await apiFetchSafe("/api/deals/mirror", { method: "POST", wallet: inviter, body: dealBody }, undefined);
 
-    // 3. Also PATCH seller_wallet (idempotent if mirror already set it)
+    // 3. Also PATCH my own wallet slot (idempotent if mirror already set it).
     await apiFetchSafe(`/api/deals/${payload.dealId}`, {
       method: "PATCH",
-      wallet: sellerWallet,
-      body: { seller_wallet: sellerWallet },
+      wallet: me,
+      body: { [myField]: me },
     }, undefined);
 
     setTimeout(() => {
