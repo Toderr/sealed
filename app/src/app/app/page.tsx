@@ -157,11 +157,13 @@ function HomeContent() {
     const me = publicKey.toBase58();
     // The creator takes the slot matching their chosen role; the counterparty
     // (entered wallet, if any) takes the opposite slot. The lifted toggle state is
-    // the source of truth (falls back to the parsed deal, then buyer). An empty/
-    // whitespace counterparty is normalized to null so the slot is genuinely empty
-    // — the deal won't appear on the counterparty's board until they accept.
+    // the source of truth (falls back to the parsed deal, then buyer). The entered
+    // counterparty is normalized to null when blank OR equal to the creator's own
+    // wallet — so the slot stays genuinely empty (the deal won't appear on the
+    // counterparty's board until they accept) and the two slots never collapse.
     const role = creatorRole ?? params.creatorRole ?? "buyer";
-    const counterparty = params.sellerWallet?.trim() ? params.sellerWallet.trim() : null;
+    const entered = params.sellerWallet?.trim() || null;
+    const counterparty = entered && entered !== me ? entered : null;
     const buyer_wallet = role === "seller" ? counterparty : me;
     const seller_wallet = role === "seller" ? me : counterparty;
 
