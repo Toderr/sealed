@@ -4,6 +4,11 @@
 // chat: you fill title, counterparty, and milestones, and it emits the same
 // DealParams the Structurer agent would have produced — so the existing
 // LiveDealSheet → invite → negotiate flow works unchanged.
+//
+// The creator's side (buyer/seller) is chosen BEFORE this form opens, in the
+// pre-composer role-choice step, and passed in as `creatorRole`. The form just
+// labels the counterparty field accordingly and threads the role onto the
+// emitted DealParams.
 
 import { useState } from "react";
 import type { DealParams } from "@/lib/types";
@@ -14,9 +19,11 @@ import { labelStyle, headingStyle } from "@/lib/typography";
 type MilestoneRow = { description: string; amount: string };
 
 export default function MockDealForm({
+  creatorRole,
   onDealCreated,
   onFirstMessage,
 }: {
+  creatorRole: "buyer" | "seller";
   onDealCreated: (params: DealParams) => Promise<void>;
   onFirstMessage?: () => void;
 }) {
@@ -25,11 +32,20 @@ export default function MockDealForm({
   // Empty by default — mirrors the real flow where the counterparty isn't set
   // until they accept the invite. Leaving it blank means "invite later", so the
   // deal won't appear on the counterparty's board until they actually join.
-  const [seller, setSeller] = useState("");
+  const [counterparty, setCounterparty] = useState("");
   const [milestones, setMilestones] = useState<MilestoneRow[]>([
     { description: "", amount: "" },
   ]);
   const [error, setError] = useState<string | null>(null);
+
+  // The label for the counterparty: a seller when the creator buys, a buyer
+  // when the creator provides.
+  const cpLabel = creatorRole === "seller" ? "buyer" : "seller";
+  // The opposite mock identity to prefill, given the creator's side.
+  const mockCounterparty =
+    creatorRole === "seller"
+      ? MOCK_IDENTITIES.buyer.toBase58()
+      : MOCK_IDENTITIES.seller.toBase58();
 
   const total = milestones.reduce((sum, m) => sum + (parseFloat(m.amount) || 0), 0);
 
@@ -48,8 +64,10 @@ export default function MockDealForm({
     if (!title.trim()) return setError("Add a deal title.");
     // Counterparty is OPTIONAL — if provided it must be a valid wallet; if left
     // blank the deal stays uncoupled (invite the counterparty afterward).
-    const sellerTrim = seller.trim();
-    if (sellerTrim && sellerTrim.length < 32) return setError("Enter a valid seller wallet, or leave it blank to invite later.");
+    const cpTrim = counterparty.trim();
+    if (cpTrim && cpTrim.length < 32) {
+      return setError(`Enter a valid ${cpLabel} wallet, or leave it blank to invite later.`);
+    }
     const parsed = milestones
       .map((m) => ({ description: m.description.trim(), amount: parseFloat(m.amount) || 0 }))
       .filter((m) => m.description && m.amount > 0);
@@ -59,7 +77,10 @@ export default function MockDealForm({
     const params: DealParams = {
       dealId,
       title: title.trim(),
-      sellerWallet: sellerTrim, // "" → handleInviteCounterparty stores null
+      // sellerWallet carries the COUNTERPARTY wallet ("" → handleInviteCounterparty
+      // stores null); it routes to the opposite slot based on creatorRole.
+      sellerWallet: cpTrim,
+      creatorRole,
       totalAmount: parsed.reduce((s, m) => s + m.amount, 0),
       milestones: parsed,
     };
@@ -103,6 +124,9 @@ export default function MockDealForm({
         <p style={{ fontSize: 13, color: "var(--muted)" }}>
           No AI, no chain. Fill the terms and it builds the deal directly.
         </p>
+        <p style={{ fontSize: 12, color: "var(--accent)", marginTop: 4 }}>
+          You&apos;re the {creatorRole === "seller" ? "seller (you get paid)" : "buyer (you pay)"}.
+        </p>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -120,19 +144,20 @@ export default function MockDealForm({
 
         <div>
           <label style={{ ...labelStyle, fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}>
-            Seller wallet (counterparty) <span style={{ color: "var(--subtle)" }}>— optional, invite later</span>
+            {creatorRole === "seller" ? "Buyer wallet (counterparty)" : "Seller wallet (counterparty)"}{" "}
+            <span style={{ color: "var(--subtle)" }}>— optional, invite later</span>
           </label>
           <input
             style={{ ...inputStyle, fontFamily: "ui-monospace, monospace", fontSize: 12 }}
-            value={seller}
-            onChange={(e) => setSeller(e.target.value)}
-            placeholder="Leave blank to invite via link, or paste a wallet"
+            value={counterparty}
+            onChange={(e) => setCounterparty(e.target.value)}
+            placeholder={`Leave blank to invite via link, or paste a ${cpLabel} wallet`}
           />
           <button
-            onClick={() => setSeller(MOCK_IDENTITIES.seller.toBase58())}
+            onClick={() => setCounterparty(mockCounterparty)}
             style={{ marginTop: 6, fontSize: 11, color: "var(--accent)", background: "none", border: 0, cursor: "pointer", padding: 0 }}
           >
-            Use mock seller identity
+            Use mock {cpLabel} identity
           </button>
         </div>
 

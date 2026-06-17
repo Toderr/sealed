@@ -162,6 +162,10 @@ function HomeContent() {
     // wallet — so the slot stays genuinely empty (the deal won't appear on the
     // counterparty's board until they accept) and the two slots never collapse.
     const role = creatorRole ?? params.creatorRole ?? "buyer";
+    // params.sellerWallet carries the COUNTERPARTY's wallet (an explicitly-entered
+    // address, if any) — the seller when the creator is the buyer, the buyer when
+    // the creator is the seller. Normalize to null when blank OR equal to the
+    // creator's own wallet, so the two slots never collapse to one.
     const entered = params.sellerWallet?.trim() || null;
     const counterparty = entered && entered !== me ? entered : null;
     const buyer_wallet = role === "seller" ? counterparty : me;
