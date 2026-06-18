@@ -323,12 +323,132 @@ async function handle(
     });
   }
 
+  // POST /api/negotiate/manual — offline manual chat with the buyer's "agent".
+  // No LLM: greet on open; on any seller message, agree to the deal's current
+  // terms so the flow can proceed (mirrors the offline "treat as agreed" model).
+  if (path === "/api/negotiate/manual" && method === "POST") {
+    const b = (body ?? {}) as {
+      dealId?: string;
+      isOpening?: boolean;
+      messages?: Array<{ role: string; content: string }>;
+    };
+    const deal = b.dealId ? mockData.getDeal(b.dealId) : undefined;
+    if (b.isOpening) {
+      return json({
+        response:
+          "Hi — I'm representing the buyer (offline mode). The proposed terms are on the left. Reply to accept them or propose changes.",
+        agreed: false,
+        agreedTerms: null,
+      });
+    }
+    // Any seller reply → accept the current terms.
+    const agreedTerms = deal
+      ? {
+          totalAmount: deal.total_amount_usdc,
+          milestones: (deal.milestones ?? []).map((m) => ({
+            description: m.description,
+            amount: m.amount,
+          })),
+        }
+      : null;
+    return json({
+      response: "Sounds good — we're agreed on these terms. (offline)",
+      agreed: true,
+      agreedTerms,
+    });
+  }
+
+  // POST /api/negotiate — offline AI negotiation: return an immediately-agreed
+  // proposal using the requested terms (no LLM rounds offline).
+  if (path === "/api/negotiate" && method === "POST") {
+    const b = (body ?? {}) as {
+      proposalId?: string;
+      buyerWallet?: string;
+      initialTerms?: unknown;
+    };
+    const terms = b.initialTerms ?? {};
+    const now = Date.now();
+    return json({
+      proposal: {
+        id: `${b.proposalId ?? "offline"}-agreed`,
+        origin: "agent",
+        buyerWallet: b.buyerWallet ?? "",
+        initialTerms: terms,
+        revisions: [],
+        status: "agreed",
+        finalTerms: terms,
+        summary: {
+          pros: ["Offline mode — terms accepted as proposed."],
+          cons: [],
+          keyConcessions: [],
+          riskFlags: [],
+          confidenceScore: 1,
+          recommendation: "accept",
+          recommendationReasoning: "Offline negotiation; accept to fund the escrow.",
+        },
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+  }
+
+  // POST /api/agent + GET /api/agent/context — offline no-op (the manual deal
+  // form replaces the structuring agent; context is unused).
+  if (path === "/api/agent" && method === "POST") {
+    return json({ response: "Offline mode — use the manual deal form above." });
+  }
+  if (path === "/api/agent/context" && method === "GET") {
+    return json({ systemPrompt: "" });
+  }
+
+  // POST /api/verify-milestone — offline auto-approve (no LLM proof review).
+  if (path === "/api/verify-milestone" && method === "POST") {
+    return json({ review: { verdict: "approved", confidence: 1, reasoning: "Offline mode — auto-approved." } });
+  }
+
+  // GET/PUT /api/users/:wallet/profile — read/write the localStorage profile
+  // store (same store the /public route synthesizes from). Without this, the
+  // invite-accept "create profile" PUT and onboarding's profile save would fall
+  // through to the real backend and 500 in pure offline mode.
+  const profMatch = path.match(/^\/api\/users\/([^/]+)\/profile$/);
+  if (profMatch) {
+    const w = decodeURIComponent(profMatch[1]);
+    const profiles = read<Record<string, Record<string, unknown>>>(K.profiles, {});
+    if (method === "PUT") {
+      const b = (body ?? {}) as Record<string, unknown>;
+      profiles[w] = {
+        ...(profiles[w] ?? {}),
+        ...b,
+        member_since: profiles[w]?.member_since ?? nowIso(),
+      };
+      write(K.profiles, profiles);
+      return json({ ok: true, profile: profiles[w] });
+    }
+    if (method === "GET") {
+      return json({ profile: profiles[w] ?? null });
+    }
+  }
+
+  // Profile side-channels — offline no-ops so they don't 500.
+  if (path === "/api/users/email" && method === "POST") return json({ ok: true });
+  if (path === "/api/users/email/verify" && method === "POST") return json({ ok: true });
+  if (path === "/api/users/notifications" && method === "POST") return json({ ok: true });
+  if (path === "/api/profile/avatar" && method === "POST") return json({ avatarUrl: null });
+  if (path === "/api/kyc/submit" && method === "POST") return json({ status: "pending" });
+
   // GET /api/friends — empty offline
   if (path === "/api/friends" && method === "GET") {
     return json({ friends: [] });
   }
   if (path === "/api/friends/status" && method === "GET") {
     return json({ status: "none" });
+  }
+  // POST /api/friends + /api/friends/:wallet — offline no-op
+  if (path === "/api/friends" && method === "POST") {
+    return json({ ok: true, status: "pending" });
+  }
+  if (/^\/api\/friends\/[^/]+$/.test(path) && (method === "POST" || method === "DELETE")) {
+    return json({ ok: true, status: method === "DELETE" ? "removed" : "accepted" });
   }
 
   // GET /api/agent-templates — empty offline
