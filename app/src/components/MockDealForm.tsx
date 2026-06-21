@@ -22,7 +22,10 @@ export default function MockDealForm({
 }) {
   const { publicKey } = useWallet();
   const [title, setTitle] = useState("");
-  const [seller, setSeller] = useState(MOCK_IDENTITIES.seller.toBase58());
+  // Empty by default — mirrors the real flow where the counterparty isn't set
+  // until they accept the invite. Leaving it blank means "invite later", so the
+  // deal won't appear on the counterparty's board until they actually join.
+  const [seller, setSeller] = useState("");
   const [milestones, setMilestones] = useState<MilestoneRow[]>([
     { description: "", amount: "" },
   ]);
@@ -43,7 +46,10 @@ export default function MockDealForm({
   async function handleCreate() {
     setError(null);
     if (!title.trim()) return setError("Add a deal title.");
-    if (!seller.trim() || seller.trim().length < 32) return setError("Enter a valid seller wallet.");
+    // Counterparty is OPTIONAL — if provided it must be a valid wallet; if left
+    // blank the deal stays uncoupled (invite the counterparty afterward).
+    const sellerTrim = seller.trim();
+    if (sellerTrim && sellerTrim.length < 32) return setError("Enter a valid seller wallet, or leave it blank to invite later.");
     const parsed = milestones
       .map((m) => ({ description: m.description.trim(), amount: parseFloat(m.amount) || 0 }))
       .filter((m) => m.description && m.amount > 0);
@@ -53,7 +59,7 @@ export default function MockDealForm({
     const params: DealParams = {
       dealId,
       title: title.trim(),
-      sellerWallet: seller.trim(),
+      sellerWallet: sellerTrim, // "" → handleInviteCounterparty stores null
       totalAmount: parsed.reduce((s, m) => s + m.amount, 0),
       milestones: parsed,
     };
@@ -114,13 +120,13 @@ export default function MockDealForm({
 
         <div>
           <label style={{ ...labelStyle, fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}>
-            Seller wallet (counterparty)
+            Seller wallet (counterparty) <span style={{ color: "var(--subtle)" }}>— optional, invite later</span>
           </label>
           <input
             style={{ ...inputStyle, fontFamily: "ui-monospace, monospace", fontSize: 12 }}
             value={seller}
             onChange={(e) => setSeller(e.target.value)}
-            placeholder="Seller wallet address"
+            placeholder="Leave blank to invite via link, or paste a wallet"
           />
           <button
             onClick={() => setSeller(MOCK_IDENTITIES.seller.toBase58())}
