@@ -154,11 +154,15 @@ function HomeContent() {
     if (!publicKey) return;
 
     const dealTitle = params.title ?? params.dealId;
+    // Normalize an empty/whitespace counterparty to null so the slot is genuinely
+    // empty — the deal won't appear on the counterparty's board until they accept
+    // the invite (matches the real invite flow).
+    const sellerWallet = params.sellerWallet?.trim() ? params.sellerWallet.trim() : null;
 
     const draftDeal = {
       deal_id: params.dealId,
       buyer_wallet: publicKey.toBase58(),
-      seller_wallet: params.sellerWallet ?? "",
+      seller_wallet: sellerWallet ?? "",
       title: dealTitle,
       description: params.milestones.map((m) => m.description).join(" | "),
       total_amount_usdc: params.totalAmount,
@@ -180,7 +184,7 @@ function HomeContent() {
       wallet: publicKey.toBase58(),
       body: {
         deal_id: params.dealId,
-        seller_wallet: params.sellerWallet ?? null,
+        seller_wallet: sellerWallet,
         title: dealTitle,
         description: params.milestones.map((m) => m.description).join(" | "),
         total_amount_usdc: params.totalAmount,
