@@ -175,7 +175,11 @@ export default function ActiveDealPage() {
         i === milestoneIndex ? { ...m, status: "In Review" } : m
       );
       await patchMilestones(updated);
-      await postMessage(`📎 Proof submitted for Milestone ${milestoneIndex + 1}: **${milestones[milestoneIndex].description}**. Awaiting buyer review.`);
+      // Release stays buyer-only, so the buyer is always the reviewer. When the
+      // buyer uploads their own proof, "awaiting your review" reads oddly — keep
+      // it generic so either party can submit.
+      const tail = role === "buyer" ? "Awaiting your review & release." : "Awaiting buyer review.";
+      await postMessage(`📎 Proof submitted for Milestone ${milestoneIndex + 1}: **${milestones[milestoneIndex].description}**. ${tail}`);
       await refreshAll();
     } finally {
       setUploading(null);
@@ -550,8 +554,8 @@ export default function ActiveDealPage() {
                         </div>
                       )}
 
-                      {/* Seller: upload proof */}
-                      {role === "seller" && (isPending || isInReview) && i === currentMilestoneIndex && (
+                      {/* Either party can upload proof — release stays buyer-only */}
+                      {role !== "observer" && (isPending || isInReview) && i === currentMilestoneIndex && (
                         <div style={{ marginTop: 10 }}>
                           <input
                             type="file"
@@ -649,7 +653,9 @@ export default function ActiveDealPage() {
                 {messages.length === 0 && (
                   <div style={{ textAlign: "center", paddingTop: 24 }}>
                     <p style={{ fontSize: 12, color: "var(--muted)" }}>
-                      {role === "seller" ? "Upload proof for the current milestone to get started." : "Waiting for the seller to submit proof."}
+                      {role === "observer"
+                        ? "No activity yet."
+                        : "Upload proof for the current milestone to get started — either party can submit."}
                     </p>
                   </div>
                 )}
