@@ -111,10 +111,14 @@ const NEW_DEAL_SUGGESTIONS = [
 ];
 
 export default function ChatInterface({
+  creatorRole = "buyer",
   onDealCreated,
   onPartialDeal,
   onFirstMessage,
 }: {
+  // The side the creator chose in the pre-composer step. In offline mode the
+  // MockDealForm uses it to label the counterparty field and tag the deal.
+  creatorRole?: "buyer" | "seller";
   onDealCreated: (params: DealParams) => Promise<void>;
   onPartialDeal?: (deal: PartialDeal | null) => void;
   onFirstMessage?: () => void;
@@ -263,7 +267,7 @@ export default function ChatInterface({
   if (MOCK_DATA) {
     return (
       <div className="flex flex-col h-full w-full overflow-y-auto">
-        <MockDealForm onDealCreated={onDealCreated} onFirstMessage={onFirstMessage} />
+        <MockDealForm creatorRole={creatorRole} onDealCreated={onDealCreated} onFirstMessage={onFirstMessage} />
       </div>
     );
   }

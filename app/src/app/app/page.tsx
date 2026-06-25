@@ -101,9 +101,14 @@ function HomeContent() {
   const [livePartial, setLivePartial] = useState<PartialDeal | null>(null);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [liveDeal, setLiveDeal] = useState<DealParams | null>(null);
-  // Which side the creator takes for the deal being drafted. Set via the
-  // LiveDealSheet toggle or by the agent (creator_role in the parsed deal).
+  // Which side the creator takes for the deal being drafted. Chosen in the
+  // pre-composer role step (below) before the chat/form opens; the agent can
+  // also override it via creator_role in the parsed deal.
   const [creatorRole, setCreatorRole] = useState<"buyer" | "seller">("buyer");
+  // Gates the composer: until the creator picks a side, the composer shows the
+  // buyer/seller choice screen instead of the chat. Cleared on every open so
+  // each new deal starts at the choice.
+  const [roleChosen, setRoleChosen] = useState(false);
 
   const { publicKey } = useWallet();
   const { profile, loaded: profileLoaded } = useProfileStore(
@@ -223,6 +228,7 @@ function HomeContent() {
     setLivePartial(null);
     setLiveDeal(null);
     setCreatorRole("buyer");
+    setRoleChosen(false); // start at the buyer/seller choice screen
     setComposerOpen(true);
   }
 
@@ -233,6 +239,14 @@ function HomeContent() {
     setLivePartial(null);
     setLiveDeal(null);
     setCreatorRole("buyer");
+    setRoleChosen(false);
+  }
+
+  // Lock in the creator's side and reveal the composer. Called from the
+  // pre-composer role-choice screen.
+  function chooseRole(role: "buyer" | "seller") {
+    setCreatorRole(role);
+    setRoleChosen(true);
   }
 
   function toggleComposer() {
@@ -243,10 +257,15 @@ function HomeContent() {
   // The inline New Deal composer: the existing chat experience, hosted in the
   // board's collapse panel instead of a separate page. Keyed by composeSession
   // so each open mounts a fresh ChatInterface (no stale messages on reopen).
-  const composer = (
+  const composer = !roleChosen ? (
+    // Step 1: pick a side BEFORE drafting. Locks creatorRole, then the chat/form
+    // opens with the counterparty fields labelled for the opposite slot.
+    <RoleChoiceStep key={composeSession} onChoose={chooseRole} />
+  ) : (
     <div key={composeSession} style={{ display: "grid", gridTemplateColumns: hasInteracted ? "1fr 360px" : "1fr", height: "100%", overflow: "hidden", transition: "grid-template-columns 0.35s ease" }}>
       <div style={{ overflow: "hidden", borderRight: hasInteracted ? "1px solid var(--card-border-subtle)" : "none", transition: "border-color 0.35s ease" }}>
         <ChatInterface
+          creatorRole={creatorRole}
           onDealCreated={handleDealDrafted}
           onPartialDeal={setLivePartial}
           onFirstMessage={() => setHasInteracted(true)}
@@ -257,7 +276,6 @@ function HomeContent() {
           partial={livePartial}
           deal={liveDeal}
           creatorRole={creatorRole}
-          onCreatorRoleChange={setCreatorRole}
           onInvite={handleInviteCounterparty}
         />
       )}
@@ -1169,18 +1187,88 @@ function StatusPill({ tone, children }: { tone: string; children: React.ReactNod
   );
 }
 
+/* ── Role choice (pre-composer step) ── */
+// Shown before the chat/form opens: the creator decides whether they're the
+// buyer (pays/funds) or the seller (provides). The choice locks creatorRole so
+// every downstream slot (mirror, invite, board) is positioned correctly.
+function RoleChoiceStep({ onChoose }: { onChoose: (role: "buyer" | "seller") => void }) {
+  const options = [
+    {
+      role: "buyer" as const,
+      label: "I'm the buyer",
+      sub: "I pay and fund the escrow",
+      detail: "You release each milestone once the work checks out.",
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
+          <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
+          <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
+        </svg>
+      ),
+    },
+    {
+      role: "seller" as const,
+      label: "I'm the seller",
+      sub: "I provide and get paid",
+      detail: "You submit proof for each milestone; the buyer funds and releases.",
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 7h-9" />
+          <path d="M14 17H5" />
+          <circle cx="17" cy="17" r="3" />
+          <circle cx="7" cy="7" r="3" />
+        </svg>
+      ),
+    },
+  ];
+
+  return (
+    <div style={{ height: "100%", overflowY: "auto", display: "flex", alignItems: "center", justifyContent: "center", padding: "32px 20px" }}>
+      <div style={{ width: "100%", maxWidth: 560 }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <h2 style={{ fontSize: 24, fontWeight: 600, letterSpacing: "-0.02em", color: "var(--primary)", margin: "0 0 6px" }}>
+            Which side are you on?
+          </h2>
+          <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>
+            Pick your role for this deal. The counterparty takes the other side.
+          </p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          {options.map((opt) => (
+            <button
+              key={opt.role}
+              onClick={() => onChoose(opt.role)}
+              style={{
+                display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 10,
+                textAlign: "left", padding: "20px 18px", borderRadius: 12, cursor: "pointer",
+                background: "var(--surface)", border: "1px solid var(--card-border)",
+                color: "var(--primary)", transition: "border-color 150ms, background 150ms",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--surface-hover)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--card-border)"; e.currentTarget.style.background = "var(--surface)"; }}
+            >
+              <span style={{ color: "var(--accent)" }}>{opt.icon}</span>
+              <span style={{ fontSize: 15, fontWeight: 590 }}>{opt.label}</span>
+              <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 510 }}>{opt.sub}</span>
+              <span style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.4 }}>{opt.detail}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Live Deal Sheet (Bold variant) ── */
 function LiveDealSheet({
   partial,
   deal,
   creatorRole,
-  onCreatorRoleChange,
   onInvite,
 }: {
   partial: PartialDeal | null;
   deal: DealParams | null;
   creatorRole: "buyer" | "seller";
-  onCreatorRoleChange: (role: "buyer" | "seller") => void;
   onInvite: (params: DealParams) => void;
 }) {
   const CONTRACT_TYPE_LABELS: Record<string, string> = {
@@ -1298,35 +1386,13 @@ function LiveDealSheet({
 
       {/* Footer */}
       <div style={{ padding: "12px 20px 20px", borderTop: "1px solid var(--card-border-subtle)", display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
-        {/* Your side — buyer pays/funds, seller provides. Decides which slot you
-            take; the counterparty fills the other when they join. */}
-        <div>
-          <p style={{ margin: "0 0 6px", fontSize: 11, color: "var(--subtle)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Your side</p>
-          <div style={{ display: "flex", borderRadius: 7, background: "var(--surface)", border: "1px solid var(--card-border)", padding: 2 }}>
-            {([
-              { role: "buyer" as const, label: "I'm buying", sub: "I pay" },
-              { role: "seller" as const, label: "I'm providing", sub: "I get paid" },
-            ]).map((opt) => {
-              const active = creatorRole === opt.role;
-              return (
-                <button
-                  key={opt.role}
-                  onClick={() => onCreatorRoleChange(opt.role)}
-                  style={{
-                    flex: 1, height: 34, borderRadius: 5, border: "none", cursor: "pointer",
-                    background: active ? "var(--surface-hover)" : "transparent",
-                    color: active ? "var(--primary)" : "var(--muted)",
-                    fontSize: 12, fontWeight: 510, display: "flex", flexDirection: "column",
-                    alignItems: "center", justifyContent: "center", lineHeight: 1.15,
-                    transition: "all 150ms",
-                  }}
-                >
-                  {opt.label}
-                  <span style={{ fontSize: 9, color: "var(--subtle)" }}>{opt.sub}</span>
-                </button>
-              );
-            })}
-          </div>
+        {/* Your side is locked in the pre-composer choice step — shown here as a
+            read-only reminder. Buyer pays/funds; seller provides. */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px", borderRadius: 7, background: "var(--surface)", border: "1px solid var(--card-border)" }}>
+          <span style={{ fontSize: 11, color: "var(--subtle)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Your side</span>
+          <span style={{ fontSize: 12, fontWeight: 590, color: "var(--primary)" }}>
+            {creatorRole === "seller" ? "Seller · you get paid" : "Buyer · you pay"}
+          </span>
         </div>
         <button
           style={{ height: 36, borderRadius: 7, fontSize: 12, width: "100%", cursor: "pointer", color: "var(--muted)", background: "transparent", border: "1px solid var(--card-border)", display: "flex", alignItems: "center", justifyContent: "center" }}
