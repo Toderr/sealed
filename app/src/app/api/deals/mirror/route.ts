@@ -57,6 +57,13 @@ export const POST = withRoute(async (request) => {
     throw new HttpError(403, "Forbidden");
   }
 
+  // The two parties must be distinct. A caller can collapse the deal by feeding
+  // their own wallet into both slots (e.g. creator_role:"seller" + buyer_wallet:self);
+  // a single-wallet deal has no counterparty and breaks downstream join/notify logic.
+  if (buyer_wallet && resolvedSeller && buyer_wallet === resolvedSeller) {
+    throw new HttpError(400, "Buyer and seller must be different wallets");
+  }
+
   // If the deal already exists, the caller must be an existing party (buyer OR
   // seller) to mutate it — prevents a third party from overwriting the row.
   const { data: existing } = await supabase
