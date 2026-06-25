@@ -202,6 +202,10 @@ async function handle(
         b.creator_role === "seller"
           ? (wallet ?? existing?.seller_wallet ?? null)
           : (b.seller_wallet ?? existing?.seller_wallet ?? null);
+      // The two parties must be distinct — mirrors the real mirror route.
+      if (buyer_wallet && seller_wallet && buyer_wallet === seller_wallet) {
+        return json({ error: "Buyer and seller must be different wallets" }, 400);
+      }
       const deal: MirrorDeal = {
         deal_id: b.deal_id,
         buyer_wallet: buyer_wallet ?? "",
@@ -244,6 +248,10 @@ async function handle(
         ...(b.milestones !== undefined ? { milestones: b.milestones } : {}),
         updated_at: nowIso(),
       };
+      // The two parties must stay distinct after the patch — mirrors the real route.
+      if (next.buyer_wallet && next.seller_wallet && next.buyer_wallet === next.seller_wallet) {
+        return json({ error: "Buyer and seller must be different wallets" }, 400);
+      }
       if (isCompleted(next)) next.status = "completed";
       mockData.putDeal(next);
       return json({ deal: next });

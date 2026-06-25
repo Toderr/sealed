@@ -152,6 +152,18 @@ export const PATCH = withRoute<{ params: Promise<{ dealId: string }> }>(
   if (typeof body.seller_wallet === "string") patch.seller_wallet = body.seller_wallet;
   if (typeof body.buyer_wallet === "string") patch.buyer_wallet = body.buyer_wallet;
 
+  // The two parties must stay distinct. Compute the resulting slots (patched
+  // value wins, else the existing one) and reject a collapse — e.g. a joiner
+  // filling both empty slots with their own wallet, or setting one slot to the
+  // wallet already in the other. A single-wallet deal breaks join/notify logic.
+  const resultingBuyer =
+    typeof body.buyer_wallet === "string" ? body.buyer_wallet : existing.buyer_wallet;
+  const resultingSeller =
+    typeof body.seller_wallet === "string" ? body.seller_wallet : existing.seller_wallet;
+  if (resultingBuyer && resultingSeller && resultingBuyer === resultingSeller) {
+    throw new HttpError(400, "Buyer and seller must be different wallets");
+  }
+
   if (body.status !== undefined) {
     const nextStatus = normalizeDealStatus(body.status);
     if (!nextStatus) {
