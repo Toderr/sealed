@@ -25,6 +25,7 @@ const DEAL_STATUSES = new Set([
 
 const PATCH_FIELDS = new Set([
   "seller_wallet",
+  "buyer_wallet",
   "status",
   "milestones",
   "title",
@@ -113,40 +114,43 @@ export const PATCH = withRoute<{ params: Promise<{ dealId: string }> }>(
     throw new HttpError(400, "Unsupported deal update field");
   }
 
-  // Block changing seller_wallet to a DIFFERENT wallet, but allow idempotent re-set
-  // (same wallet) so onAgree can send { seller_wallet, status } without a 409.
-  if (
-    body.seller_wallet &&
-    (typeof body.seller_wallet !== "string" || body.seller_wallet.length < 32)
-  ) {
-    throw new HttpError(400, "Invalid seller wallet");
+  // Validate + block reassigning either party slot to a DIFFERENT wallet, while
+  // allowing idempotent re-set (same wallet) so onAgree can send the slot again.
+  for (const field of ["seller_wallet", "buyer_wallet"] as const) {
+    const val = body[field];
+    if (val && (typeof val !== "string" || val.length < 32)) {
+      throw new HttpError(400, field === "seller_wallet" ? "Invalid seller wallet" : "Invalid buyer wallet");
+    }
+    const current = existing[field as "seller_wallet" | "buyer_wallet"];
+    if (val && current && val !== current) {
+      throw new HttpError(409, "Counterparty already assigned");
+    }
   }
 
-  if (body.seller_wallet && existing.seller_wallet && body.seller_wallet !== existing.seller_wallet) {
-    throw new HttpError(409, "Counterparty already assigned");
-  }
-
-  // Allow a new wallet to join as seller when the slot is empty and they're
-  // setting their own wallet. They may also set status in the same request
-  // (e.g. seller_wallet + status: "seller-agreed" when Supabase sync lagged).
-  const sellerJoinAllowedFields = new Set([
+  // Allow a new wallet to join into an EMPTY party slot (buyer or seller) when
+  // they're setting their own wallet. They may also set status/milestones in the
+  // same request (e.g. when Supabase sync lagged). Generalized so a seller-as-
+  // inviter deal lets the joiner fill the empty buyer slot too.
+  const joinAllowedFields = new Set([
     "seller_wallet",
+    "buyer_wallet",
     "status",
     "milestones",
     "total_amount_usdc",
   ]);
-  const isJoiningAsSeller =
-    !existing.seller_wallet &&
-    body.seller_wallet === wallet &&
-    Object.keys(body).every((k) => sellerJoinAllowedFields.has(k));
+  const isJoiningParty =
+    ((!existing.seller_wallet && body.seller_wallet === wallet) ||
+      (!existing.buyer_wallet && body.buyer_wallet === wallet)) &&
+    Object.keys(body).every((k) => joinAllowedFields.has(k));
 
-  if (!isJoiningAsSeller && existing.buyer_wallet !== wallet && existing.seller_wallet !== wallet) {
+  if (!isJoiningParty && existing.buyer_wallet !== wallet && existing.seller_wallet !== wallet) {
     throw new HttpError(403, "Forbidden");
   }
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
   if (typeof body.seller_wallet === "string") patch.seller_wallet = body.seller_wallet;
+  if (typeof body.buyer_wallet === "string") patch.buyer_wallet = body.buyer_wallet;
 
   if (body.status !== undefined) {
     const nextStatus = normalizeDealStatus(body.status);

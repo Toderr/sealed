@@ -237,6 +237,17 @@ export default function NegotiateRoom() {
             return { ...prev, seller_wallet: joined };
           });
         }
+        // Neutral join signal — fills whichever party slot is still empty (the
+        // joiner's). Works whether the inviter was the buyer or the seller.
+        const cpJoined = localStorage.getItem(`sealed:counterparty-joined:${dealId}`);
+        if (cpJoined) {
+          applyServerPatch((prev) => {
+            if (!prev) return prev;
+            if (!prev.seller_wallet && prev.buyer_wallet !== cpJoined) return { ...prev, seller_wallet: cpJoined };
+            if (!prev.buyer_wallet && prev.seller_wallet !== cpJoined) return { ...prev, buyer_wallet: cpJoined };
+            return prev;
+          });
+        }
         const agreed = localStorage.getItem(`sealed:seller-agreed:${dealId}`);
         if (agreed) {
           applyServerPatch((prev) => {
@@ -290,6 +301,15 @@ export default function NegotiateRoom() {
         applyServerPatch((prev) => {
           if (!prev || (prev.seller_wallet ?? "") === e.newValue) return prev;
           return { ...prev, seller_wallet: e.newValue! };
+        });
+      }
+      if (e.key === `sealed:counterparty-joined:${dealId}` && e.newValue) {
+        const v = e.newValue;
+        applyServerPatch((prev) => {
+          if (!prev) return prev;
+          if (!prev.seller_wallet && prev.buyer_wallet !== v) return { ...prev, seller_wallet: v };
+          if (!prev.buyer_wallet && prev.seller_wallet !== v) return { ...prev, buyer_wallet: v };
+          return prev;
         });
       }
       if (e.key === `sealed:seller-agreed:${dealId}` && e.newValue) {
@@ -370,6 +390,12 @@ export default function NegotiateRoom() {
     ? "seller"
     : "observer";
 
+  // I'm a party (inviter) and the counterparty slot is still empty — show the
+  // invite/share UI. Works whether I created as the buyer or the seller.
+  const awaitingCounterparty =
+    (role === "buyer" && !deal?.seller_wallet) ||
+    (role === "seller" && !deal?.buyer_wallet);
+
   const counterpartyWallet =
     role === "buyer" ? deal?.seller_wallet : deal?.buyer_wallet;
 
@@ -449,6 +475,8 @@ export default function NegotiateRoom() {
       dealTitle: deal.title,
       inviterName: profile.name,
       inviterWallet: wallet ?? "",
+      // The inviter's side, so the joiner takes the opposite slot.
+      inviterRole: (deal.seller_wallet === wallet ? "seller" : "buyer") as "buyer" | "seller",
       amount: deal.total_amount_usdc,
       currency: "USDC",
       milestoneCount: (deal.milestones ?? []).length,
@@ -929,7 +957,7 @@ export default function NegotiateRoom() {
             )}
 
             {/* Invite counterparty (buyer only, no seller yet) */}
-            {role === "buyer" && !deal.seller_wallet && deal.status === "draft" && inviteLink && (
+            {awaitingCounterparty && deal.status === "draft" && inviteLink && (
               <div className="surface-card rounded-xl p-5 space-y-4">
                 <div>
                   <p className="text-[13px] text-primary" style={labelStyle}>Invite counterparty</p>
@@ -1122,8 +1150,8 @@ export default function NegotiateRoom() {
                     </div>
                   )}
 
-                  {/* ── BUYER — waiting for seller to join ── */}
-                  {role === "buyer" && !deal.seller_wallet && (
+                  {/* ── INVITER — waiting for the counterparty to join ── */}
+                  {awaitingCounterparty && (
                     <div className="p-5 space-y-2">
                       <p className="text-[13px] text-primary" style={labelStyle}>Waiting for counterparty</p>
                       <p className="text-[12px] text-muted">

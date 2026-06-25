@@ -11,7 +11,6 @@ import { useProfileStore } from "@/lib/profile-store";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import { type DealParams, type PublicProfile, type SupabaseDeal, formatUsdc, usdcToLamports } from "@/lib/types";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
-import { useIsSellerMode } from "@/lib/mock-wallet";
 import { useAppConnection as useConnection } from "@/lib/use-app-connection";
 import { PublicKey } from "@solana/web3.js";
 import { buildEnsureAtaIx, buildReleaseMilestoneIx, getUsdcMint, sendTx } from "@/lib/escrow-client";
@@ -102,6 +101,14 @@ function HomeContent() {
   const [livePartial, setLivePartial] = useState<PartialDeal | null>(null);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [liveDeal, setLiveDeal] = useState<DealParams | null>(null);
+  // Which side the creator takes for the deal being drafted. Chosen in the
+  // pre-composer role step (below) before the chat/form opens; the agent can
+  // also override it via creator_role in the parsed deal.
+  const [creatorRole, setCreatorRole] = useState<"buyer" | "seller">("buyer");
+  // Gates the composer: until the creator picks a side, the composer shows the
+  // buyer/seller choice screen instead of the chat. Cleared on every open so
+  // each new deal starts at the choice.
+  const [roleChosen, setRoleChosen] = useState(false);
 
   const { publicKey } = useWallet();
   const { profile, loaded: profileLoaded } = useProfileStore(
@@ -110,17 +117,13 @@ function HomeContent() {
   const toast = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  // Only buyers create deals — hide New Deal when acting as the seller side.
-  const canCreateDeal = !useIsSellerMode();
 
   // Deep-link: /app?compose=1 (or the legacy ?view=chat) opens the New Deal
   // composer, so links from other pages land users straight in it. Derived as
   // the initial state (not a post-mount effect) to avoid a cascading render;
   // the param is stripped from the URL below so refresh/back won't re-open it.
-  // Sellers can't create deals, so the intent is ignored for them.
   const composeIntent =
-    canCreateDeal &&
-    (searchParams.get("compose") === "1" || searchParams.get("view") === "chat");
+    searchParams.get("compose") === "1" || searchParams.get("view") === "chat";
   const [composerOpen, setComposerOpen] = useState(composeIntent);
 
   // Redirect to onboarding if wallet connected but profile not set up
@@ -147,6 +150,8 @@ function HomeContent() {
       return;
     }
     setLiveDeal(params);
+    // The agent can set the creator's side in the parsed deal ("I'm the seller").
+    if (params.creatorRole) setCreatorRole(params.creatorRole);
   }
 
   // Save draft and navigate to negotiation room (called from LiveDealSheet button)
@@ -154,23 +159,38 @@ function HomeContent() {
     if (!publicKey) return;
 
     const dealTitle = params.title ?? params.dealId;
-    // Normalize an empty/whitespace counterparty to null so the slot is genuinely
-    // empty — the deal won't appear on the counterparty's board until they accept
-    // the invite (matches the real invite flow).
-    const sellerWallet = params.sellerWallet?.trim() ? params.sellerWallet.trim() : null;
+    const me = publicKey.toBase58();
+    // The creator takes the slot matching their chosen role; the counterparty
+    // (entered wallet, if any) takes the opposite slot. The lifted toggle state is
+    // the source of truth (falls back to the parsed deal, then buyer). The entered
+    // counterparty is normalized to null when blank OR equal to the creator's own
+    // wallet — so the slot stays genuinely empty (the deal won't appear on the
+    // counterparty's board until they accept) and the two slots never collapse.
+    const role = creatorRole ?? params.creatorRole ?? "buyer";
+    // params.sellerWallet carries the COUNTERPARTY's wallet (an explicitly-entered
+    // address, if any) — the seller when the creator is the buyer, the buyer when
+    // the creator is the seller. Normalize to null when blank OR equal to the
+    // creator's own wallet, so the two slots never collapse to one.
+    const entered = params.sellerWallet?.trim() || null;
+    const counterparty = entered && entered !== me ? entered : null;
+    const buyer_wallet = role === "seller" ? counterparty : me;
+    const seller_wallet = role === "seller" ? me : counterparty;
+
+    const milestones = params.milestones.map((m) => ({
+      description: m.description,
+      amount: m.amount,
+      status: "Pending",
+    }));
+    const description = params.milestones.map((m) => m.description).join(" | ");
 
     const draftDeal = {
       deal_id: params.dealId,
-      buyer_wallet: publicKey.toBase58(),
-      seller_wallet: sellerWallet ?? "",
+      buyer_wallet: buyer_wallet ?? "",
+      seller_wallet: seller_wallet ?? "",
       title: dealTitle,
-      description: params.milestones.map((m) => m.description).join(" | "),
+      description,
       total_amount_usdc: params.totalAmount,
-      milestones: params.milestones.map((m) => ({
-        description: m.description,
-        amount: m.amount,
-        status: "Pending",
-      })),
+      milestones,
       status: "draft",
     };
     try {
@@ -181,18 +201,16 @@ function HomeContent() {
 
     apiFetchSafe("/api/deals/mirror", {
       method: "POST",
-      wallet: publicKey.toBase58(),
+      wallet: me, // creator owns the row; mirror binds it to whichever slot they hold
       body: {
         deal_id: params.dealId,
-        seller_wallet: sellerWallet,
+        creator_role: role,
+        buyer_wallet,
+        seller_wallet,
         title: dealTitle,
-        description: params.milestones.map((m) => m.description).join(" | "),
+        description,
         total_amount_usdc: params.totalAmount,
-        milestones: params.milestones.map((m) => ({
-          description: m.description,
-          amount: m.amount,
-          status: "Pending",
-        })),
+        milestones,
         status: "draft",
       },
     }, undefined);
@@ -205,11 +223,12 @@ function HomeContent() {
   const [composeSession, setComposeSession] = useState(0);
 
   function openComposer() {
-    if (!canCreateDeal) return; // sellers don't create deals
     setComposeSession((n) => n + 1); // fresh ChatInterface on open
     setHasInteracted(false);
     setLivePartial(null);
     setLiveDeal(null);
+    setCreatorRole("buyer");
+    setRoleChosen(false); // start at the buyer/seller choice screen
     setComposerOpen(true);
   }
 
@@ -219,6 +238,15 @@ function HomeContent() {
     setHasInteracted(false);
     setLivePartial(null);
     setLiveDeal(null);
+    setCreatorRole("buyer");
+    setRoleChosen(false);
+  }
+
+  // Lock in the creator's side and reveal the composer. Called from the
+  // pre-composer role-choice screen.
+  function chooseRole(role: "buyer" | "seller") {
+    setCreatorRole(role);
+    setRoleChosen(true);
   }
 
   function toggleComposer() {
@@ -229,10 +257,15 @@ function HomeContent() {
   // The inline New Deal composer: the existing chat experience, hosted in the
   // board's collapse panel instead of a separate page. Keyed by composeSession
   // so each open mounts a fresh ChatInterface (no stale messages on reopen).
-  const composer = (
+  const composer = !roleChosen ? (
+    // Step 1: pick a side BEFORE drafting. Locks creatorRole, then the chat/form
+    // opens with the counterparty fields labelled for the opposite slot.
+    <RoleChoiceStep key={composeSession} onChoose={chooseRole} />
+  ) : (
     <div key={composeSession} style={{ display: "grid", gridTemplateColumns: hasInteracted ? "1fr 360px" : "1fr", height: "100%", overflow: "hidden", transition: "grid-template-columns 0.35s ease" }}>
       <div style={{ overflow: "hidden", borderRight: hasInteracted ? "1px solid var(--card-border-subtle)" : "none", transition: "border-color 0.35s ease" }}>
         <ChatInterface
+          creatorRole={creatorRole}
           onDealCreated={handleDealDrafted}
           onPartialDeal={setLivePartial}
           onFirstMessage={() => setHasInteracted(true)}
@@ -242,6 +275,7 @@ function HomeContent() {
         <LiveDealSheet
           partial={livePartial}
           deal={liveDeal}
+          creatorRole={creatorRole}
           onInvite={handleInviteCounterparty}
         />
       )}
@@ -257,7 +291,6 @@ function HomeContent() {
 
       <main className="flex-1 overflow-hidden" style={{ position: "relative", zIndex: 1 }}>
         <DealsBoldBoard
-          canCreateDeal={canCreateDeal}
           onNewDeal={toggleComposer}
           composerOpen={composerOpen}
           onCloseComposer={closeComposer}
@@ -401,13 +434,11 @@ function AppHeader({
 
 /* ── Deals Bold Board ── */
 function DealsBoldBoard({
-  canCreateDeal,
   onNewDeal,
   composerOpen,
   onCloseComposer,
   composer,
 }: {
-  canCreateDeal: boolean;
   onNewDeal: () => void;
   composerOpen: boolean;
   onCloseComposer: () => void;
@@ -521,7 +552,7 @@ function DealsBoldBoard({
                 style={{ background: "transparent", border: 0, outline: "none", fontSize: 12, color: "var(--primary)", width: 180 }}
               />
             </div>
-            {canCreateDeal && <NewDealButton open={composerOpen} onClick={onNewDeal} />}
+            <NewDealButton open={composerOpen} onClick={onNewDeal} />
           </div>
         </div>
       </div>
@@ -1156,14 +1187,88 @@ function StatusPill({ tone, children }: { tone: string; children: React.ReactNod
   );
 }
 
+/* ── Role choice (pre-composer step) ── */
+// Shown before the chat/form opens: the creator decides whether they're the
+// buyer (pays/funds) or the seller (provides). The choice locks creatorRole so
+// every downstream slot (mirror, invite, board) is positioned correctly.
+function RoleChoiceStep({ onChoose }: { onChoose: (role: "buyer" | "seller") => void }) {
+  const options = [
+    {
+      role: "buyer" as const,
+      label: "I'm the buyer",
+      sub: "I pay and fund the escrow",
+      detail: "You release each milestone once the work checks out.",
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
+          <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
+          <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
+        </svg>
+      ),
+    },
+    {
+      role: "seller" as const,
+      label: "I'm the seller",
+      sub: "I provide and get paid",
+      detail: "You submit proof for each milestone; the buyer funds and releases.",
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 7h-9" />
+          <path d="M14 17H5" />
+          <circle cx="17" cy="17" r="3" />
+          <circle cx="7" cy="7" r="3" />
+        </svg>
+      ),
+    },
+  ];
+
+  return (
+    <div style={{ height: "100%", overflowY: "auto", display: "flex", alignItems: "center", justifyContent: "center", padding: "32px 20px" }}>
+      <div style={{ width: "100%", maxWidth: 560 }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <h2 style={{ fontSize: 24, fontWeight: 600, letterSpacing: "-0.02em", color: "var(--primary)", margin: "0 0 6px" }}>
+            Which side are you on?
+          </h2>
+          <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>
+            Pick your role for this deal. The counterparty takes the other side.
+          </p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          {options.map((opt) => (
+            <button
+              key={opt.role}
+              onClick={() => onChoose(opt.role)}
+              style={{
+                display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 10,
+                textAlign: "left", padding: "20px 18px", borderRadius: 12, cursor: "pointer",
+                background: "var(--surface)", border: "1px solid var(--card-border)",
+                color: "var(--primary)", transition: "border-color 150ms, background 150ms",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--surface-hover)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--card-border)"; e.currentTarget.style.background = "var(--surface)"; }}
+            >
+              <span style={{ color: "var(--accent)" }}>{opt.icon}</span>
+              <span style={{ fontSize: 15, fontWeight: 590 }}>{opt.label}</span>
+              <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 510 }}>{opt.sub}</span>
+              <span style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.4 }}>{opt.detail}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Live Deal Sheet (Bold variant) ── */
 function LiveDealSheet({
   partial,
   deal,
+  creatorRole,
   onInvite,
 }: {
   partial: PartialDeal | null;
   deal: DealParams | null;
+  creatorRole: "buyer" | "seller";
   onInvite: (params: DealParams) => void;
 }) {
   const CONTRACT_TYPE_LABELS: Record<string, string> = {
@@ -1281,6 +1386,14 @@ function LiveDealSheet({
 
       {/* Footer */}
       <div style={{ padding: "12px 20px 20px", borderTop: "1px solid var(--card-border-subtle)", display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
+        {/* Your side is locked in the pre-composer choice step — shown here as a
+            read-only reminder. Buyer pays/funds; seller provides. */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px", borderRadius: 7, background: "var(--surface)", border: "1px solid var(--card-border)" }}>
+          <span style={{ fontSize: 11, color: "var(--subtle)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Your side</span>
+          <span style={{ fontSize: 12, fontWeight: 590, color: "var(--primary)" }}>
+            {creatorRole === "seller" ? "Seller · you get paid" : "Buyer · you pay"}
+          </span>
+        </div>
         <button
           style={{ height: 36, borderRadius: 7, fontSize: 12, width: "100%", cursor: "pointer", color: "var(--muted)", background: "transparent", border: "1px solid var(--card-border)", display: "flex", alignItems: "center", justifyContent: "center" }}
           onClick={() => {/* milestone editor — future */}}

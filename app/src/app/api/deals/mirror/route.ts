@@ -8,7 +8,9 @@ export const POST = withRoute(async (request) => {
   const body = await request.json();
   const {
     deal_id,
+    buyer_wallet: bodyBuyer,
     seller_wallet,
+    creator_role,
     title,
     description,
     total_amount_usdc,
@@ -17,7 +19,9 @@ export const POST = withRoute(async (request) => {
     status: bodyStatus,
   } = body as {
     deal_id?: string;
-    seller_wallet?: string;
+    buyer_wallet?: string | null;
+    seller_wallet?: string | null;
+    creator_role?: "buyer" | "seller";
     title?: string;
     description?: string;
     total_amount_usdc?: number;
@@ -35,14 +39,37 @@ export const POST = withRoute(async (request) => {
     throw new HttpError(400, "deal_id, title, total_amount_usdc, milestones required");
   }
 
-  // If deal already exists, verify the caller is the original buyer
+  // Resolve the two slots. The creator (`wallet`) is bound to the slot matching
+  // their chosen role; the other slot is the counterparty (may be null until they
+  // join). Back-compat: a legacy caller that sends no buyer_wallet/creator_role
+  // is treated as the buyer (today's behavior).
+  const buyer_wallet =
+    creator_role === "seller"
+      ? (bodyBuyer ?? null)
+      : (bodyBuyer ?? wallet);
+  const resolvedSeller =
+    creator_role === "seller"
+      ? wallet
+      : (seller_wallet ?? null);
+
+  // The caller must actually be one of the two parties they're creating.
+  if (wallet !== buyer_wallet && wallet !== resolvedSeller) {
+    throw new HttpError(403, "Forbidden");
+  }
+
+  // If the deal already exists, the caller must be an existing party (buyer OR
+  // seller) to mutate it — prevents a third party from overwriting the row.
   const { data: existing } = await supabase
     .from(table("deals"))
-    .select("buyer_wallet")
+    .select("buyer_wallet, seller_wallet")
     .eq("deal_id", deal_id)
     .maybeSingle();
 
-  if (existing && existing.buyer_wallet !== wallet) {
+  if (
+    existing &&
+    existing.buyer_wallet !== wallet &&
+    existing.seller_wallet !== wallet
+  ) {
     throw new HttpError(403, "Forbidden");
   }
 
@@ -51,8 +78,8 @@ export const POST = withRoute(async (request) => {
     .upsert(
       {
         deal_id,
-        buyer_wallet: wallet,
-        seller_wallet: seller_wallet ?? null,
+        buyer_wallet,
+        seller_wallet: resolvedSeller,
         title,
         description: description ?? null,
         total_amount_usdc,

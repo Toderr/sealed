@@ -104,6 +104,9 @@ export interface DealParams {
   sellerWallet: string; // may be "" until counterparty accepts invite
   totalAmount: number; // USDC human readable
   milestones: MilestoneInput[];
+  // Which side the deal CREATOR takes. "buyer" (pays/funds) is the default and
+  // today's behavior; "seller" (provides) makes the invitee the buyer/funder.
+  creatorRole?: "buyer" | "seller";
 }
 
 export interface ChatMessage {

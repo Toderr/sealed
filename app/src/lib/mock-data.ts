@@ -53,6 +53,19 @@ const K = {
   messages: "mock:data:messages",
   ratings: "mock:data:ratings",
   profiles: "mock:data:profiles",
+  deliverables: "mock:data:deliverables",
+};
+
+type Deliverable = {
+  id: string;
+  deal_id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  storage_key: string;
+  milestone_index: number;
+  uploaded_by: string | null;
+  created_at: string;
 };
 
 function read<T>(key: string, fallback: T): T {
@@ -126,6 +139,16 @@ export const mockData = {
     write(K.ratings, all);
     return rating;
   },
+  deliverablesFor(dealId: string): Deliverable[] {
+    return read<Deliverable[]>(K.deliverables, []).filter((d) => d.deal_id === dealId);
+  },
+  addDeliverable(d: Omit<Deliverable, "id" | "created_at">): Deliverable {
+    const all = read<Deliverable[]>(K.deliverables, []);
+    const deliverable: Deliverable = { ...d, id: uuid(), created_at: nowIso() };
+    all.push(deliverable);
+    write(K.deliverables, all);
+    return deliverable;
+  },
 };
 
 // ── Helpers mirroring the real route logic ────────────────────────────────────
@@ -163,13 +186,26 @@ async function handle(
       return json({ deals: mockData.dealsFor(wallet) });
     }
     if (method === "POST") {
-      const b = (body ?? {}) as Partial<MirrorDeal> & { tx_signature?: string };
+      const b = (body ?? {}) as Partial<MirrorDeal> & {
+        tx_signature?: string;
+        creator_role?: "buyer" | "seller";
+      };
       if (!b.deal_id || !b.title) return json({ error: "deal_id, title required" }, 400);
       const existing = mockData.getDeal(b.deal_id);
+      // Honor explicit slots from the body (role-aware creation); fall back to
+      // the caller as buyer for legacy callers. Mirrors the real mirror route.
+      const buyer_wallet =
+        b.creator_role === "seller"
+          ? (b.buyer_wallet ?? existing?.buyer_wallet ?? null)
+          : (b.buyer_wallet ?? existing?.buyer_wallet ?? wallet ?? "");
+      const seller_wallet =
+        b.creator_role === "seller"
+          ? (wallet ?? existing?.seller_wallet ?? null)
+          : (b.seller_wallet ?? existing?.seller_wallet ?? null);
       const deal: MirrorDeal = {
         deal_id: b.deal_id,
-        buyer_wallet: existing?.buyer_wallet ?? wallet ?? "",
-        seller_wallet: b.seller_wallet ?? existing?.seller_wallet ?? null,
+        buyer_wallet: buyer_wallet ?? "",
+        seller_wallet,
         title: b.title,
         description: b.description ?? null,
         total_amount_usdc: b.total_amount_usdc ?? existing?.total_amount_usdc ?? 0,
@@ -198,6 +234,7 @@ async function handle(
       const next: MirrorDeal = {
         ...deal,
         ...(b.seller_wallet !== undefined ? { seller_wallet: b.seller_wallet } : {}),
+        ...(b.buyer_wallet !== undefined ? { buyer_wallet: b.buyer_wallet } : {}),
         ...(b.status !== undefined ? { status: b.status } : {}),
         ...(b.title !== undefined ? { title: b.title } : {}),
         ...(b.description !== undefined ? { description: b.description } : {}),
@@ -277,19 +314,37 @@ async function handle(
     return json({ notifications: [] });
   }
 
-  // GET /api/deliverables — empty offline (uploads are mocked separately)
+  // GET /api/deliverables — proof uploaded by either party, persisted on upload
   if (path === "/api/deliverables" && method === "GET") {
-    return json({ deliverables: [] });
+    const dealId = params.get("deal_id");
+    if (!dealId) return json({ deliverables: [] });
+    return json({ deliverables: mockData.deliverablesFor(dealId) });
   }
 
-  // POST /api/upload — pretend the file was stored
+  // POST /api/upload — persist a proof deliverable so both parties can see it.
+  // Either side may upload (release stays buyer-only). The deal id, milestone,
+  // and uploader come from headers set by handleUploadProof.
   if (path === "/api/upload" && method === "POST") {
+    const dealId = headers.get("x-deal-id");
+    const milestoneIndex = Number(headers.get("x-milestone-index") ?? "0");
+    const storage_key = `offline/${uuid()}`;
+    if (dealId) {
+      mockData.addDeliverable({
+        deal_id: dealId,
+        filename: "offline-proof",
+        content_type: "application/octet-stream",
+        size_bytes: 0,
+        storage_key,
+        milestone_index: Number.isFinite(milestoneIndex) ? milestoneIndex : 0,
+        uploaded_by: wallet,
+      });
+    }
     return json({
       id: uuid(),
       original_name: "offline-proof",
       file_type: "application/octet-stream",
       size_bytes: 0,
-      storage_key: `offline/${uuid()}`,
+      storage_key,
     });
   }
   // GET /api/upload/signed — no real file; return a placeholder
