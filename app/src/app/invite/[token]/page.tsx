@@ -158,6 +158,16 @@ export default function InvitePage() {
       return;
     }
 
+    // Reject self-accept: the inviter and joiner must be different wallets.
+    // Otherwise both slots collapse to one wallet (buyer === seller), leaving a
+    // non-functional single-party deal. This is easy to trigger now that the
+    // inviter can be the seller, so guard it explicitly.
+    if (me === inviter) {
+      setAccepted(false);
+      alert("You can't accept your own invite. Send this link to the other party.");
+      return;
+    }
+
     // Assign slots by role. If the inviter is the buyer, I'm the seller; if the
     // inviter is the seller, I'm the buyer (and I'll be the one who funds).
     const buyerWallet = inviterRole === "buyer" ? inviter : me;
