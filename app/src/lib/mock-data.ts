@@ -223,6 +223,87 @@ async function handle(
     }
   }
 
+  // GET /api/admin/deals — offline admin dashboard (read-only). In mock mode
+  // there is no ADMIN_WALLETS gate (the real check is server-side), so every
+  // mock wallet sees everything — fine for local/demo use. Mirrors the real
+  // route's shape: status filter, q search, offset paging, milestone summary.
+  if (path === "/api/admin/deals" && method === "GET") {
+    const status = params.get("status")?.trim() || null;
+    const q = (params.get("q")?.trim() || "").toLowerCase();
+    const limit = Math.min(Number(params.get("limit")) || 50, 100);
+    const offset = Math.max(Number(params.get("offset")) || 0, 0);
+    let all = mockData
+      .allDeals()
+      .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
+    if (status) all = all.filter((d) => d.status === status);
+    if (q) {
+      all = all.filter((d) =>
+        [d.deal_id, d.title, d.buyer_wallet, d.seller_wallet ?? ""]
+          .some((s) => (s ?? "").toLowerCase().includes(q))
+      );
+    }
+    const count = all.length;
+    const page = all.slice(offset, offset + limit).map((d) => {
+      const ms = Array.isArray(d.milestones) ? d.milestones : [];
+      const done = ms.filter((m) => m?.status === "Released" || m?.status === "Completed").length;
+      return {
+        deal_id: d.deal_id,
+        buyer_wallet: d.buyer_wallet,
+        seller_wallet: d.seller_wallet,
+        title: d.title,
+        total_amount_usdc: d.total_amount_usdc,
+        status: d.status,
+        milestones_total: ms.length,
+        milestones_done: done,
+        created_at: d.created_at,
+        updated_at: d.updated_at,
+      };
+    });
+    return json({ deals: page, count, limit, offset });
+  }
+
+  // GET /api/admin/users — offline admin dashboard (read-only). Synthesizes the
+  // user list from the stored profiles, with reputation derived from each
+  // wallet's deals (mirrors how /api/users/:wallet/public is faked).
+  if (path === "/api/admin/users" && method === "GET") {
+    const kyc = params.get("kyc")?.trim() || null;
+    const q = (params.get("q")?.trim() || "").toLowerCase();
+    const limit = Math.min(Number(params.get("limit")) || 50, 100);
+    const offset = Math.max(Number(params.get("offset")) || 0, 0);
+    const profiles = read<Record<string, Record<string, unknown>>>(K.profiles, {});
+    let rows = Object.entries(profiles).map(([w, p]) => {
+      const deals = mockData.dealsFor(w);
+      return {
+        wallet: w,
+        handle: (p.handle as string) ?? "",
+        display_name: (p.display_name as string) ?? null,
+        email: (p.email as string) ?? null,
+        email_verified: Boolean(p.email_verified),
+        kyc_status: ((p.kyc_status as string) ?? "none") as
+          | "none"
+          | "pending"
+          | "approved"
+          | "rejected",
+        member_since: (p.member_since as string) ?? nowIso(),
+        reputation: {
+          deals_total: deals.length,
+          deals_successful: deals.filter(isCompleted).length,
+          avg_rating: 0,
+        },
+      };
+    });
+    if (kyc) rows = rows.filter((u) => u.kyc_status === kyc);
+    if (q) {
+      rows = rows.filter((u) =>
+        [u.wallet, u.handle, u.display_name ?? "", u.email ?? ""]
+          .some((s) => (s ?? "").toLowerCase().includes(q))
+      );
+    }
+    const count = rows.length;
+    const page = rows.slice(offset, offset + limit);
+    return json({ users: page, count, limit, offset });
+  }
+
   // GET/PATCH /api/deals/:dealId
   const dealMatch = path.match(/^\/api\/deals\/([^/]+)$/);
   if (dealMatch && dealMatch[1] !== "mirror") {
