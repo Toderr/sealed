@@ -1,12 +1,20 @@
 "use client";
 
-// Admin dashboard — Users tab. Read-only table of every user with their
-// reputation aggregate. Data comes from the admin-gated GET /api/admin/users;
-// access is enforced server-side.
+// Admin · Users list with a left filter rail (multi-KYC, email-verified) and
+// search over wallet/handle/name/email. Read-only; admin-gated server-side.
 
 import { useCallback, useEffect, useState } from "react";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { apiFetch, ApiError } from "@/lib/api-client";
+import {
+  PageWithRail,
+  RailSection,
+  CheckboxGroup,
+  SearchBox,
+  Pager,
+  shortWallet,
+  kycColor,
+} from "../_components";
 
 type AdminUser = {
   wallet: string;
@@ -19,24 +27,11 @@ type AdminUser = {
   reputation: { deals_total: number; deals_successful: number; avg_rating: number };
 };
 
-const KYC_OPTIONS = ["", "none", "pending", "approved", "rejected"];
-
-function shortWallet(w: string) {
-  return w.length > 12 ? `${w.slice(0, 4)}…${w.slice(-4)}` : w;
-}
-
-function kycColor(s: string) {
-  switch (s) {
-    case "approved":
-      return "text-green-400";
-    case "rejected":
-      return "text-red-400";
-    case "pending":
-      return "text-yellow-400";
-    default:
-      return "text-gray-500";
-  }
-}
+const KYC = ["none", "pending", "approved", "rejected"];
+const EMAIL = [
+  { value: "true", label: "Verified email" },
+  { value: "false", label: "Unverified / none" },
+];
 
 const PAGE = 50;
 
@@ -47,21 +42,25 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [count, setCount] = useState(0);
   const [offset, setOffset] = useState(0);
-  const [kyc, setKyc] = useState("");
-  const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [q, setQ] = useState("");
+  const [kyc, setKyc] = useState<string[]>([]);
+  const [email, setEmail] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     if (!wallet) return;
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ limit: String(PAGE), offset: String(offset) });
-      if (kyc) params.set("kyc", kyc);
-      if (q.trim()) params.set("q", q.trim());
+      const p = new URLSearchParams({ limit: String(PAGE), offset: String(offset) });
+      if (q.trim()) p.set("q", q.trim());
+      for (const k of kyc) p.append("kyc", k);
+      // email-verified is a single effective flag; apply only if exactly one is picked.
+      if (email.length === 1) p.set("emailVerified", email[0]);
       const json = await apiFetch<{ users?: AdminUser[]; count?: number }>(
-        `/api/admin/users?${params.toString()}`,
+        `/api/admin/users?${p.toString()}`,
         { wallet }
       );
       setUsers(json.users ?? []);
@@ -76,56 +75,64 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [wallet, offset, kyc, q]);
+  }, [wallet, offset, q, kyc, email]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  function onFilterChange(next: () => void) {
+  function toggle(list: string[], set: (v: string[]) => void, value: string) {
     setOffset(0);
-    next();
+    set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
+  }
+  function setFilter<T>(set: (v: T) => void, v: T) {
+    setOffset(0);
+    set(v);
+  }
+
+  const hasActiveFilters = kyc.length > 0 || email.length > 0;
+  function clearFilters() {
+    setOffset(0);
+    setKyc([]);
+    setEmail([]);
   }
 
   if (!wallet) {
     return <p className="text-gray-400">Connect an admin wallet to continue.</p>;
   }
 
-  const from = count === 0 ? 0 : offset + 1;
-  const to = Math.min(offset + users.length, count);
+  const search = (
+    <SearchBox value={q} onChange={(v) => setFilter(setQ, v)} placeholder="Search wallet, handle, name, or email…" />
+  );
+
+  const rail = (
+    <>
+      <RailSection label="KYC status">
+        <CheckboxGroup
+          options={KYC.map((s) => ({ value: s, label: s }))}
+          selected={kyc}
+          onToggle={(v) => toggle(kyc, setKyc, v)}
+        />
+      </RailSection>
+      <RailSection label="Email">
+        <CheckboxGroup options={EMAIL} selected={email} onToggle={(v) => toggle(email, setEmail, v)} />
+      </RailSection>
+    </>
+  );
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <input
-          value={q}
-          onChange={(e) => onFilterChange(() => setQ(e.target.value))}
-          placeholder="Search wallet, handle, name, or email"
-          className="flex-1 min-w-[220px] px-3 py-2 text-sm bg-[#161B22] border border-gray-800 rounded outline-none"
-        />
-        <select
-          value={kyc}
-          onChange={(e) => onFilterChange(() => setKyc(e.target.value))}
-          className="px-3 py-2 text-sm bg-[#161B22] border border-gray-800 rounded outline-none"
-        >
-          {KYC_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s === "" ? "All KYC" : s}
-            </option>
-          ))}
-        </select>
-        <span className="text-xs text-gray-500">
-          {count} user{count === 1 ? "" : "s"}
-        </span>
-      </div>
-
-      {error && (
-        <div className="bg-red-950 border border-red-800 rounded p-4 mb-4 text-sm">{error}</div>
-      )}
+    <PageWithRail
+      title="Users"
+      count={count}
+      countLabel="user"
+      search={search}
+      rail={rail}
+      onClearFilters={clearFilters}
+      hasActiveFilters={hasActiveFilters}
+    >
+      {error && <div className="bg-red-950 border border-red-800 rounded p-4 mb-4 text-sm">{error}</div>}
       {loading && <p className="text-gray-400 text-sm">Loading…</p>}
-      {!loading && !error && users.length === 0 && (
-        <p className="text-gray-400 text-sm">No users match.</p>
-      )}
+      {!loading && !error && users.length === 0 && <p className="text-gray-400 text-sm">No users match.</p>}
 
       {users.length > 0 && (
         <div className="overflow-x-auto border border-gray-800 rounded-lg">
@@ -174,27 +181,14 @@ export default function AdminUsersPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mt-4 text-xs text-gray-400">
-        <span>
-          {from}–{to} of {count}
-        </span>
-        <div className="flex gap-2">
-          <button
-            disabled={offset === 0 || loading}
-            onClick={() => setOffset(Math.max(0, offset - PAGE))}
-            className="px-3 py-1.5 rounded bg-[#161B22] border border-gray-800 disabled:opacity-40"
-          >
-            Prev
-          </button>
-          <button
-            disabled={offset + users.length >= count || loading}
-            onClick={() => setOffset(offset + PAGE)}
-            className="px-3 py-1.5 rounded bg-[#161B22] border border-gray-800 disabled:opacity-40"
-          >
-            Next
-          </button>
-        </div>
-      </div>
-    </div>
+      <Pager
+        offset={offset}
+        shown={users.length}
+        count={count}
+        loading={loading}
+        onPrev={() => setOffset(Math.max(0, offset - PAGE))}
+        onNext={() => setOffset(offset + PAGE)}
+      />
+    </PageWithRail>
   );
 }
