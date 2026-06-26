@@ -18,8 +18,15 @@ export const GET = withRoute(async (request) => {
   if (guard) return guard;
 
   const params = request.nextUrl.searchParams;
-  const kyc = params.get("kyc")?.trim() || null;
+  // kyc may be repeated (?kyc=approved&kyc=pending) or comma-separated.
+  const kycStatuses = params
+    .getAll("kyc")
+    .flatMap((s) => s.split(","))
+    .map((s) => s.trim())
+    .filter(Boolean);
   const q = params.get("q")?.trim() || null;
+  // emailVerified: "true" → only verified, "false" → only unverified, else any.
+  const emailVerified = params.get("emailVerified")?.trim() || null;
   const limit = Math.min(Number(params.get("limit")) || DEFAULT_LIMIT, MAX_LIMIT);
   const offsetRaw = Number(params.get("offset")) || 0;
   const offset = offsetRaw > 0 ? offsetRaw : 0;
@@ -33,7 +40,9 @@ export const GET = withRoute(async (request) => {
     .order("member_since", { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (kyc) query = query.eq("kyc_status", kyc);
+  if (kycStatuses.length > 0) query = query.in("kyc_status", kycStatuses);
+  if (emailVerified === "true") query = query.eq("email_verified", true);
+  else if (emailVerified === "false") query = query.eq("email_verified", false);
   if (q) {
     query = query.or(
       `wallet.ilike.%${q}%,handle.ilike.%${q}%,display_name.ilike.%${q}%,email.ilike.%${q}%`

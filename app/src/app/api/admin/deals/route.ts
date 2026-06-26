@@ -16,8 +16,18 @@ export const GET = withRoute(async (request) => {
   if (guard) return guard;
 
   const params = request.nextUrl.searchParams;
-  const status = params.get("status")?.trim() || null;
+  // status may be repeated (?status=funded&status=draft) or comma-separated.
+  const statuses = params
+    .getAll("status")
+    .flatMap((s) => s.split(","))
+    .map((s) => s.trim())
+    .filter(Boolean);
   const q = params.get("q")?.trim() || null;
+  const min = params.get("min") ? Number(params.get("min")) : null;
+  const max = params.get("max") ? Number(params.get("max")) : null;
+  const from = params.get("from")?.trim() || null; // ISO date (updated_at >=)
+  const to = params.get("to")?.trim() || null; // ISO date (updated_at <=)
+  const pairing = params.get("pairing")?.trim() || null; // "open" | "paired"
   const limit = Math.min(Number(params.get("limit")) || DEFAULT_LIMIT, MAX_LIMIT);
   const offsetRaw = Number(params.get("offset")) || 0;
   const offset = offsetRaw > 0 ? offsetRaw : 0;
@@ -31,7 +41,14 @@ export const GET = withRoute(async (request) => {
     .order("updated_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (status) query = query.eq("status", status);
+  if (statuses.length > 0) query = query.in("status", statuses);
+  if (min != null && Number.isFinite(min)) query = query.gte("total_amount_usdc", min);
+  if (max != null && Number.isFinite(max)) query = query.lte("total_amount_usdc", max);
+  if (from) query = query.gte("updated_at", from);
+  if (to) query = query.lte("updated_at", to);
+  // "open" = at least one party slot still empty; "paired" = both filled.
+  if (pairing === "open") query = query.is("seller_wallet", null);
+  else if (pairing === "paired") query = query.not("seller_wallet", "is", null);
   if (q) {
     // Match the search term against the deal id, title, or either party wallet.
     query = query.or(

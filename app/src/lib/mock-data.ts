@@ -228,14 +228,29 @@ async function handle(
   // mock wallet sees everything — fine for local/demo use. Mirrors the real
   // route's shape: status filter, q search, offset paging, milestone summary.
   if (path === "/api/admin/deals" && method === "GET") {
-    const status = params.get("status")?.trim() || null;
+    const statuses = params
+      .getAll("status")
+      .flatMap((s) => s.split(","))
+      .map((s) => s.trim())
+      .filter(Boolean);
     const q = (params.get("q")?.trim() || "").toLowerCase();
+    const min = params.get("min") ? Number(params.get("min")) : null;
+    const max = params.get("max") ? Number(params.get("max")) : null;
+    const from = params.get("from")?.trim() || null;
+    const to = params.get("to")?.trim() || null;
+    const pairing = params.get("pairing")?.trim() || null;
     const limit = Math.min(Number(params.get("limit")) || 50, 100);
     const offset = Math.max(Number(params.get("offset")) || 0, 0);
     let all = mockData
       .allDeals()
       .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
-    if (status) all = all.filter((d) => d.status === status);
+    if (statuses.length > 0) all = all.filter((d) => statuses.includes(d.status));
+    if (min != null && Number.isFinite(min)) all = all.filter((d) => d.total_amount_usdc >= min);
+    if (max != null && Number.isFinite(max)) all = all.filter((d) => d.total_amount_usdc <= max);
+    if (from) all = all.filter((d) => (d.updated_at ?? "") >= from);
+    if (to) all = all.filter((d) => (d.updated_at ?? "") <= to);
+    if (pairing === "open") all = all.filter((d) => !d.seller_wallet);
+    else if (pairing === "paired") all = all.filter((d) => !!d.seller_wallet);
     if (q) {
       all = all.filter((d) =>
         [d.deal_id, d.title, d.buyer_wallet, d.seller_wallet ?? ""]
@@ -262,11 +277,34 @@ async function handle(
     return json({ deals: page, count, limit, offset });
   }
 
+  // GET /api/admin/deals/:dealId — offline deal detail for the admin dashboard.
+  // Returns the full mirror row; on-chain PDAs are placeholders offline (no real
+  // program/derivation in mock mode).
+  const adminDealMatch = path.match(/^\/api\/admin\/deals\/([^/]+)$/);
+  if (adminDealMatch && method === "GET") {
+    const dealId = decodeURIComponent(adminDealMatch[1]);
+    const deal = mockData.getDeal(dealId);
+    if (!deal) return json({ error: "Deal not found" }, 404);
+    return json({
+      deal,
+      onchain: {
+        program_id: "MockProgram1111111111111111111111111111111",
+        deal_pda: `mock-deal-pda:${dealId}`,
+        escrow_vault_pda: `mock-vault-pda:${dealId}`,
+      },
+    });
+  }
+
   // GET /api/admin/users — offline admin dashboard (read-only). Synthesizes the
   // user list from the stored profiles, with reputation derived from each
   // wallet's deals (mirrors how /api/users/:wallet/public is faked).
   if (path === "/api/admin/users" && method === "GET") {
-    const kyc = params.get("kyc")?.trim() || null;
+    const kycStatuses = params
+      .getAll("kyc")
+      .flatMap((s) => s.split(","))
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const emailVerified = params.get("emailVerified")?.trim() || null;
     const q = (params.get("q")?.trim() || "").toLowerCase();
     const limit = Math.min(Number(params.get("limit")) || 50, 100);
     const offset = Math.max(Number(params.get("offset")) || 0, 0);
@@ -292,7 +330,9 @@ async function handle(
         },
       };
     });
-    if (kyc) rows = rows.filter((u) => u.kyc_status === kyc);
+    if (kycStatuses.length > 0) rows = rows.filter((u) => kycStatuses.includes(u.kyc_status));
+    if (emailVerified === "true") rows = rows.filter((u) => u.email_verified === true);
+    else if (emailVerified === "false") rows = rows.filter((u) => u.email_verified === false);
     if (q) {
       rows = rows.filter((u) =>
         [u.wallet, u.handle, u.display_name ?? "", u.email ?? ""]
