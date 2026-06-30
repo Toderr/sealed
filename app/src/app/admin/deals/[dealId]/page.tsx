@@ -99,7 +99,7 @@ export default function AdminDealDetailPage() {
   if (!wallet) return <p className="text-gray-400">Connect an admin wallet to continue.</p>;
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-5xl mx-auto">
       <Link href="/admin/deals" className="text-xs text-gray-400 hover:text-gray-200">
         ← Back to deals
       </Link>
@@ -115,7 +115,7 @@ export default function AdminDealDetailPage() {
           </div>
           <p className="text-[11px] font-mono text-gray-500 mb-6">{deal.deal_id}</p>
 
-          <div className="grid sm:grid-cols-2 gap-x-8">
+          <div className="grid sm:grid-cols-2 gap-x-12">
             <div>
               <h3 className="text-xs uppercase tracking-wide text-gray-500 mb-1 mt-2">Parties</h3>
               <Field label="Buyer (funds + releases)">

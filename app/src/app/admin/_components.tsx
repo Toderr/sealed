@@ -178,6 +178,29 @@ export function RangeInputs({
   maxPlaceholder?: string;
   type?: "text" | "number" | "date";
 }) {
+  // Date inputs are too wide to sit side-by-side in the narrow rail (the native
+  // mm/dd/yyyy field + calendar icon overflows), so stack them with From/To
+  // labels. Number/text ranges stay side-by-side — they're compact.
+  if (type === "date") {
+    return (
+      <div className="space-y-1.5">
+        {[
+          { label: "From", value: minValue, onChange: onMin },
+          { label: "To", value: maxValue, onChange: onMax },
+        ].map((row) => (
+          <label key={row.label} className="flex items-center gap-2">
+            <span className="text-[11px] text-gray-500 w-8 shrink-0">{row.label}</span>
+            <input
+              type="date"
+              value={row.value}
+              onChange={(e) => row.onChange(e.target.value)}
+              className={railInput + " min-w-0"}
+            />
+          </label>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="flex gap-2">
       <input
@@ -186,7 +209,7 @@ export function RangeInputs({
         value={minValue}
         onChange={(e) => onMin(e.target.value)}
         placeholder={minPlaceholder}
-        className={railInput}
+        className={railInput + " min-w-0"}
       />
       <input
         type={type}
@@ -194,7 +217,7 @@ export function RangeInputs({
         value={maxValue}
         onChange={(e) => onMax(e.target.value)}
         placeholder={maxPlaceholder}
-        className={railInput}
+        className={railInput + " min-w-0"}
       />
     </div>
   );
