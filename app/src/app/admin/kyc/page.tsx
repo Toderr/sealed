@@ -30,7 +30,7 @@ export default function AdminKycPage() {
       setItems(json.submissions ?? []);
     } catch (e) {
       if (e instanceof ApiError && e.status === 403) {
-        setError("Wallet kamu bukan admin.");
+        setError("This wallet is not an admin.");
         setItems([]);
         return;
       }
@@ -66,18 +66,18 @@ export default function AdminKycPage() {
 
   if (!wallet) {
     return (
-      <div className="min-h-screen bg-[#0D1117] text-white p-8">
-        <h1 className="text-2xl font-bold mb-4">Admin: KYC Review</h1>
+      <div>
+        <h2 className="text-lg font-semibold mb-2">KYC Review</h2>
         <p className="text-gray-400">Connect wallet to continue.</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0D1117] text-white p-4 sm:p-8">
-      <div className="max-w-5xl mx-auto">
-        <h1 className="text-2xl font-bold mb-2">Admin: KYC Review</h1>
-        <p className="text-sm text-gray-400 mb-6">Wallet: {wallet}</p>
+    <div>
+      <div className="max-w-5xl">
+        <h2 className="text-lg font-semibold mb-1">KYC Review</h2>
+        <p className="text-xs text-gray-500 mb-6 font-mono">{wallet}</p>
 
         {error && (
           <div className="bg-red-950 border border-red-800 rounded p-4 mb-4">

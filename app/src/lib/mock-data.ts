@@ -223,6 +223,138 @@ async function handle(
     }
   }
 
+  // Admin gate (offline mirror of lib/admin.ts). Real env isn't readable in the
+  // browser interceptor, so we use fixed dev values: the buyer mock identity is
+  // "allowlisted", and a dev passcode unlocks the passcode path. Lets both the
+  // allowlisted-wallet flow and the passcode-gate UI be tested offline.
+  if (path.startsWith("/api/admin/")) {
+    const MOCK_ADMIN_WALLET = "8NY8GM9JbDcNo9RxmbYd7SKj5EWEVs8syKfzE1MzB6VR"; // mock buyer
+    const MOCK_ADMIN_PASSCODE = "sealed-admin-2026";
+    const passcode = headers.get("x-admin-passcode");
+    const ok = wallet === MOCK_ADMIN_WALLET || passcode === MOCK_ADMIN_PASSCODE;
+    if (!ok) return json({ error: "Forbidden" }, 403);
+  }
+
+  // GET /api/admin/deals — offline admin dashboard (read-only). Gated above by
+  // the offline admin check. Mirrors the real route's shape: status filter, q
+  // search, offset paging, milestone summary.
+  if (path === "/api/admin/deals" && method === "GET") {
+    const statuses = params
+      .getAll("status")
+      .flatMap((s) => s.split(","))
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const q = (params.get("q")?.trim() || "").toLowerCase();
+    const min = params.get("min") ? Number(params.get("min")) : null;
+    const max = params.get("max") ? Number(params.get("max")) : null;
+    const from = params.get("from")?.trim() || null;
+    const to = params.get("to")?.trim() || null;
+    const pairing = params.get("pairing")?.trim() || null;
+    const limit = Math.min(Number(params.get("limit")) || 50, 100);
+    const offset = Math.max(Number(params.get("offset")) || 0, 0);
+    let all = mockData
+      .allDeals()
+      .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
+    if (statuses.length > 0) all = all.filter((d) => statuses.includes(d.status));
+    if (min != null && Number.isFinite(min)) all = all.filter((d) => d.total_amount_usdc >= min);
+    if (max != null && Number.isFinite(max)) all = all.filter((d) => d.total_amount_usdc <= max);
+    if (from) all = all.filter((d) => (d.updated_at ?? "") >= from);
+    if (to) all = all.filter((d) => (d.updated_at ?? "") <= to);
+    if (pairing === "open") all = all.filter((d) => !d.seller_wallet);
+    else if (pairing === "paired") all = all.filter((d) => !!d.seller_wallet);
+    if (q) {
+      all = all.filter((d) =>
+        [d.deal_id, d.title, d.buyer_wallet, d.seller_wallet ?? ""]
+          .some((s) => (s ?? "").toLowerCase().includes(q))
+      );
+    }
+    const count = all.length;
+    const page = all.slice(offset, offset + limit).map((d) => {
+      const ms = Array.isArray(d.milestones) ? d.milestones : [];
+      const done = ms.filter((m) => m?.status === "Released" || m?.status === "Completed").length;
+      return {
+        deal_id: d.deal_id,
+        buyer_wallet: d.buyer_wallet,
+        seller_wallet: d.seller_wallet,
+        title: d.title,
+        total_amount_usdc: d.total_amount_usdc,
+        status: d.status,
+        milestones_total: ms.length,
+        milestones_done: done,
+        created_at: d.created_at,
+        updated_at: d.updated_at,
+      };
+    });
+    return json({ deals: page, count, limit, offset });
+  }
+
+  // GET /api/admin/deals/:dealId — offline deal detail for the admin dashboard.
+  // Returns the full mirror row; on-chain PDAs are placeholders offline (no real
+  // program/derivation in mock mode).
+  const adminDealMatch = path.match(/^\/api\/admin\/deals\/([^/]+)$/);
+  if (adminDealMatch && method === "GET") {
+    const dealId = decodeURIComponent(adminDealMatch[1]);
+    const deal = mockData.getDeal(dealId);
+    if (!deal) return json({ error: "Deal not found" }, 404);
+    return json({
+      deal,
+      onchain: {
+        program_id: "MockProgram1111111111111111111111111111111",
+        deal_pda: `mock-deal-pda:${dealId}`,
+        escrow_vault_pda: `mock-vault-pda:${dealId}`,
+      },
+    });
+  }
+
+  // GET /api/admin/users — offline admin dashboard (read-only). Synthesizes the
+  // user list from the stored profiles, with reputation derived from each
+  // wallet's deals (mirrors how /api/users/:wallet/public is faked).
+  if (path === "/api/admin/users" && method === "GET") {
+    const kycStatuses = params
+      .getAll("kyc")
+      .flatMap((s) => s.split(","))
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const emailVerified = params.get("emailVerified")?.trim() || null;
+    const q = (params.get("q")?.trim() || "").toLowerCase();
+    const limit = Math.min(Number(params.get("limit")) || 50, 100);
+    const offset = Math.max(Number(params.get("offset")) || 0, 0);
+    const profiles = read<Record<string, Record<string, unknown>>>(K.profiles, {});
+    let rows = Object.entries(profiles).map(([w, p]) => {
+      const deals = mockData.dealsFor(w);
+      return {
+        wallet: w,
+        handle: (p.handle as string) ?? "",
+        display_name: (p.display_name as string) ?? null,
+        email: (p.email as string) ?? null,
+        email_verified: Boolean(p.email_verified),
+        kyc_status: ((p.kyc_status as string) ?? "none") as
+          | "none"
+          | "pending"
+          | "approved"
+          | "rejected",
+        member_since: (p.member_since as string) ?? nowIso(),
+        reputation: {
+          deals_total: deals.length,
+          deals_successful: deals.filter(isCompleted).length,
+          avg_rating: 0,
+        },
+      };
+    });
+    if (kycStatuses.length > 0) rows = rows.filter((u) => kycStatuses.includes(u.kyc_status));
+    if (emailVerified === "true") rows = rows.filter((u) => u.email_verified === true);
+    else if (emailVerified === "false") rows = rows.filter((u) => u.email_verified === false);
+    if (q) {
+      rows = rows.filter((u) =>
+        [u.wallet, u.handle, u.display_name ?? "", u.email ?? ""]
+          .some((s) => (s ?? "").toLowerCase().includes(q))
+      );
+    }
+    const count = rows.length;
+    const page = rows.slice(offset, offset + limit);
+    return json({ users: page, count, limit, offset });
+  }
+
   // GET/PATCH /api/deals/:dealId
   const dealMatch = path.match(/^\/api\/deals\/([^/]+)$/);
   if (dealMatch && dealMatch[1] !== "mirror") {

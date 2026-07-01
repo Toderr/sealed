@@ -42,6 +42,17 @@ export async function apiFetch<T = unknown>(
 ): Promise<T> {
   const headers: Record<string, string> = {};
   if (opts.wallet) headers["x-wallet"] = opts.wallet;
+  // Attach the admin passcode when one has been entered this session (set by the
+  // /admin passcode gate). Harmless on non-admin routes; the server only reads it
+  // on admin endpoints. Lets every admin page authenticate without per-call wiring.
+  if (typeof window !== "undefined") {
+    try {
+      const pc = sessionStorage.getItem("admin:passcode");
+      if (pc) headers["x-admin-passcode"] = pc;
+    } catch {
+      /* sessionStorage may be unavailable */
+    }
+  }
 
   let body: BodyInit | undefined;
   if (opts.rawBody !== undefined) {

@@ -3,8 +3,7 @@ import { requireAdmin } from "@/lib/admin";
 import { HttpError, json, withRoute } from "@/lib/api-error";
 
 export const GET = withRoute(async (request) => {
-  const wallet = request.headers.get("x-wallet");
-  const guard = requireAdmin(wallet);
+  const guard = requireAdmin(request);
   if (guard) return guard;
 
   const { data, error } = await supabase
@@ -19,8 +18,7 @@ export const GET = withRoute(async (request) => {
 });
 
 export const POST = withRoute(async (request) => {
-  const wallet = request.headers.get("x-wallet");
-  const guard = requireAdmin(wallet);
+  const guard = requireAdmin(request);
   if (guard) return guard;
 
   const body = await request.json();
