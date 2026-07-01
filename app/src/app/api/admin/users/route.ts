@@ -13,8 +13,7 @@ const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 50;
 
 export const GET = withRoute(async (request) => {
-  const wallet = request.headers.get("x-wallet");
-  const guard = requireAdmin(wallet);
+  const guard = requireAdmin(request);
   if (guard) return guard;
 
   const params = request.nextUrl.searchParams;

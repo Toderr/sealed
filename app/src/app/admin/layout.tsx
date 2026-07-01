@@ -6,6 +6,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import AdminGate from "./AdminGate";
 
 const NAV = [
   { href: "/admin/deals", label: "Deals", icon: "M3 3h18v4H3zM3 10h18v4H3zM3 17h18v4H3z" },
@@ -17,6 +18,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
 
   return (
+    <AdminGate>
     <div className="min-h-screen bg-[#0D1117] text-white flex">
       {/* Sidebar */}
       <aside className="w-56 shrink-0 border-r border-gray-800 flex flex-col">
@@ -57,12 +59,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
         <div className="px-5 py-4 border-t border-gray-800 text-[11px] text-gray-600">
-          Allowlist auth · view only
+          Wallet or passcode · view only
         </div>
       </aside>
 
       {/* Content */}
       <main className="flex-1 min-w-0 px-6 py-6">{children}</main>
     </div>
+    </AdminGate>
   );
 }

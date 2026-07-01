@@ -223,10 +223,21 @@ async function handle(
     }
   }
 
-  // GET /api/admin/deals — offline admin dashboard (read-only). In mock mode
-  // there is no ADMIN_WALLETS gate (the real check is server-side), so every
-  // mock wallet sees everything — fine for local/demo use. Mirrors the real
-  // route's shape: status filter, q search, offset paging, milestone summary.
+  // Admin gate (offline mirror of lib/admin.ts). Real env isn't readable in the
+  // browser interceptor, so we use fixed dev values: the buyer mock identity is
+  // "allowlisted", and a dev passcode unlocks the passcode path. Lets both the
+  // allowlisted-wallet flow and the passcode-gate UI be tested offline.
+  if (path.startsWith("/api/admin/")) {
+    const MOCK_ADMIN_WALLET = "8NY8GM9JbDcNo9RxmbYd7SKj5EWEVs8syKfzE1MzB6VR"; // mock buyer
+    const MOCK_ADMIN_PASSCODE = "sealed-admin-2026";
+    const passcode = headers.get("x-admin-passcode");
+    const ok = wallet === MOCK_ADMIN_WALLET || passcode === MOCK_ADMIN_PASSCODE;
+    if (!ok) return json({ error: "Forbidden" }, 403);
+  }
+
+  // GET /api/admin/deals — offline admin dashboard (read-only). Gated above by
+  // the offline admin check. Mirrors the real route's shape: status filter, q
+  // search, offset paging, milestone summary.
   if (path === "/api/admin/deals" && method === "GET") {
     const statuses = params
       .getAll("status")
