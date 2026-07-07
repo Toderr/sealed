@@ -145,7 +145,11 @@ export const mockData = {
     return read<Deliverable[]>(K.deliverables, []).filter((d) => d.deal_id === dealId);
   },
   addDeliverable(d: Omit<Deliverable, "id" | "created_at">): Deliverable {
-    const all = read<Deliverable[]>(K.deliverables, []);
+    // Replace any prior proof for the same deal + milestone so a re-upload
+    // supersedes the old file instead of stacking (mirrors the real route).
+    const all = read<Deliverable[]>(K.deliverables, []).filter(
+      (x) => !(x.deal_id === d.deal_id && x.milestone_index === d.milestone_index)
+    );
     const deliverable: Deliverable = { ...d, id: uuid(), created_at: nowIso() };
     all.push(deliverable);
     write(K.deliverables, all);
