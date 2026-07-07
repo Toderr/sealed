@@ -24,7 +24,8 @@ import type { Deal, SupabaseDeal } from "@/lib/types";
 import { labelStyle, headingStyle } from "@/lib/typography";
 import type { Proposal } from "@/negotiation/types";
 import { defaultSellerBoundaries } from "@/negotiation/types";
-import { buildCreateDealIx, buildFundEscrowIx, buildEnsureAtaIx, getUsdcMint, getUsdcBalance, sendTx } from "@/lib/escrow-client";
+import { buildCreateDealIx, buildFundEscrowIx, buildEnsureAtaIx, getUsdcMint, getUsdcBalance, sendTx, fetchFeeConfig, halfFeeLamports } from "@/lib/escrow-client";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { MOCK_CHAIN, MOCK_DATA } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
 import { PublicKey } from "@solana/web3.js";
@@ -710,18 +711,30 @@ export default function NegotiateRoom() {
 
     try {
       const mint = getUsdcMint();
+      // The buyer pays the contract + their 0.5% platform fee up front.
+      const fee = await fetchFeeConfig(connection);
+      const buyerFeeUsdc = fee.active
+        ? halfFeeLamports(finalTerms.totalAmount * 1_000_000, fee.feeBps) / 1_000_000
+        : 0;
+      const totalToDeposit = finalTerms.totalAmount + buyerFeeUsdc;
+
       const balance = await getUsdcBalance(connection, publicKey, mint);
-      if (balance < finalTerms.totalAmount) {
+      if (balance < totalToDeposit) {
         setDeployError(
-          `Insufficient devnet USDC. This wallet has ${formatUsdc(balance)} USDC but escrow needs ${formatUsdc(finalTerms.totalAmount)} USDC.`
+          `Insufficient devnet USDC. This wallet has ${formatUsdc(balance)} USDC but funding needs ${formatUsdc(totalToDeposit)} USDC (contract + ${formatUsdc(buyerFeeUsdc)} fee).`
         );
         setDeploying(false);
         return;
       }
 
+      // Treasury token account for fee-bearing deals (undefined → fee-free).
+      const treasuryTa = fee.active
+        ? await getAssociatedTokenAddress(mint, new PublicKey(fee.treasury))
+        : undefined;
+
       const ensureAtaIx = await buildEnsureAtaIx(publicKey, publicKey, mint);
       const createIx = await buildCreateDealIx(publicKey, finalTerms);
-      const fundIx = await buildFundEscrowIx(publicKey, finalTerms.dealId, finalTerms.totalAmount);
+      const fundIx = await buildFundEscrowIx(publicKey, finalTerms.dealId, finalTerms.totalAmount, treasuryTa);
       const sig = await sendTx(connection, [ensureAtaIx, createIx, fundIx], signTransaction);
 
       const now = Math.floor(Date.now() / 1000);
@@ -1668,6 +1681,32 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 /* ── Negotiation result ─────────────────────────────────────────────────── */
 
+// Deposit breakdown shown to the buyer before funding: contract + their 0.5%
+// platform fee + total to deposit. Fetches the live fee; renders nothing when
+// there's no active fee (fee-free deals), so it's invisible until fees are on.
+function FeeBreakdown({ contractAmount }: { contractAmount: number }) {
+  const { connection } = useConnection();
+  const [fee, setFee] = useState<{ bps: number; active: boolean } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetchFeeConfig(connection)
+      .then((f) => alive && setFee({ bps: f.feeBps, active: f.active }))
+      .catch(() => alive && setFee({ bps: 0, active: false }));
+    return () => { alive = false; };
+  }, [connection]);
+
+  if (!fee || !fee.active) return null;
+  const buyerFee = halfFeeLamports(contractAmount * 1_000_000, fee.bps) / 1_000_000;
+  const total = contractAmount + buyerFee;
+  return (
+    <div className="space-y-1 pt-2 mt-1 border-t border-card-border-subtle text-[12px]">
+      <div className="flex justify-between text-muted"><span>Contract</span><span className="tabular-nums">${formatUsdc(contractAmount)}</span></div>
+      <div className="flex justify-between text-muted"><span>Platform fee ({(fee.bps / 200).toFixed(2)}%)</span><span className="tabular-nums">${formatUsdc(buyerFee)}</span></div>
+      <div className="flex justify-between text-primary" style={{ fontWeight: 590 }}><span>Total to deposit</span><span className="tabular-nums">${formatUsdc(total)} USDC</span></div>
+    </div>
+  );
+}
+
 function NegotiationResult({
   proposal,
   role,
@@ -1753,6 +1792,8 @@ function NegotiationResult({
             <p className="text-[20px] text-primary tabular-nums" style={headingStyle}>${formatUsdc(finalTerms.totalAmount)}</p>
             <p className="text-[12px] text-muted">USDC · {finalTerms.milestones.length} milestones</p>
           </div>
+          {/* Buyer sees the fee breakdown they'll deposit. */}
+          {isBuyer && <FeeBreakdown contractAmount={finalTerms.totalAmount} />}
         </div>
       )}
 
