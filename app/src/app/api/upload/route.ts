@@ -86,7 +86,31 @@ export const POST = withRoute(async (request) => {
     throw new HttpError(500, "Storage upload failed");
   }
 
-  // Step 5: Record in sealed_deliverables
+  // Step 5: Replace any prior proof for this deal + milestone so a re-upload
+  // supersedes the old file instead of stacking duplicates. Only applies to
+  // real milestone uploads (not the "standalone" bucket). Remove the old storage
+  // objects first, then their rows; failures here are non-fatal (best-effort
+  // cleanup — the new record below is what matters).
+  if (dealId !== "standalone") {
+    const { data: prior } = await supabase
+      .from(table("deliverables"))
+      .select("id, storage_key")
+      .eq("deal_id", dealId)
+      .eq("milestone_index", milestoneIndex);
+    if (prior && prior.length > 0) {
+      const keys = prior.map((d) => d.storage_key).filter(Boolean);
+      if (keys.length > 0) {
+        await supabase.storage.from("sealed-docs").remove(keys);
+      }
+      await supabase
+        .from(table("deliverables"))
+        .delete()
+        .eq("deal_id", dealId)
+        .eq("milestone_index", milestoneIndex);
+    }
+  }
+
+  // Step 6: Record the new deliverable in sealed_deliverables
   const { data: record, error: dbError } = await supabase
     .from(table("deliverables"))
     .insert({
