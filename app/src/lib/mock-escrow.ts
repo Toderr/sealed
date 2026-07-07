@@ -7,6 +7,16 @@
 
 const LEDGER_KEY = "mock:escrow:ledger";
 const BAL_KEY = "mock:usdc:balances";
+const CONFIG_KEY = "mock:escrow:config";
+
+// Offline platform-fee config (mirrors the on-chain Config account). Defaults to
+// 1% but with treasury unset → fee-free, exactly like a freshly-deployed program.
+const MOCK_TREASURY = "SEa1edTREASURYmock1111111111111111111111111";
+export interface MockFeeConfig {
+  feeBps: number;
+  treasury: string; // "" = unset → fee-free
+}
+const DEFAULT_CONFIG: MockFeeConfig = { feeBps: 100, treasury: "" };
 
 // Every dev wallet starts rich so funding always succeeds.
 const START_BALANCE = 1_000_000 * 1_000_000; // 1,000,000 USDC in lamports
@@ -68,6 +78,30 @@ export const mockEscrow = {
     save(BAL_KEY, bals);
   },
 
+  // --- Platform fee config (mirrors the on-chain Config account) ---
+
+  getConfig(): MockFeeConfig {
+    return load<MockFeeConfig>(CONFIG_KEY, DEFAULT_CONFIG);
+  },
+  setConfig(patch: Partial<MockFeeConfig>): MockFeeConfig {
+    const next = { ...this.getConfig(), ...patch };
+    save(CONFIG_KEY, next);
+    return next;
+  },
+  /** A deal charges a fee when a rate is set AND a treasury exists. */
+  feeActive(): boolean {
+    const c = this.getConfig();
+    return c.feeBps > 0 && c.treasury !== "";
+  },
+  /** Half the fee (one side's share) of amount lamports, truncating. */
+  halfFee(amount: number): number {
+    if (!this.feeActive()) return 0;
+    return Math.floor((amount * this.getConfig().feeBps) / 20_000);
+  },
+  treasuryAddress(): string {
+    return this.getConfig().treasury || MOCK_TREASURY;
+  },
+
   // --- Deal ledger ---
 
   getDeal(dealId: string): MockDeal | undefined {
@@ -106,10 +140,18 @@ export const mockEscrow = {
         status: "Created",
         fundedAt: 0,
       };
-    if (this.balanceOf(buyer) < amount) {
+    // Buyer's fee half (once, on the funding that completes the deal) → treasury.
+    const buyerFee = this.halfFee(deal.totalAmount);
+    const wasFunded = deal.fundedAmount >= deal.totalAmount;
+    const willBeFunded = deal.fundedAmount + amount >= deal.totalAmount;
+    const feeToCharge = !wasFunded && willBeFunded ? buyerFee : 0;
+    if (this.balanceOf(buyer) < amount + feeToCharge) {
       throw new Error("MOCK: insufficient USDC balance");
     }
-    this.setBalance(buyer, this.balanceOf(buyer) - amount);
+    this.setBalance(buyer, this.balanceOf(buyer) - amount - feeToCharge);
+    if (feeToCharge > 0) {
+      this.setBalance(this.treasuryAddress(), this.balanceOf(this.treasuryAddress()) + feeToCharge);
+    }
     deal.fundedAmount += amount;
     if (deal.fundedAmount >= deal.totalAmount) {
       deal.status = "Funded";
@@ -130,7 +172,12 @@ export const mockEscrow = {
     if (deal.releasedAmount + amount > deal.fundedAmount) {
       throw new Error("MOCK: release exceeds funded amount");
     }
-    this.setBalance(seller, this.balanceOf(seller) + amount);
+    // Seller's fee half comes out of the milestone → treasury; seller nets the rest.
+    const sellerFee = this.halfFee(amount);
+    this.setBalance(seller, this.balanceOf(seller) + (amount - sellerFee));
+    if (sellerFee > 0) {
+      this.setBalance(this.treasuryAddress(), this.balanceOf(this.treasuryAddress()) + sellerFee);
+    }
     deal.releasedAmount += amount;
     deal.status = allReleased ? "Completed" : "InProgress";
     this.putDeal(deal);

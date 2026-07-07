@@ -48,6 +48,57 @@ export function findEscrowVaultPDA(dealId: string): [PublicKey, number] {
   );
 }
 
+export function findConfigPDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
+}
+
+// Total platform fee in basis points (100 = 1%), split half buyer / half seller.
+// The on-chain Config is the source of truth; this mirrors the default for the
+// deposit UI's line-item math when a live config isn't read.
+export const DEFAULT_FEE_BPS = 100;
+
+/** Half the fee (one side's share) of `amount` lamports, truncating. */
+export function halfFeeLamports(amountLamports: number, feeBps: number): number {
+  return Math.floor((amountLamports * feeBps) / 20_000);
+}
+
+export interface FeeConfig {
+  feeBps: number;
+  treasury: string; // "" = unset → fee-free
+  /** True when a fee is actually charged (rate set AND treasury set). */
+  active: boolean;
+}
+
+// Read the live platform fee. In mock mode, from the offline config; in real
+// mode, decode the on-chain Config account (fee_bps u16 + treasury pubkey, after
+// the 8-byte discriminator + 32-byte authority). Returns fee-free defaults if
+// the config account doesn't exist yet.
+export async function fetchFeeConfig(connection?: Connection): Promise<FeeConfig> {
+  if (MOCK_CHAIN) {
+    const c = mockEscrow.getConfig();
+    return { feeBps: c.feeBps, treasury: c.treasury, active: mockEscrow.feeActive() };
+  }
+  try {
+    if (!connection) return { feeBps: DEFAULT_FEE_BPS, treasury: "", active: false };
+    const [configPDA] = findConfigPDA();
+    const info = await connection.getAccountInfo(configPDA);
+    if (!info) return { feeBps: DEFAULT_FEE_BPS, treasury: "", active: false };
+    // Config layout: [8 disc][32 authority][32 treasury][2 fee_bps][1 bump]
+    const data = info.data;
+    const treasuryBytes = data.subarray(8 + 32, 8 + 32 + 32);
+    const treasuryPk = new PublicKey(treasuryBytes);
+    const feeBps = data.readUInt16LE(8 + 32 + 32);
+    const unset = treasuryPk.equals(PublicKey.default);
+    return {
+      feeBps,
+      treasury: unset ? "" : treasuryPk.toBase58(),
+      active: feeBps > 0 && !unset,
+    };
+  } catch {
+    return { feeBps: DEFAULT_FEE_BPS, treasury: "", active: false };
+  }
+}
+
 export function getUsdcMint(): PublicKey {
   const envMint = process.env.NEXT_PUBLIC_USDC_MINT;
   if (envMint) return new PublicKey(envMint);
@@ -80,6 +131,16 @@ function encodeU64(value: BN): Buffer {
 
 function encodeU8(value: number): Buffer {
   return Buffer.from([value]);
+}
+
+function encodeU16(value: number): Buffer {
+  const b = Buffer.alloc(2);
+  b.writeUInt16LE(value);
+  return b;
+}
+
+function encodePubkey(value: PublicKey): Buffer {
+  return Buffer.from(value.toBytes());
 }
 
 function encodeMilestones(
@@ -129,6 +190,13 @@ export async function buildCreateDealIx(
     encodeU64(new BN(usdcToLamports(params.totalAmount))),
   ]);
 
+  // Optional config account (Anchor Option<Account>): pass the Config PDA to
+  // snapshot the current fee. NOTE (verify in WSL after `anchor build`): Anchor
+  // signals `None` by passing the PROGRAM ID in this slot; if no config exists
+  // on-chain yet, pass PROGRAM_ID here instead of configPDA so create_deal
+  // treats the deal as fee-free. Once init_config is run, always pass configPDA.
+  const [configPDA] = findConfigPDA();
+
   return new TransactionInstruction({
     programId: PROGRAM_ID,
     keys: [
@@ -137,6 +205,7 @@ export async function buildCreateDealIx(
       { pubkey: dealPDA, isSigner: false, isWritable: true },
       { pubkey: mint, isSigner: false, isWritable: false },
       { pubkey: escrowVault, isSigner: false, isWritable: true },
+      { pubkey: configPDA, isSigner: false, isWritable: false },
       { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
@@ -148,7 +217,10 @@ export async function buildCreateDealIx(
 export async function buildFundEscrowIx(
   buyer: PublicKey,
   dealId: string,
-  amount: number
+  amount: number,
+  // The treasury token account, required only for fee-bearing deals. Omit for
+  // fee-free deals (the None slot is filled with the program id).
+  treasuryTokenAccount?: PublicKey
 ): Promise<TransactionInstruction> {
   if (MOCK_CHAIN) return mockIx(buyer);
   const [dealPDA] = findDealPDA(dealId);
@@ -166,6 +238,8 @@ export async function buildFundEscrowIx(
       { pubkey: dealPDA, isSigner: false, isWritable: true },
       { pubkey: escrowVault, isSigner: false, isWritable: true },
       { pubkey: buyerATA, isSigner: false, isWritable: true },
+      // Optional treasury (Anchor None = program id).
+      { pubkey: treasuryTokenAccount ?? PROGRAM_ID, isSigner: false, isWritable: !!treasuryTokenAccount },
       { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ],
     data,
@@ -176,7 +250,9 @@ export async function buildReleaseMilestoneIx(
   buyer: PublicKey,
   dealId: string,
   milestoneIndex: number,
-  sellerPubkey: PublicKey
+  sellerPubkey: PublicKey,
+  // The treasury token account, required only for fee-bearing deals.
+  treasuryTokenAccount?: PublicKey
 ): Promise<TransactionInstruction> {
   if (MOCK_CHAIN) return mockIx(buyer);
   const [dealPDA] = findDealPDA(dealId);
@@ -194,6 +270,8 @@ export async function buildReleaseMilestoneIx(
       { pubkey: dealPDA, isSigner: false, isWritable: true },
       { pubkey: escrowVault, isSigner: false, isWritable: true },
       { pubkey: sellerATA, isSigner: false, isWritable: true },
+      // Optional treasury (Anchor None = program id).
+      { pubkey: treasuryTokenAccount ?? PROGRAM_ID, isSigner: false, isWritable: !!treasuryTokenAccount },
       { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ],
     data,
@@ -435,5 +513,80 @@ export async function buildCloseDealIx(
       { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ],
     data: disc,
+  });
+}
+
+// ── Platform config (fee) instructions — authority-gated ───────────────────────
+// Admin-only. Used by the platform fee panel. MOCK_CHAIN builds no-op these
+// (the offline fee config is managed directly in mock-data).
+
+// Initialize the global Config PDA once. Caller becomes the authority. fee_bps
+// defaults on-chain; treasury starts unset (fee-free until set_treasury).
+export async function buildInitConfigIx(
+  authority: PublicKey,
+  feeBps: number
+): Promise<TransactionInstruction> {
+  if (MOCK_CHAIN) return mockIx(authority);
+  const [configPDA] = findConfigPDA();
+  const disc = await sha256Discriminator("init_config");
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: authority, isSigner: true, isWritable: true },
+      { pubkey: configPDA, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([disc, encodeU16(feeBps)]),
+  });
+}
+
+export async function buildSetFeeIx(
+  authority: PublicKey,
+  feeBps: number
+): Promise<TransactionInstruction> {
+  if (MOCK_CHAIN) return mockIx(authority);
+  const [configPDA] = findConfigPDA();
+  const disc = await sha256Discriminator("set_fee");
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: authority, isSigner: true, isWritable: false },
+      { pubkey: configPDA, isSigner: false, isWritable: true },
+    ],
+    data: Buffer.concat([disc, encodeU16(feeBps)]),
+  });
+}
+
+export async function buildSetTreasuryIx(
+  authority: PublicKey,
+  treasury: PublicKey
+): Promise<TransactionInstruction> {
+  if (MOCK_CHAIN) return mockIx(authority);
+  const [configPDA] = findConfigPDA();
+  const disc = await sha256Discriminator("set_treasury");
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: authority, isSigner: true, isWritable: false },
+      { pubkey: configPDA, isSigner: false, isWritable: true },
+    ],
+    data: Buffer.concat([disc, encodePubkey(treasury)]),
+  });
+}
+
+export async function buildSetAuthorityIx(
+  authority: PublicKey,
+  newAuthority: PublicKey
+): Promise<TransactionInstruction> {
+  if (MOCK_CHAIN) return mockIx(authority);
+  const [configPDA] = findConfigPDA();
+  const disc = await sha256Discriminator("set_authority");
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: authority, isSigner: true, isWritable: false },
+      { pubkey: configPDA, isSigner: false, isWritable: true },
+    ],
+    data: Buffer.concat([disc, encodePubkey(newAuthority)]),
   });
 }
