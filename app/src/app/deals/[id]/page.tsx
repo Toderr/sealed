@@ -9,6 +9,12 @@ import { formatUsdc, usdcToLamports, type SupabaseDeal } from "@/lib/types";
 import {
   buildReleaseMilestoneIx,
   buildEnsureAtaIx,
+  buildBuyerTimeoutRefundIx,
+  buildCancelDealIx,
+  buildCloseDealIx,
+  buildRefundIx,
+  buildAndPartialSign,
+  coSignAndSend,
   getUsdcMint,
   sendTx,
 } from "@/lib/escrow-client";
@@ -24,6 +30,14 @@ import Link from "next/link";
 import WalletMultiButton from "@/components/AppWalletButton";
 
 type Milestone = { description: string; amount: number; status?: string };
+type RefundRequest = {
+  deal_id: string;
+  requested_by: string;
+  partial_tx: string;
+  blockhash: string | null;
+  status: string;
+  created_at: string;
+};
 type DbMsg = { id: string; role: string; content: string; wallet: string | null; created_at: string };
 type Deliverable = {
   id: string;
@@ -61,6 +75,10 @@ export default function ActiveDealPage() {
     dealId ? `/api/messages?deal_id=${dealId}` : null, wallet, { refreshInterval: POLL_MS });
   const deliverablesQuery = useApi<{ deliverables?: Deliverable[] }>(
     dealId ? `/api/deliverables?deal_id=${dealId}` : null, wallet, { refreshInterval: POLL_MS });
+  // Pending mutual-refund request (the relay). Polled so the counterparty sees
+  // it appear and can co-sign.
+  const refundReqQuery = useApi<{ request?: RefundRequest | null }>(
+    dealId ? `/api/deals/${dealId}/refund` : null, wallet, { refreshInterval: POLL_MS });
 
   const deal = dealQuery.data?.deal ?? null;
   // Show the error screen when the deal genuinely can't load: either the route
@@ -86,7 +104,7 @@ export default function ActiveDealPage() {
 
   // Revalidate all three after a write (replaces the old refreshAll()).
   const refreshAll = async () => {
-    await Promise.all([dealQuery.mutate(), messagesQuery.mutate(), deliverablesQuery.mutate()]);
+    await Promise.all([dealQuery.mutate(), messagesQuery.mutate(), deliverablesQuery.mutate(), refundReqQuery.mutate()]);
   };
 
   const [chatInput, setChatInput] = useState("");
@@ -97,6 +115,12 @@ export default function ActiveDealPage() {
   const [sealedModalShown, setSealedModalShown] = useState(false);
   const [showSealedModal, setShowSealedModal] = useState(false);
   const [confirmModal, setConfirmModal] = useState<number | null>(null);
+  const [refunding, setRefunding] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportCategory, setReportCategory] = useState("other");
+  const [reportMessage, setReportMessage] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportDone, setReportDone] = useState(false);
   const [ratingLookup, setRatingLookup] = useState<RatingLookup | null>(null);
   const [ratingLoading, setRatingLoading] = useState(false);
   const [ratingStars, setRatingStars] = useState(0);
@@ -224,6 +248,161 @@ export default function ActiveDealPage() {
     }
   }
 
+  async function patchStatus(status: string) {
+    await apiFetchSafe(`/api/deals/${dealId}`, {
+      method: "PATCH",
+      wallet: wallet ?? "",
+      body: { status },
+    }, undefined);
+  }
+
+  // Buyer-only unilateral refund after the 30-day funding timeout — the escape
+  // hatch for a ghosting seller. One signature (buyer). On-chain the instruction
+  // also closes the escrow vault (rent → buyer). Mirrors handleApprove's shape.
+  async function handleTimeoutRefund() {
+    if (!publicKey || !signTransaction || role !== "buyer") return;
+    if (!confirm("Reclaim your escrowed funds? This ends the deal. Only available after the inactivity timeout.")) return;
+    setRefunding(true);
+    try {
+      const ix = await buildBuyerTimeoutRefundIx(publicKey, dealId);
+      const sig = await sendTx(connection, [ix], signTransaction);
+      if (MOCK_CHAIN) {
+        try { mockEscrow.refund(dealId, publicKey.toBase58()); } catch { /* mock-only */ }
+      }
+      await patchStatus("refunded");
+      await postMessage(
+        `↩️ Buyer reclaimed the escrowed funds via inactivity timeout. Deal refunded.\n\nTx: \`${sig.slice(0, 8)}...${sig.slice(-8)}\``,
+        "assistant"
+      );
+      await refreshAll();
+    } catch (err) {
+      console.error("Timeout refund failed:", err);
+      alert(err instanceof Error && /Timeout/i.test(err.message)
+        ? "The inactivity timeout hasn't elapsed yet."
+        : "Refund failed. Check console for details.");
+    } finally {
+      setRefunding(false);
+    }
+  }
+
+  // Buyer-only cancel of a not-yet-funded deal — closes the on-chain deal +
+  // vault (rent → buyer) and marks the mirror refunded. Real chain call, not a
+  // local no-op.
+  async function handleCancelDeal() {
+    if (!publicKey || !signTransaction || role !== "buyer") return;
+    if (!confirm("Cancel this deal? It hasn't been funded, so nothing is escrowed.")) return;
+    setRefunding(true);
+    try {
+      const ix = await buildCancelDealIx(publicKey, dealId);
+      const sig = await sendTx(connection, [ix], signTransaction);
+      if (MOCK_CHAIN) {
+        try { mockEscrow.refund(dealId, publicKey.toBase58()); } catch { /* mock-only */ }
+      }
+      await patchStatus("refunded");
+      await postMessage(
+        `✖️ Buyer cancelled the deal before funding.\n\nTx: \`${sig.slice(0, 8)}...${sig.slice(-8)}\``,
+        "assistant"
+      );
+      await refreshAll();
+    } catch (err) {
+      console.error("Cancel failed:", err);
+      alert("Cancel failed. Check console for details.");
+    } finally {
+      setRefunding(false);
+    }
+  }
+
+  // Mutual refund, step 1: the initiator (buyer or seller) builds the refund tx,
+  // partial-signs it, and stores it on the relay for the counterparty to co-sign.
+  async function handleRequestRefund() {
+    if (!publicKey || !signTransaction || role === "observer" || !deal?.buyer_wallet || !deal?.seller_wallet) return;
+    if (!confirm("Request a mutual refund? The other party must also sign. Unreleased escrow returns to the buyer.")) return;
+    setRefunding(true);
+    try {
+      const buyer = new PublicKey(deal.buyer_wallet);
+      const seller = new PublicKey(deal.seller_wallet);
+      const ix = await buildRefundIx(buyer, seller, dealId);
+      const partialTxB64 = await buildAndPartialSign(connection, [ix], publicKey, signTransaction);
+      await apiFetch(`/api/deals/${dealId}/refund`, {
+        method: "POST",
+        wallet: wallet ?? "",
+        body: { partial_tx: partialTxB64 },
+      });
+      await postMessage(`↩️ ${role === "buyer" ? "Buyer" : "Seller"} requested a mutual refund. Awaiting the other party's signature.`);
+      await refreshAll();
+    } catch (err) {
+      console.error("Refund request failed:", err);
+      alert("Could not start the refund. Check console for details.");
+    } finally {
+      setRefunding(false);
+    }
+  }
+
+  // Mutual refund, step 2: the counterparty co-signs the stored partial tx and
+  // broadcasts it. On success the mirror is marked refunded and (for the buyer)
+  // the vault rent is reclaimed via close_deal.
+  async function handleCoSignRefund() {
+    const req = refundReqQuery.data?.request;
+    if (!publicKey || !signTransaction || !req) return;
+    if (!confirm("Approve and submit the mutual refund? Unreleased escrow returns to the buyer and the deal ends.")) return;
+    setRefunding(true);
+    try {
+      const sig = await coSignAndSend(connection, req.partial_tx, signTransaction);
+      if (MOCK_CHAIN && deal?.buyer_wallet) {
+        // Mock ledger is a demo aid, not the source of truth — don't fail the
+        // refund if this deal was never funded through it.
+        try { mockEscrow.refund(dealId, deal.buyer_wallet); } catch { /* mock-only */ }
+      }
+      // Reclaim the escrow vault rent (buyer-only, valid once refunded).
+      if (role === "buyer") {
+        try {
+          const closeIx = await buildCloseDealIx(publicKey, dealId);
+          await sendTx(connection, [closeIx], signTransaction);
+        } catch (e) {
+          console.warn("close_deal (rent reclaim) skipped:", e);
+        }
+      }
+      await patchStatus("refunded");
+      await apiFetchSafe(`/api/deals/${dealId}/refund?completed=1`, { method: "DELETE", wallet: wallet ?? "" }, undefined);
+      await postMessage(
+        `↩️ Mutual refund completed. Unreleased escrow returned to the buyer.\n\nTx: \`${sig.slice(0, 8)}...${sig.slice(-8)}\``,
+        "assistant"
+      );
+      await refreshAll();
+    } catch (err) {
+      console.error("Co-sign refund failed:", err);
+      alert("Could not complete the refund (the request may have expired — try again).");
+    } finally {
+      setRefunding(false);
+    }
+  }
+
+  async function handleCancelRefundRequest() {
+    if (!wallet) return;
+    await apiFetchSafe(`/api/deals/${dealId}/refund`, { method: "DELETE", wallet }, undefined);
+    await refreshAll();
+  }
+
+  // Report a problem — files a complaint the platform reviews (mediate-only; it
+  // does not move funds). Stored via /api/complaints, surfaced in the admin tool.
+  async function handleSubmitReport() {
+    if (!wallet || !reportMessage.trim()) return;
+    setReportSubmitting(true);
+    try {
+      await apiFetch("/api/complaints", {
+        method: "POST",
+        wallet,
+        body: { deal_id: dealId, category: reportCategory, message: reportMessage.trim() },
+      });
+      setReportDone(true);
+      setReportMessage("");
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Could not submit. Please try again.");
+    } finally {
+      setReportSubmitting(false);
+    }
+  }
+
   async function handleSendMessage() {
     const text = chatInput.trim();
     if (!text || !wallet || sendingMsg) return;
@@ -241,6 +420,14 @@ export default function ActiveDealPage() {
   const currentInReview = currentMilestoneIndex >= 0 && milestones[currentMilestoneIndex]?.status === "In Review";
   const totalValue = milestones.reduce((s, m) => s + m.amount, 0);
   const releasedValue = milestones.filter((m) => m.status === "Released").reduce((s, m) => s + m.amount, 0);
+
+  // Refund/dispute gating. Terminal deals (finished or already refunded) show no
+  // refund actions. "Funded" = escrow holds money (funded/in_progress or any
+  // milestone released); "unfunded" draft deals can be cancelled instead.
+  const dealStatus = (deal?.status ?? "").toLowerCase();
+  const isTerminal = isComplete || dealStatus === "completed" || dealStatus === "refunded";
+  const isFunded = ["funded", "in_progress"].includes(dealStatus) || releasedCount > 0;
+  const isUnfunded = !isFunded && ["draft", "seller-ready", "seller-agreed", "escalated", "proposed"].includes(dealStatus);
 
   useEffect(() => {
     if (isComplete && !sealedModalShown) {
@@ -751,12 +938,158 @@ export default function ActiveDealPage() {
                 <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
               <p style={{ fontSize: 11, color: "var(--muted)", margin: 0, lineHeight: 1.5 }}>
-                Funds stay in escrow until you confirm. Refund requires both signatures.
+                Funds stay in escrow until the buyer releases each milestone.
               </p>
             </div>
+
+            {/* Refund / dispute — shown to the two parties on non-terminal deals */}
+            {role !== "observer" && !isTerminal && (
+              <div className="surface-card" style={{ borderRadius: 12, padding: 16 }}>
+                <p style={{ fontSize: 13, color: "var(--primary)", fontWeight: 590, margin: "0 0 4px" }}>Refund &amp; disputes</p>
+                <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
+                  A refund returns unreleased escrow to the buyer. A mutual refund needs both signatures; the buyer can reclaim funds alone after an inactivity timeout.
+                </p>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {/* Buyer + unfunded → cancel */}
+                  {role === "buyer" && isUnfunded && (
+                    <button
+                      className="btn-ghost"
+                      disabled={refunding}
+                      onClick={handleCancelDeal}
+                      style={{ height: 34, borderRadius: 7, fontSize: 12 }}
+                    >
+                      {refunding ? "Cancelling…" : "Cancel deal (not funded)"}
+                    </button>
+                  )}
+
+                  {/* Buyer + funded → timeout refund (ghost-seller escape hatch) */}
+                  {role === "buyer" && isFunded && (
+                    <button
+                      className="btn-ghost"
+                      disabled={refunding}
+                      onClick={handleTimeoutRefund}
+                      style={{ height: 34, borderRadius: 7, fontSize: 12 }}
+                      title="Reclaim your funds if the seller has gone inactive past the timeout window"
+                    >
+                      {refunding ? "Processing…" : "Reclaim funds (inactivity timeout)"}
+                    </button>
+                  )}
+
+                  {/* Mutual refund (both sign, via relay). Only meaningful once
+                      escrow holds funds. */}
+                  {isFunded && (() => {
+                    const req = refundReqQuery.data?.request ?? null;
+                    if (!req) {
+                      return (
+                        <button
+                          className="btn-ghost"
+                          disabled={refunding}
+                          onClick={handleRequestRefund}
+                          style={{ height: 34, borderRadius: 7, fontSize: 12 }}
+                        >
+                          {refunding ? "Requesting…" : "Ask for a refund (both sign)"}
+                        </button>
+                      );
+                    }
+                    const iInitiated = req.requested_by === wallet;
+                    return (
+                      <div style={{ padding: "10px 12px", borderRadius: 8, background: "rgba(245,166,35,0.06)", border: "1px solid rgba(245,166,35,0.25)" }}>
+                        <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 8px", lineHeight: 1.5 }}>
+                          {iInitiated
+                            ? "Refund requested — waiting for the other party to approve & sign."
+                            : "The other party requested a mutual refund. Approve to return unreleased escrow to the buyer."}
+                        </p>
+                        {iInitiated ? (
+                          <button className="btn-ghost" disabled={refunding} onClick={handleCancelRefundRequest} style={{ height: 32, borderRadius: 6, fontSize: 12, width: "100%" }}>
+                            Cancel request
+                          </button>
+                        ) : (
+                          <button className="btn-primary" disabled={refunding} onClick={handleCoSignRefund} style={{ height: 34, borderRadius: 7, fontSize: 12, width: "100%" }}>
+                            {refunding ? "Submitting…" : "Approve & sign refund"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Dev-only: fast-forward the funding timestamp so the timeout is
+                      testable without waiting 30 days. Mock mode only. */}
+                  {MOCK_CHAIN && role === "buyer" && isFunded && (
+                    <button
+                      className="btn-ghost"
+                      onClick={() => { mockEscrow.timeWarp(dealId); alert("Dev: funding backdated past the timeout. You can now reclaim funds."); }}
+                      style={{ height: 28, borderRadius: 6, fontSize: 11, opacity: 0.7 }}
+                    >
+                      ⏩ Dev: skip timeout
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Report a problem — available to either party, any deal state. */}
+            {role !== "observer" && (
+              <button
+                className="btn-ghost"
+                onClick={() => { setReportOpen(true); setReportDone(false); }}
+                style={{ height: 32, borderRadius: 7, fontSize: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, color: "var(--muted)" }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                Report a problem
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Report-a-problem modal */}
+      {reportOpen && (
+        <div onClick={() => setReportOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} className="surface-card" style={{ width: "100%", maxWidth: 440, borderRadius: 14, padding: 22 }}>
+            {reportDone ? (
+              <>
+                <p style={{ fontSize: 15, fontWeight: 600, color: "var(--primary)", margin: "0 0 6px" }}>Report received</p>
+                <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 18px", lineHeight: 1.5 }}>
+                  Thanks — our team will review this and reach out if needed. (We help mediate; we don&apos;t move your escrowed funds.)
+                </p>
+                <button className="btn-primary" onClick={() => setReportOpen(false)} style={{ height: 36, borderRadius: 8, fontSize: 13, width: "100%" }}>Close</button>
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: 15, fontWeight: 600, color: "var(--primary)", margin: "0 0 4px" }}>Report a problem</p>
+                <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 16px", lineHeight: 1.5 }}>
+                  Tell us what&apos;s wrong with this deal. Our team reviews reports and helps mediate — we can&apos;t move escrowed funds, but we can step in.
+                </p>
+                <label style={{ fontSize: 11, color: "var(--muted)", display: "block", marginBottom: 6 }}>Category</label>
+                <select value={reportCategory} onChange={(e) => setReportCategory(e.target.value)} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--card-border)", color: "var(--primary)", fontSize: 13, marginBottom: 12 }}>
+                  <option value="non_delivery">Work / goods not delivered</option>
+                  <option value="quality">Quality issue</option>
+                  <option value="communication">Communication / unresponsive</option>
+                  <option value="payment">Payment issue</option>
+                  <option value="other">Other</option>
+                </select>
+                <label style={{ fontSize: 11, color: "var(--muted)", display: "block", marginBottom: 6 }}>What happened?</label>
+                <textarea
+                  value={reportMessage}
+                  onChange={(e) => setReportMessage(e.target.value)}
+                  rows={4}
+                  placeholder="Describe the problem…"
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--card-border)", color: "var(--primary)", fontSize: 13, resize: "vertical", outline: "none", marginBottom: 16, fontFamily: "inherit" }}
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn-ghost" onClick={() => setReportOpen(false)} style={{ height: 36, borderRadius: 8, fontSize: 13, flex: 1 }}>Cancel</button>
+                  <button className="btn-primary" disabled={!reportMessage.trim() || reportSubmitting} onClick={handleSubmitReport} style={{ height: 36, borderRadius: 8, fontSize: 13, flex: 2 }}>
+                    {reportSubmitting ? "Submitting…" : "Submit report"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

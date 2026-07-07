@@ -11,6 +11,7 @@ import AdminGate from "./AdminGate";
 const NAV = [
   { href: "/admin/deals", label: "Deals", icon: "M3 3h18v4H3zM3 10h18v4H3zM3 17h18v4H3z" },
   { href: "/admin/users", label: "Users", icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" },
+  { href: "/admin/complaints", label: "Complaints", icon: "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01" },
   { href: "/admin/kyc", label: "KYC", icon: "M9 12l2 2 4-4M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" },
 ];
 

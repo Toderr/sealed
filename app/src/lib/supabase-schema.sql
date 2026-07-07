@@ -199,3 +199,31 @@ CREATE TABLE IF NOT EXISTS sealed_friends (
 );
 CREATE INDEX IF NOT EXISTS sealed_friends_wallet_idx ON sealed_friends (wallet);
 CREATE INDEX IF NOT EXISTS sealed_friends_friend_wallet_idx ON sealed_friends (friend_wallet);
+
+-- Mutual-refund handoff relay. Holds the buyer's partially-signed refund
+-- transaction so the seller can co-sign it from their own device (replaces the
+-- localStorage/copy-paste demo handoff). One open request per deal.
+CREATE TABLE IF NOT EXISTS sealed_refund_requests (
+    deal_id        TEXT PRIMARY KEY,        -- one active request per deal
+    requested_by   TEXT NOT NULL,           -- wallet that initiated + partial-signed
+    partial_tx     TEXT NOT NULL,           -- base64 partially-signed refund tx
+    blockhash      TEXT,                    -- recent blockhash (tx expires ~90s)
+    status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','completed','cancelled')),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- User-reported problems / complaints. Mediate-only: the platform reviews these
+-- in the admin dashboard and nudges the parties — it cannot move escrow funds.
+CREATE TABLE IF NOT EXISTS sealed_complaints (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    deal_id        TEXT,                    -- optional; a complaint may be general
+    reporter_wallet TEXT NOT NULL,
+    category       TEXT NOT NULL DEFAULT 'other' CHECK (category IN ('non_delivery','quality','communication','payment','other')),
+    message        TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','reviewing','resolved','dismissed')),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS sealed_complaints_status_idx ON sealed_complaints (status, created_at);
+CREATE INDEX IF NOT EXISTS sealed_complaints_deal_idx ON sealed_complaints (deal_id);
