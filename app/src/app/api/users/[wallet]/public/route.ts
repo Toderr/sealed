@@ -33,6 +33,7 @@ export const GET = withRoute<{ params: Promise<{ wallet: string }> }>(
         notify_on: user?.notify_on ?? null,
         email: user?.email ?? null,
         email_verified: user?.email_verified ?? false,
+        kyc_status: user?.kyc_status ?? "none",
       });
     }
 

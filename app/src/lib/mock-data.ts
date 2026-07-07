@@ -509,7 +509,8 @@ async function handle(
       display_name: p.display_name ?? null,
       avatar_url: p.avatar_url ?? null,
       bio: p.bio ?? null,
-      is_verified: false,
+      is_verified: (p.kyc_status as string) === "approved",
+      kyc_status: (p.kyc_status as string) ?? "none",
       deals_total: deals.length,
       deals_successful: deals.filter(isCompleted).length,
       avg_rating: 0,
@@ -629,7 +630,17 @@ async function handle(
   if (path === "/api/users/email/verify" && method === "POST") return json({ ok: true });
   if (path === "/api/users/notifications" && method === "POST") return json({ ok: true });
   if (path === "/api/profile/avatar" && method === "POST") return json({ avatarUrl: null });
-  if (path === "/api/kyc/submit" && method === "POST") return json({ status: "pending" });
+  if (path === "/api/kyc/submit" && method === "POST") {
+    // Persist pending status to the profile store so the verify page reflects it.
+    const b = (body ?? {}) as { wallet?: string };
+    const w = b.wallet ?? wallet;
+    if (w) {
+      const profiles = read<Record<string, Record<string, unknown>>>(K.profiles, {});
+      profiles[w] = { ...(profiles[w] ?? {}), kyc_status: "pending" };
+      write(K.profiles, profiles);
+    }
+    return json({ status: "pending" });
+  }
 
   // GET /api/friends — empty offline
   if (path === "/api/friends" && method === "GET") {
