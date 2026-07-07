@@ -54,6 +54,8 @@ const K = {
   ratings: "mock:data:ratings",
   profiles: "mock:data:profiles",
   deliverables: "mock:data:deliverables",
+  refundReqs: "mock:data:refund-requests",
+  complaints: "mock:data:complaints",
 };
 
 type Deliverable = {
@@ -223,6 +225,34 @@ async function handle(
     }
   }
 
+  // /api/complaints — POST is public (any wallet); GET/PATCH are admin-only.
+  if (path === "/api/complaints") {
+    const all = read<Array<Record<string, unknown>>>(K.complaints, []);
+    if (method === "POST") {
+      const b = (body ?? {}) as { deal_id?: string; category?: string; message?: string };
+      if (!b.message?.trim()) return json({ error: "message required" }, 400);
+      const c = { id: uuid(), deal_id: b.deal_id ?? null, reporter_wallet: wallet, category: b.category ?? "other", message: b.message.trim(), status: "open", created_at: nowIso() };
+      all.unshift(c);
+      write(K.complaints, all);
+      return json({ complaint: c });
+    }
+    // GET / PATCH require admin (mirror the real route's requireAdmin).
+    const MOCK_ADMIN_WALLET = "8NY8GM9JbDcNo9RxmbYd7SKj5EWEVs8syKfzE1MzB6VR";
+    const passcode = headers.get("x-admin-passcode");
+    if (!(wallet === MOCK_ADMIN_WALLET || passcode === "sealed-admin-2026")) return json({ error: "Forbidden" }, 403);
+    if (method === "GET") {
+      const statuses = params.getAll("status").flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean);
+      const rows = statuses.length ? all.filter((c) => statuses.includes(c.status as string)) : all;
+      return json({ complaints: rows, count: rows.length, limit: 100, offset: 0 });
+    }
+    if (method === "PATCH") {
+      const b = (body ?? {}) as { id?: string; status?: string };
+      const c = all.find((x) => x.id === b.id);
+      if (c && b.status) { c.status = b.status; write(K.complaints, all); }
+      return json({ ok: true });
+    }
+  }
+
   // Admin gate (offline mirror of lib/admin.ts). Real env isn't readable in the
   // browser interceptor, so we use fixed dev values: the buyer mock identity is
   // "allowlisted", and a dev passcode unlocks the passcode path. Lets both the
@@ -353,6 +383,28 @@ async function handle(
     const count = rows.length;
     const page = rows.slice(offset, offset + limit);
     return json({ users: page, count, limit, offset });
+  }
+
+  // GET/POST/DELETE /api/deals/:dealId/refund — mutual-refund relay (offline).
+  const refundMatch = path.match(/^\/api\/deals\/([^/]+)\/refund$/);
+  if (refundMatch) {
+    const dealId = decodeURIComponent(refundMatch[1]);
+    const all = read<Record<string, Record<string, unknown>>>(K.refundReqs, {});
+    if (method === "GET") {
+      const r = all[dealId];
+      return json({ request: r && r.status === "pending" ? r : null });
+    }
+    if (method === "POST") {
+      const b = (body ?? {}) as { partial_tx?: string };
+      if (!b.partial_tx) return json({ error: "partial_tx required" }, 400);
+      all[dealId] = { deal_id: dealId, requested_by: wallet, partial_tx: b.partial_tx, blockhash: null, status: "pending", created_at: nowIso() };
+      write(K.refundReqs, all);
+      return json({ request: all[dealId] });
+    }
+    if (method === "DELETE") {
+      if (all[dealId]) { all[dealId].status = params.get("completed") === "1" ? "completed" : "cancelled"; write(K.refundReqs, all); }
+      return json({ ok: true });
+    }
   }
 
   // GET/PATCH /api/deals/:dealId
