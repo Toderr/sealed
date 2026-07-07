@@ -116,6 +116,9 @@ export default function ActiveDealPage() {
   const [showSealedModal, setShowSealedModal] = useState(false);
   const [confirmModal, setConfirmModal] = useState<number | null>(null);
   const [refunding, setRefunding] = useState(false);
+  const [changesModal, setChangesModal] = useState<number | null>(null);
+  const [changesNote, setChangesNote] = useState("");
+  const [requestingChanges, setRequestingChanges] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportCategory, setReportCategory] = useState("other");
   const [reportMessage, setReportMessage] = useState("");
@@ -245,6 +248,32 @@ export default function ActiveDealPage() {
       alert("Failed to release payment. Check console for details.");
     } finally {
       setApprovingIndex(null);
+    }
+  }
+
+  // Buyer requests changes on an In-Review milestone: send it back to Pending so
+  // the seller can revise + re-submit, and post the buyer's note to the thread.
+  // Off-chain only (no funds move) — mirrors the release flow's mirror-patch shape.
+  async function handleRequestChanges(milestoneIndex: number) {
+    if (role !== "buyer") return;
+    setRequestingChanges(true);
+    try {
+      const updated = milestones.map((m, i) =>
+        i === milestoneIndex ? { ...m, status: "Pending" } : m
+      );
+      await patchMilestones(updated);
+      const note = changesNote.trim();
+      await postMessage(
+        `🔁 Buyer requested changes on Milestone ${milestoneIndex + 1}: **${milestones[milestoneIndex].description}**.${note ? `\n\n> ${note}` : ""}\n\nPlease revise and re-submit proof.`
+      );
+      setChangesModal(null);
+      setChangesNote("");
+      await refreshAll();
+    } catch (err) {
+      console.error("Request changes failed:", err);
+      alert("Could not request changes. Please try again.");
+    } finally {
+      setRequestingChanges(false);
     }
   }
 
@@ -712,6 +741,8 @@ export default function ActiveDealPage() {
                         <div className="anim-fade-up" style={{ marginTop: 12, display: "flex", gap: 8 }}>
                           <button
                             className="btn-ghost"
+                            onClick={() => { setChangesModal(i); setChangesNote(""); }}
+                            disabled={approvingIndex !== null || requestingChanges}
                             style={{ flex: 1, height: 34, borderRadius: 7, fontSize: 12 }}
                           >
                             Request changes
@@ -1044,6 +1075,32 @@ export default function ActiveDealPage() {
           </div>
         </div>
       </div>
+
+      {/* Request-changes modal (buyer, In Review) */}
+      {changesModal !== null && (
+        <div onClick={() => setChangesModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} className="surface-card" style={{ width: "100%", maxWidth: 420, borderRadius: 14, padding: 22 }}>
+            <p style={{ fontSize: 15, fontWeight: 600, color: "var(--primary)", margin: "0 0 4px" }}>Request changes</p>
+            <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 16px", lineHeight: 1.5 }}>
+              Send Milestone {changesModal + 1} back to the seller to revise. It returns to <strong>Pending</strong> so they can re-submit proof. No funds move.
+            </p>
+            <label style={{ fontSize: 11, color: "var(--muted)", display: "block", marginBottom: 6 }}>What needs changing? (optional)</label>
+            <textarea
+              value={changesNote}
+              onChange={(e) => setChangesNote(e.target.value)}
+              rows={4}
+              placeholder="Describe what the seller should fix…"
+              style={{ width: "100%", padding: "8px 10px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--card-border)", color: "var(--primary)", fontSize: 13, resize: "vertical", outline: "none", marginBottom: 16, fontFamily: "inherit" }}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn-ghost" onClick={() => setChangesModal(null)} style={{ height: 36, borderRadius: 8, fontSize: 13, flex: 1 }}>Cancel</button>
+              <button className="btn-primary" disabled={requestingChanges} onClick={() => handleRequestChanges(changesModal)} style={{ height: 36, borderRadius: 8, fontSize: 13, flex: 2 }}>
+                {requestingChanges ? "Sending…" : "Send back for changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Report-a-problem modal */}
       {reportOpen && (
