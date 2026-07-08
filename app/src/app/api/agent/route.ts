@@ -6,7 +6,7 @@ import { HttpError, json, withRoute } from "@/lib/api-error";
 
 export const POST = withRoute(async (request: NextRequest) => {
   const { messages } = await request.json();
-  const wallet = getWallet(request) ?? undefined;
+  const wallet = await getWallet(request) ?? undefined;
 
   const llm = getLlmOptsFromEnv();
   if (!llm) {

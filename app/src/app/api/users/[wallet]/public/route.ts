@@ -1,4 +1,5 @@
 import { getPublicProfile, getUser } from "@/lib/sealed-users";
+import { getWallet } from "@/lib/auth";
 import { withRoute, json } from "@/lib/api-error";
 
 export const GET = withRoute<{ params: Promise<{ wallet: string }> }>(
@@ -21,10 +22,12 @@ export const GET = withRoute<{ params: Promise<{ wallet: string }> }>(
       });
     }
 
-    // Include private fields only when request comes from the same wallet
-    // (basic check via query param — production would use session/JWT)
+    // Include private fields only when the AUTHENTICATED session wallet is the
+    // profile owner (?self=1 alone is not enough — it was spoofable).
     const url = new URL(req.url);
-    const includePrivate = url.searchParams.get("self") === "1";
+    const sessionWallet = await getWallet(req);
+    const includePrivate =
+      url.searchParams.get("self") === "1" && sessionWallet === wallet;
 
     if (includePrivate) {
       const user = await getUser(wallet);

@@ -10,7 +10,7 @@ import { findDealPDA, findEscrowVaultPDA, PROGRAM_ID } from "@/lib/escrow-client
 
 export const GET = withRoute<{ params: Promise<{ dealId: string }> }>(
   async (request, { params }) => {
-    const guard = requireAdmin(request);
+    const guard = await requireAdmin(request);
     if (guard) return guard;
 
     const { dealId } = await params;

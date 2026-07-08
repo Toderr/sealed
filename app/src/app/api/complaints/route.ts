@@ -11,7 +11,7 @@ const CATEGORIES = new Set(["non_delivery", "quality", "communication", "payment
 
 // POST /api/complaints — file a complaint.
 export const POST = withRoute(async (request) => {
-  const wallet = requireWallet(request);
+  const wallet = await requireWallet(request);
   const body = (await request.json()) as {
     deal_id?: string | null;
     category?: string;
@@ -41,7 +41,7 @@ export const POST = withRoute(async (request) => {
 
 // GET /api/complaints — admin-only list, newest first, optional status filter.
 export const GET = withRoute(async (request) => {
-  const guard = requireAdmin(request);
+  const guard = await requireAdmin(request);
   if (guard) return guard;
 
   const params = request.nextUrl.searchParams;
@@ -67,7 +67,7 @@ export const GET = withRoute(async (request) => {
 
 // PATCH /api/complaints — admin-only status update.
 export const PATCH = withRoute(async (request) => {
-  const guard = requireAdmin(request);
+  const guard = await requireAdmin(request);
   if (guard) return guard;
 
   const body = (await request.json()) as { id?: string; status?: string };

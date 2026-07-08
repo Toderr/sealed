@@ -4,7 +4,7 @@ import { HttpError, json, withRoute } from "@/lib/api-error";
 
 export const PATCH = withRoute<{ params: Promise<{ friendWallet: string }> }>(
   async (req, { params }) => {
-  const wallet = requireWallet(req);
+  const wallet = await requireWallet(req);
 
   const { friendWallet } = await params;
   const { action } = (await req.json()) as { action?: "accept" | "decline" };
@@ -40,7 +40,7 @@ export const PATCH = withRoute<{ params: Promise<{ friendWallet: string }> }>(
 
 export const DELETE = withRoute<{ params: Promise<{ friendWallet: string }> }>(
   async (req, { params }) => {
-  const wallet = requireWallet(req);
+  const wallet = await requireWallet(req);
 
   const { friendWallet } = await params;
 

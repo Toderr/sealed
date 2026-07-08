@@ -1,4 +1,5 @@
 import { supabase, table } from "@/lib/supabase";
+import { requireWallet } from "@/lib/auth";
 import { HttpError, json, withRoute } from "@/lib/api-error";
 
 export const GET = withRoute(async (request) => {
@@ -16,8 +17,11 @@ export const GET = withRoute(async (request) => {
 });
 
 export const POST = withRoute(async (request) => {
+  // Caller must be authenticated; the message's wallet is stamped from the
+  // session (for user messages) so a message can't be injected as someone else.
+  const sessionWallet = await requireWallet(request);
   const body = await request.json();
-  const { deal_id, role, content, wallet, metadata } = body;
+  const { deal_id, role, content, metadata } = body;
 
   if (!deal_id || !role || !content) {
     throw new HttpError(400, "Missing fields");
@@ -31,6 +35,10 @@ export const POST = withRoute(async (request) => {
     metadata && typeof metadata === "object" && !Array.isArray(metadata)
       ? metadata
       : {};
+
+  // User-authored messages are attributed to the session wallet; agent/system
+  // messages carry no wallet.
+  const wallet = role === "user" ? sessionWallet : null;
 
   const { data, error } = await supabase
     .from(table("messages"))

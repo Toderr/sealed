@@ -5,7 +5,7 @@ import { json, withRoute } from "@/lib/api-error";
 // GET /api/friends/status?with=<wallet>
 // Returns the friendship status between x-wallet and ?with=
 export const GET = withRoute(async (req) => {
-  const myWallet = getWallet(req);
+  const myWallet = await getWallet(req);
   if (!myWallet) return json({ status: "none" });
 
   const url = new URL(req.url);

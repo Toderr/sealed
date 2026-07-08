@@ -21,7 +21,7 @@ function detectType(buf: Buffer): { mime: string; ext: string } | null {
 }
 
 export const POST = withRoute(async (request) => {
-  const walletHeader = requireWallet(request);
+  const walletHeader = await requireWallet(request);
 
   const dealId = request.headers.get("x-deal-id") ?? "standalone";
   const milestoneIndex = parseInt(request.headers.get("x-milestone-index") ?? "0", 10);

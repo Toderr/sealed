@@ -13,7 +13,7 @@ function isAllowedKycFile(buf: Buffer): boolean {
 }
 
 export const POST = withRoute(async (request) => {
-  const callerWallet = getWallet(request);
+  const callerWallet = await getWallet(request);
   const body = await request.json();
   const { wallet, documentBase64, mimeType } = body;
 

@@ -13,7 +13,7 @@ const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 50;
 
 export const GET = withRoute(async (request) => {
-  const guard = requireAdmin(request);
+  const guard = await requireAdmin(request);
   if (guard) return guard;
 
   const params = request.nextUrl.searchParams;
