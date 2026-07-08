@@ -185,6 +185,22 @@ async function handle(
   const wallet = headers.get("x-wallet");
   const params = url.searchParams;
 
+  // Sign-in-with-Solana (offline). The mock wallet's signMessage returns zeros,
+  // so real ed25519 verify can't run — treat the mock identity as always signed
+  // in. nonce/verify are trivial successes; session reflects the current wallet.
+  if (path === "/api/auth/nonce" && method === "GET") {
+    return json({ nonce: "mock-nonce" });
+  }
+  if (path === "/api/auth/verify" && method === "POST") {
+    return json({ ok: true, wallet });
+  }
+  if (path === "/api/auth/session" && method === "GET") {
+    return json({ wallet: wallet ?? null });
+  }
+  if (path === "/api/auth/logout" && method === "POST") {
+    return json({ ok: true });
+  }
+
   // GET/POST /api/deals/mirror
   if (path === "/api/deals/mirror") {
     if (method === "GET") {
