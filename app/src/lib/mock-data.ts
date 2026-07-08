@@ -159,6 +159,26 @@ export const mockData = {
 
 // ── Helpers mirroring the real route logic ────────────────────────────────────
 
+// The connected mock wallet, derived from the same localStorage role the mock
+// wallet hook uses (see mock-wallet.tsx: ROLE_KEY + MOCK_IDENTITIES). Kept as
+// string literals here to avoid importing web3.js just to echo a pubkey.
+const MOCK_WALLETS = {
+  buyer: "8NY8GM9JbDcNo9RxmbYd7SKj5EWEVs8syKfzE1MzB6VR",
+  seller: "tLscLXfmj1DG2e1enuso9GJ84WdiA9hL947eVJoKmjY",
+} as const;
+function mockSessionWallet(): string {
+  // ROLE_KEY holds a RAW string ("buyer"/"seller"), not JSON — read it directly.
+  let role: string | null = null;
+  if (typeof window !== "undefined") {
+    try {
+      role = localStorage.getItem("mock:wallet:role");
+    } catch {
+      /* localStorage unavailable */
+    }
+  }
+  return role === "seller" ? MOCK_WALLETS.seller : MOCK_WALLETS.buyer;
+}
+
 function isCompleted(deal: MirrorDeal): boolean {
   if (deal.status?.toLowerCase() === "completed") return true;
   return (
@@ -195,7 +215,11 @@ async function handle(
     return json({ ok: true, wallet });
   }
   if (path === "/api/auth/session" && method === "GET") {
-    return json({ wallet: wallet ?? null });
+    // The app calls /api/auth/session WITHOUT an x-wallet header (in real mode the
+    // session cookie carries identity). Offline there's no cookie, so resolve the
+    // "signed-in" wallet from the connected mock identity (mock:wallet:role), so
+    // the hard SignInGate sees a session and lets the app through.
+    return json({ wallet: wallet ?? mockSessionWallet() });
   }
   if (path === "/api/auth/logout" && method === "POST") {
     return json({ ok: true });
@@ -243,6 +267,63 @@ async function handle(
       mockData.putDeal(deal);
       return json({ ok: true, deal });
     }
+  }
+
+  // POST /api/deals/:dealId/accept-invite — the joiner accepts via their session
+  // identity (here: the x-wallet header). Mirrors the real route: inviter keeps
+  // their role, joiner takes the opposite slot; creates the row if the inviter's
+  // mirror never landed. The joiner is the caller, never the body.
+  const acceptMatch = path.match(/^\/api\/deals\/([^/]+)\/accept-invite$/);
+  if (acceptMatch && method === "POST") {
+    const dealId = decodeURIComponent(acceptMatch[1]);
+    const joiner = wallet;
+    if (!joiner) return json({ error: "Not authenticated — sign in first" }, 401);
+    const b = (body ?? {}) as {
+      inviter?: string;
+      inviterRole?: "buyer" | "seller";
+      dealTitle?: string;
+      description?: string | null;
+      amount?: number;
+      milestones?: Array<{ description: string; amount: number }>;
+    };
+    const inviter = b.inviter;
+    const inviterRole = b.inviterRole === "seller" ? "seller" : "buyer";
+    if (!inviter) return json({ error: "Missing inviter" }, 400);
+    if (inviter === joiner) return json({ error: "You can't accept your own invite" }, 400);
+
+    const buyer_wallet = inviterRole === "buyer" ? inviter : joiner;
+    const seller_wallet = inviterRole === "buyer" ? joiner : inviter;
+    const myField: "buyer_wallet" | "seller_wallet" =
+      joiner === seller_wallet ? "seller_wallet" : "buyer_wallet";
+
+    const existing = mockData.getDeal(dealId);
+    if (existing) {
+      const otherField = myField === "seller_wallet" ? "buyer_wallet" : "seller_wallet";
+      const mySlot = existing[myField];
+      const otherSlot = existing[otherField];
+      if (mySlot && mySlot !== joiner) return json({ error: "That side of the deal is already taken" }, 409);
+      if (otherSlot && otherSlot !== inviter) return json({ error: "This invite doesn't match the deal" }, 403);
+      if (joiner === otherSlot) return json({ error: "Buyer and seller must be different wallets" }, 400);
+      const next: MirrorDeal = { ...existing, [myField]: joiner, updated_at: nowIso() };
+      mockData.putDeal(next);
+      return json({ deal: next });
+    }
+
+    // No row yet — create it from the invite payload with both slots set.
+    const deal: MirrorDeal = {
+      deal_id: dealId,
+      buyer_wallet,
+      seller_wallet,
+      title: b.dealTitle ?? dealId,
+      description: b.description ?? null,
+      total_amount_usdc: b.amount ?? 0,
+      milestones: (b.milestones ?? []).map((m) => ({ ...m, status: "Pending" })),
+      status: "draft",
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    mockData.putDeal(deal);
+    return json({ deal });
   }
 
   // /api/complaints — POST is public (any wallet); GET/PATCH are admin-only.
