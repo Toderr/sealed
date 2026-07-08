@@ -221,28 +221,19 @@ export default function InvitePage() {
       } catch {}
     }
 
-    // 2. Upsert the full deal into Supabase with both slots set. Use the
-    //    INVITER's wallet as x-wallet so the mirror authority check accepts it
-    //    (the inviter owns the row), covering the case where the inviter's
-    //    original mirror call never reached Supabase.
-    const dealBody = {
-      deal_id: payload.dealId,
-      creator_role: inviterRole,
-      buyer_wallet: buyerWallet,
-      seller_wallet: sellerWallet,
-      title: payload.dealTitle,
-      description: payload.description ?? "",
-      total_amount_usdc: payload.amount,
-      milestones: (payload.milestones ?? []).map((m) => ({ ...m, status: "Pending" })),
-      status: "draft",
-    };
-    await apiFetchSafe("/api/deals/mirror", { method: "POST", wallet: inviter, body: dealBody }, undefined);
-
-    // 3. Also PATCH my own wallet slot (idempotent if mirror already set it).
-    await apiFetchSafe(`/api/deals/${payload.dealId}`, {
-      method: "PATCH",
-      wallet: me,
-      body: { [myField]: me },
+    // 2. Accept as MYSELF via the server. The route fills my slot from my
+    //    authenticated session (no acting-as-the-inviter) and creates the deal
+    //    row from the invite payload if the inviter's mirror never landed.
+    await apiFetchSafe(`/api/deals/${payload.dealId}/accept-invite`, {
+      method: "POST",
+      body: {
+        inviter,
+        inviterRole,
+        dealTitle: payload.dealTitle,
+        description: payload.description ?? "",
+        amount: payload.amount,
+        milestones: payload.milestones ?? [],
+      },
     }, undefined);
 
     setTimeout(() => {
