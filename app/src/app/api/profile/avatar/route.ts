@@ -15,7 +15,7 @@ function isImage(buf: Buffer): boolean {
 }
 
 export const POST = withRoute(async (request) => {
-  const wallet = requireWallet(request);
+  const wallet = await requireWallet(request);
 
   let formData: FormData;
   try {

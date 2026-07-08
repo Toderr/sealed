@@ -32,7 +32,7 @@ type NotificationItem = {
 };
 
 export const GET = withRoute(async (request) => {
-  const wallet = requireWallet(request);
+  const wallet = await requireWallet(request);
 
   const [{ data: deals, error: dealsError }, { data: queue }] = await Promise.all([
     supabase

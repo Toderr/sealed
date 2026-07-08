@@ -94,7 +94,7 @@ export const GET = withRoute<{ params: Promise<{ dealId: string }> }>(
 
 export const PATCH = withRoute<{ params: Promise<{ dealId: string }> }>(
   async (req, { params }) => {
-  const wallet = requireWallet(req);
+  const wallet = await requireWallet(req);
 
   const { dealId } = await params;
 

@@ -3,7 +3,7 @@ import { requireWallet } from "@/lib/auth";
 import { HttpError, json, withRoute } from "@/lib/api-error";
 
 export const POST = withRoute(async (request) => {
-  const wallet = requireWallet(request);
+  const wallet = await requireWallet(request);
 
   const body = await request.json();
   const {
@@ -116,7 +116,7 @@ export const POST = withRoute(async (request) => {
 });
 
 export const GET = withRoute(async (request) => {
-  const wallet = requireWallet(request);
+  const wallet = await requireWallet(request);
 
   const { data, error } = await supabase
     .from(table("deals"))

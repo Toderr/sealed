@@ -26,7 +26,7 @@ async function assertParty(dealId: string, wallet: string) {
 
 // GET — fetch the pending refund request for this deal (or null).
 export const GET = withRoute<Ctx>(async (request, { params }) => {
-  const wallet = requireWallet(request);
+  const wallet = await requireWallet(request);
   const { dealId } = await params;
   await assertParty(dealId, wallet);
 
@@ -42,7 +42,7 @@ export const GET = withRoute<Ctx>(async (request, { params }) => {
 
 // POST — the initiator stores their partially-signed refund tx.
 export const POST = withRoute<Ctx>(async (request, { params }) => {
-  const wallet = requireWallet(request);
+  const wallet = await requireWallet(request);
   const { dealId } = await params;
   await assertParty(dealId, wallet);
 
@@ -73,7 +73,7 @@ export const POST = withRoute<Ctx>(async (request, { params }) => {
 
 // DELETE — clear/cancel the request (either party, or after it's broadcast).
 export const DELETE = withRoute<Ctx>(async (request, { params }) => {
-  const wallet = requireWallet(request);
+  const wallet = await requireWallet(request);
   const { dealId } = await params;
   await assertParty(dealId, wallet);
 

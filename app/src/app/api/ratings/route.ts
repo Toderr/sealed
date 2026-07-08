@@ -39,7 +39,7 @@ function counterpartyFor(deal: Awaited<ReturnType<typeof getDealForRating>>, wal
 }
 
 export const GET = withRoute(async (request) => {
-  const raterWallet = requireWallet(request);
+  const raterWallet = await requireWallet(request);
   const dealId = requireString(request.nextUrl.searchParams.get("deal_id"), "deal_id");
 
   const deal = await getDealForRating(dealId);
@@ -63,7 +63,7 @@ export const GET = withRoute(async (request) => {
 });
 
 export const POST = withRoute(async (request) => {
-  const rater_wallet = requireWallet(request);
+  const rater_wallet = await requireWallet(request);
 
   const body = await request.json();
   const { deal_id, ratee_wallet, stars, review_text } = body;

@@ -70,6 +70,8 @@ export async function apiFetch<T = unknown>(
     headers,
     body,
     signal: opts.signal,
+    // Send the session cookie (sign-in-with-Solana) with every request.
+    credentials: "include",
   });
 
   if (!res.ok) {

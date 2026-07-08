@@ -6,20 +6,22 @@ import {
   deleteTemplate,
   setActive,
 } from "@/lib/agent-template-store";
+import { requireWallet } from "@/lib/auth";
 import { HttpError, json, withRoute } from "@/lib/api-error";
 
-export const GET = withRoute(async (request: NextRequest) => {
-  const wallet = request.nextUrl.searchParams.get("wallet");
-  if (!wallet) throw new HttpError(400, "Missing wallet");
+// The wallet is always the authenticated session identity — a user can only
+// read/manage their OWN agent templates.
 
+export const GET = withRoute(async (request: NextRequest) => {
+  const wallet = await requireWallet(request);
   const templates = await getTemplates(wallet);
   return json({ templates });
 });
 
 export const POST = withRoute(async (request: NextRequest) => {
-  const body = await request.json();
-  const { wallet, ...data } = body;
-  if (!wallet) throw new HttpError(400, "Missing wallet");
+  const wallet = await requireWallet(request);
+  const { wallet: _ignore, ...data } = await request.json();
+  void _ignore;
 
   const result = await createTemplate(wallet, data);
   if (!result.ok) throw new HttpError(422, result.error);
@@ -27,9 +29,10 @@ export const POST = withRoute(async (request: NextRequest) => {
 });
 
 export const PATCH = withRoute(async (request: NextRequest) => {
-  const body = await request.json();
-  const { id, wallet, action, ...data } = body;
-  if (!id || !wallet) throw new HttpError(400, "Missing id or wallet");
+  const wallet = await requireWallet(request);
+  const { id, wallet: _ignore, action, ...data } = await request.json();
+  void _ignore;
+  if (!id) throw new HttpError(400, "Missing id");
 
   if (action === "set-active") {
     await setActive(id, wallet);
@@ -42,9 +45,9 @@ export const PATCH = withRoute(async (request: NextRequest) => {
 });
 
 export const DELETE = withRoute(async (request: NextRequest) => {
-  const body = await request.json();
-  const { id, wallet } = body;
-  if (!id || !wallet) throw new HttpError(400, "Missing id or wallet");
+  const wallet = await requireWallet(request);
+  const { id } = await request.json();
+  if (!id) throw new HttpError(400, "Missing id");
 
   await deleteTemplate(id, wallet);
   return json({ ok: true });

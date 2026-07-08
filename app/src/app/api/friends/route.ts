@@ -17,7 +17,7 @@ async function enrichRow(row: FriendRow, cpWallet: string) {
 }
 
 export const GET = withRoute(async (req) => {
-  const wallet = requireWallet(req);
+  const wallet = await requireWallet(req);
 
   const { data, error } = await supabase
     .from(table("friends"))
@@ -43,7 +43,7 @@ export const GET = withRoute(async (req) => {
 });
 
 export const POST = withRoute(async (req) => {
-  const wallet = requireWallet(req);
+  const wallet = await requireWallet(req);
 
   const { friendWallet, friendHandle } = (await req.json()) as {
     friendWallet?: string;

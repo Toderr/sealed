@@ -1,10 +1,14 @@
 import { updateEmail } from "@/lib/sealed-users";
 import { sendEmail } from "@/lib/notify";
+import { requireWallet } from "@/lib/auth";
 import { withRoute, json, HttpError } from "@/lib/api-error";
 
 export const POST = withRoute(async (request) => {
-  const { wallet, email } = await request.json();
-  if (!wallet || !email) throw new HttpError(400, "Missing fields");
+  // Identity comes from the authenticated session, not the request body — a
+  // caller can only set the email for THEIR OWN wallet.
+  const wallet = await requireWallet(request);
+  const { email } = await request.json();
+  if (!email) throw new HttpError(400, "Missing email");
 
   const otp = await updateEmail(wallet, email);
 

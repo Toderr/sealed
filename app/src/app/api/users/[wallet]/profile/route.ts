@@ -5,7 +5,7 @@ import { withRoute, json, HttpError } from "@/lib/api-error";
 export const PUT = withRoute<{ params: Promise<{ wallet: string }> }>(
   async (request, { params }) => {
     const { wallet } = await params;
-    const callerWallet = getWallet(request);
+    const callerWallet = await getWallet(request);
 
     if (!callerWallet || callerWallet !== wallet) {
       throw new HttpError(403, "Forbidden");
