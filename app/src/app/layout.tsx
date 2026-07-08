@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import WalletProvider from "@/components/WalletProvider";
 import { ToastProvider } from "@/components/Toast";
 import MockDataInstaller from "@/components/MockDataInstaller";
+import SignInGate from "@/components/SignInGate";
 import "./globals.css";
 
 // Inter Variable. Linear's core typeface, weights 300/400/510/590 required.
@@ -49,7 +50,11 @@ export default function RootLayout({
       <body className="min-h-screen">
         <MockDataInstaller />
         <WalletProvider>
-          <ToastProvider>{children}</ToastProvider>
+          <ToastProvider>
+            {/* Soft (non-blocking) sign-in prompt during the additive rollout —
+                offers wallet sign-in without gating the app. */}
+            <SignInGate soft>{children}</SignInGate>
+          </ToastProvider>
         </WalletProvider>
       </body>
     </html>
