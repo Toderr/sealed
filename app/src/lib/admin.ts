@@ -1,21 +1,17 @@
-// Admin access control for the read-only admin dashboard.
+// Admin access control for the admin dashboard.
 //
-// A request is allowed if EITHER:
-//   1. its x-wallet is on the ADMIN_WALLETS allowlist, OR
-//   2. its x-admin-passcode matches ADMIN_PASSCODE.
+// A request is admin if EITHER:
+//   1. the AUTHENTICATED session wallet (sign-in-with-Solana) is on the
+//      ADMIN_WALLETS allowlist — the strong, signed path, OR
+//   2. its x-admin-passcode matches ADMIN_PASSCODE — a fallback shared secret.
 //
-// The passcode path is a convenience fallback so an operator who isn't on the
-// wallet allowlist can still get in with the shared secret. If ADMIN_PASSCODE
-// is unset/empty, the passcode path is DISABLED (no blank-passcode bypass) and
-// access is wallet-only.
+// With signed sessions, path (1) is no longer spoofable (an attacker can't get
+// a session for an allowlisted wallet without its private key). The passcode is
+// kept as a convenience/fallback; unset ADMIN_PASSCODE disables it.
 //
-// NOTE (security): both factors travel in plain request headers (the wallet is
-// unsigned — see lib/auth.ts TODO; the passcode is a shared secret). This is an
-// acceptable stopgap for a READ-ONLY internal tool over HTTPS, and a real
-// improvement over wallet-address-only. It is NOT a basis for any privileged/
-// mutating admin action — that should wait for wallet-signed sessions.
+// `requireAdmin` is async because reading the session is async.
 
-type HeaderReq = Pick<Request, "headers">;
+import { getWallet } from "@/lib/auth";
 
 export function isAdminWallet(wallet: string | null | undefined): boolean {
   if (!wallet) return false;
@@ -34,22 +30,22 @@ export function isAdminPasscode(passcode: string | null | undefined): boolean {
   return typeof passcode === "string" && passcode === expected;
 }
 
-/** A request is admin if the wallet is allowlisted OR the passcode matches. */
-export function isAdminRequest(req: HeaderReq): boolean {
-  const wallet = req.headers.get("x-wallet");
-  const passcode = req.headers.get("x-admin-passcode");
-  return isAdminWallet(wallet) || isAdminPasscode(passcode);
+/** A request is admin if the (session) wallet is allowlisted OR the passcode matches. */
+export async function isAdminRequest(req: Request): Promise<boolean> {
+  const wallet = await getWallet(req); // session-first (header fallback per auth.ts)
+  if (isAdminWallet(wallet)) return true;
+  return isAdminPasscode(req.headers.get("x-admin-passcode"));
 }
 
 /**
  * Guard for admin route handlers. Returns a 403 Response to return early, or
  * null when access is allowed.
  *
- *   const guard = requireAdmin(request);
+ *   const guard = await requireAdmin(request);
  *   if (guard) return guard;
  */
-export function requireAdmin(req: HeaderReq): Response | null {
-  if (!isAdminRequest(req)) {
+export async function requireAdmin(req: Request): Promise<Response | null> {
+  if (!(await isAdminRequest(req))) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
   return null;

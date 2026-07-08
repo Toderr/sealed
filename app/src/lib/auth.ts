@@ -1,60 +1,65 @@
-// Accepts both NextRequest and the standard Request (route handlers use either).
-// We only read `.headers.get`, which both provide.
+// Server-side identity resolution. Reads the wallet from the SIGNED SESSION
+// cookie first (sign-in-with-Solana); falls back to the legacy unsigned
+// `x-wallet` header only when AUTH_ALLOW_HEADER_FALLBACK=true (migration escape
+// hatch). Once every route + client is on sessions, set the flag to false to
+// close the spoofing hole entirely.
+//
+// All three helpers are async (session verification is async). Call sites use
+// `await requireWallet(req)` etc.
 import { HttpError } from "@/lib/api-error";
-
-type HeaderReq = Pick<Request, "headers">;
+import { walletFromRequest, authConfigured } from "@/lib/session";
+import { MOCK_DATA } from "@/lib/env";
 
 // Solana pubkey: base58 charset (no 0, O, I, l), 32–44 chars.
 const BASE58_PUBKEY = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
+function headerFallbackEnabled(): boolean {
+  // Offline dev mode can't produce a real signature (mock signMessage returns
+  // zeros), so it always uses the x-wallet header. MOCK_DATA is hard-forced
+  // false in production builds (see env.ts), so this can never weaken prod.
+  if (MOCK_DATA) return true;
+  // Default OFF once auth is configured; the flag re-enables the header path
+  // during migration. If auth isn't configured at all, always allow the header
+  // (so the app keeps working before AUTH_JWT_SECRET is set).
+  if (!authConfigured()) return true;
+  return process.env.AUTH_ALLOW_HEADER_FALLBACK === "true";
+}
+
+/** The authenticated wallet: session cookie, or (if allowed) the x-wallet header. */
+async function resolveWallet(req: Request): Promise<string | null> {
+  const fromSession = await walletFromRequest(req);
+  if (fromSession) return fromSession;
+  if (headerFallbackEnabled()) {
+    const h = req.headers.get("x-wallet");
+    if (h && BASE58_PUBKEY.test(h)) return h;
+  }
+  return null;
+}
+
 /**
- * Read + validate the `x-wallet` header. Throws HttpError on failure (caught by
- * withRoute → Response). Use inside a withRoute()-wrapped handler.
- *   - missing header    → 401 (you didn't identify yourself)
- *   - malformed address → 400 (you sent something, but it isn't a wallet)
- *
- * NOTE: this currently TRUSTS the header — there is no signature proof yet.
- * TODO(security): replace header trust with signed-message verification.
+ * Require an authenticated wallet. Throws HttpError (caught by withRoute).
+ *   - not authenticated → 401
  */
-export function requireWallet(req: HeaderReq): string {
-  const wallet = req.headers.get("x-wallet");
-  if (!wallet) {
-    throw new HttpError(401, "Missing x-wallet header");
-  }
-  if (!BASE58_PUBKEY.test(wallet)) {
-    throw new HttpError(400, "Invalid wallet address");
-  }
+export async function requireWallet(req: Request): Promise<string> {
+  const wallet = await resolveWallet(req);
+  if (!wallet) throw new HttpError(401, "Not authenticated — sign in first");
   return wallet;
 }
 
-/**
- * Non-throwing variant: returns the wallet if present + valid, else null.
- * For routes where the wallet is optional (e.g. personalization) or where
- * absence is a normal, non-error case.
- */
-export function getWallet(req: HeaderReq): string | null {
-  const wallet = req.headers.get("x-wallet");
-  return wallet && BASE58_PUBKEY.test(wallet) ? wallet : null;
+/** Non-throwing: the authenticated wallet, or null. */
+export async function getWallet(req: Request): Promise<string | null> {
+  return resolveWallet(req);
 }
 
 /**
- * Early-return variant that fits the existing route style without try/catch.
- * Returns either the validated wallet or a ready-to-return error Response:
+ * Early-return variant: the validated wallet, or a ready-to-return 401 Response.
  *
- *   const auth = walletOrError(req);
+ *   const auth = await walletOrError(req);
  *   if (auth instanceof Response) return auth;
- *   const wallet = auth;  // validated string
- *
- *   - missing header    → 401 { error: "Missing x-wallet header" }
- *   - malformed address → 400 { error: "Invalid wallet address" }
+ *   const wallet = auth;
  */
-export function walletOrError(req: HeaderReq): string | Response {
-  const wallet = req.headers.get("x-wallet");
-  if (!wallet) {
-    return Response.json({ error: "Missing x-wallet header" }, { status: 401 });
-  }
-  if (!BASE58_PUBKEY.test(wallet)) {
-    return Response.json({ error: "Invalid wallet address" }, { status: 400 });
-  }
+export async function walletOrError(req: Request): Promise<string | Response> {
+  const wallet = await resolveWallet(req);
+  if (!wallet) return Response.json({ error: "Not authenticated" }, { status: 401 });
   return wallet;
 }
