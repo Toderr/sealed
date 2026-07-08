@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { getSessionWallet, signIn } from "@/lib/auth-client";
+import WalletMultiButton from "@/components/AppWalletButton";
 
 type Status = "checking" | "authed" | "need-signin" | "unconfigured";
 
@@ -76,14 +77,21 @@ export default function SignInGate({
         Sign a message with your wallet to verify you own it. It&apos;s free — no transaction, no gas.
       </p>
       {error && <p style={{ fontSize: 12, color: "var(--danger, #f87171)", margin: "0 0 12px" }}>{error}</p>}
-      <button
-        onClick={handleSignIn}
-        disabled={busy || !wallet}
-        className="btn-primary"
-        style={{ width: "100%", height: 40, borderRadius: 8, fontSize: 14, opacity: busy || !wallet ? 0.6 : 1 }}
-      >
-        {busy ? "Waiting for signature…" : wallet ? "Sign in with wallet" : "Connect a wallet first"}
-      </button>
+      {!wallet ? (
+        // No wallet connected yet — let them connect first.
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <WalletMultiButton />
+        </div>
+      ) : (
+        <button
+          onClick={handleSignIn}
+          disabled={busy}
+          className="btn-primary"
+          style={{ width: "100%", height: 40, borderRadius: 8, fontSize: 14, opacity: busy ? 0.6 : 1 }}
+        >
+          {busy ? "Waiting for signature…" : "Sign in with wallet"}
+        </button>
+      )}
       {soft && (
         <button
           onClick={() => setDismissed(true)}

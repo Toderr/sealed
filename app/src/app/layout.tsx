@@ -51,9 +51,11 @@ export default function RootLayout({
         <MockDataInstaller />
         <WalletProvider>
           <ToastProvider>
-            {/* Soft (non-blocking) sign-in prompt during the additive rollout —
-                offers wallet sign-in without gating the app. */}
-            <SignInGate soft>{children}</SignInGate>
+            {/* Hard gate: requires wallet sign-in before the app renders. It's
+                inert until AUTH_JWT_SECRET is set (the gate probes /api/auth/
+                session, which reports "unconfigured" → renders children), so
+                merging changes nothing until auth is switched on server-side. */}
+            <SignInGate>{children}</SignInGate>
           </ToastProvider>
         </WalletProvider>
       </body>
