@@ -126,12 +126,17 @@ function HomeContent() {
     searchParams.get("compose") === "1" || searchParams.get("view") === "chat";
   const [composerOpen, setComposerOpen] = useState(composeIntent);
 
-  // Redirect to onboarding if wallet connected but profile not set up
+  // Redirect to onboarding if wallet connected but profile not set up.
+  // Depend on the boolean, not the `profile` object: useProfileStore returns a
+  // fresh object (JSON.parse) every render, so depending on it re-fired this
+  // effect endlessly and looped /app ↔ /onboarding ↔ /profile.
+  const onboardingComplete = profile?.onboardingComplete ?? false;
+  const walletKey = publicKey?.toBase58() ?? null;
   useEffect(() => {
-    if (profileLoaded && publicKey && !profile?.onboardingComplete) {
+    if (profileLoaded && walletKey && !onboardingComplete) {
       router.replace("/onboarding");
     }
-  }, [profileLoaded, publicKey, profile, router]);
+  }, [profileLoaded, walletKey, onboardingComplete, router]);
 
   // Strip the compose intent param once consumed, so a refresh/back doesn't
   // force the composer open again.

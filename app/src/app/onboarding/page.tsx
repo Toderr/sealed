@@ -90,13 +90,16 @@ function OnboardingContent() {
   }, [profile]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // Redirect if already onboarded (unless editing)
+  // Redirect if already onboarded (unless editing). Depend on the boolean, not
+  // the `profile` object (fresh reference every render), to avoid an infinite
+  // redirect/render loop across the onboarding pages.
+  const alreadyOnboarded = profile?.onboardingComplete ?? false;
   useEffect(() => {
-    if (loaded && profile?.onboardingComplete) {
+    if (loaded && alreadyOnboarded) {
       const isEditing = new URLSearchParams(window.location.search).get("edit");
       if (!isEditing) router.replace("/profile");
     }
-  }, [loaded, profile, router]);
+  }, [loaded, alreadyOnboarded, router]);
 
   function handleProfileContinue() {
     if (!name.trim() || !username.trim()) return;

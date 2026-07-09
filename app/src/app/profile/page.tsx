@@ -14,14 +14,14 @@ export default function ProfilePage() {
   const { profile, loaded } = useProfileStore(wallet);
   const router = useRouter();
 
+  // Depend on the boolean, not the `profile` object (fresh reference every
+  // render), to avoid an infinite redirect/render loop across the onboarding
+  // pages.
+  const onboardingComplete = profile?.onboardingComplete ?? false;
   useEffect(() => {
     if (!loaded || !wallet) return;
-    if (!profile?.onboardingComplete) {
-      router.replace("/onboarding");
-      return;
-    }
-    router.replace(`/profile/${wallet}`);
-  }, [loaded, profile, router, wallet]);
+    router.replace(onboardingComplete ? `/profile/${wallet}` : "/onboarding");
+  }, [loaded, onboardingComplete, router, wallet]);
 
   if (!loaded) return null;
 
