@@ -391,10 +391,11 @@ export function SelfProfilePageContent() {
 
   const activeDealCount = profileDeals.filter(isProfileDealActive).length;
   const sealedDealCount = profileDeals.filter(isProfileDealSealed).length;
-  const totalVolumeUsdc = profileDeals.reduce(
-    (sum, d) => sum + d.totalAmountUsdc,
-    0
-  );
+  // Volume counts only SEALED (completed) deals — an awaiting/in-progress deal
+  // isn't realized value and shouldn't inflate the headline number (bug #9).
+  const totalVolumeUsdc = profileDeals
+    .filter(isProfileDealSealed)
+    .reduce((sum, d) => sum + d.totalAmountUsdc, 0);
   const averageRating = publicProfile?.avg_rating ?? 0;
 
   const initials = profile.name
