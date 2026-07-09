@@ -179,6 +179,15 @@ body {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.09);
 }
+/* Modal card: OPAQUE surface (not the translucent .surface-card glass) so
+   content behind a dialog doesn't bleed through and hurt readability (#2). */
+.modal-card {
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    0 18px 40px -12px rgba(0, 0, 0, 0.7);
+}
 
 /* Ghost button, DESIGN.md §4 Ghost Button spec. */
 .btn-ghost {
