@@ -38,7 +38,14 @@ type RefundRequest = {
   status: string;
   created_at: string;
 };
-type DbMsg = { id: string; role: string; content: string; wallet: string | null; created_at: string };
+type DbMsg = {
+  id: string;
+  role: string;
+  content: string;
+  wallet: string | null;
+  created_at: string;
+  metadata?: { attachment?: string; kind?: string } | null;
+};
 type Deliverable = {
   id: string;
   filename: string;
@@ -133,6 +140,7 @@ export default function ActiveDealPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMsgCount = useRef(0);
   const fileInputRefs = useRef<{ [k: number]: HTMLInputElement | null }>({});
+  const chatFileRef = useRef<HTMLInputElement>(null);
 
   const role: "buyer" | "seller" | "observer" = !wallet
     ? "observer"
@@ -440,6 +448,46 @@ export default function ActiveDealPage() {
     try {
       await postMessage(text);
       await refreshAll();
+    } finally {
+      setSendingMsg(false);
+    }
+  }
+
+  // Share an image in the chat (#3). Uploads via /api/upload in chat-attachment
+  // mode (image-only, no deliverable row), then posts a message carrying the
+  // storage key so it renders inline. Buyers use this instead of proof upload.
+  async function handleChatAttach(file: File) {
+    if (!wallet || sendingMsg) return;
+    setSendingMsg(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      let key: string | undefined;
+      try {
+        const res = await apiFetch<{ storage_key: string }>("/api/upload", {
+          method: "POST",
+          rawBody: form,
+          headers: { "x-wallet": wallet, "x-deal-id": dealId, "x-chat-attachment": "1" },
+        });
+        key = res.storage_key;
+      } catch (e) {
+        alert(e instanceof ApiError ? e.message : "Image upload failed");
+        return;
+      }
+      if (key) {
+        await apiFetchSafe("/api/messages", {
+          method: "POST",
+          wallet,
+          body: {
+            deal_id: dealId,
+            role: "user",
+            content: `📎 ${file.name}`,
+            wallet,
+            metadata: { attachment: key, kind: "image" },
+          },
+        }, undefined);
+        await refreshAll();
+      }
     } finally {
       setSendingMsg(false);
     }
@@ -772,8 +820,9 @@ export default function ActiveDealPage() {
                         </div>
                       )}
 
-                      {/* Either party can upload proof — release stays buyer-only */}
-                      {role !== "observer" && (isPending || isInReview) && i === currentMilestoneIndex && (
+                      {/* Only the SELLER uploads milestone proof (#3); the buyer
+                          shares files via the chat instead. Release stays buyer-only. */}
+                      {role === "seller" && (isPending || isInReview) && i === currentMilestoneIndex && (
                         <div style={{ marginTop: 10 }}>
                           <input
                             type="file"
@@ -873,7 +922,9 @@ export default function ActiveDealPage() {
                     <p style={{ fontSize: 12, color: "var(--muted)" }}>
                       {role === "observer"
                         ? "No activity yet."
-                        : "Upload proof for the current milestone to get started — either party can submit."}
+                        : role === "seller"
+                        ? "Upload proof for the current milestone to get started."
+                        : "Send a message or share a file with the seller to get started."}
                     </p>
                   </div>
                 )}
@@ -900,7 +951,11 @@ export default function ActiveDealPage() {
                         {isAgent && (
                           <p style={{ fontSize: 10, color: "var(--accent)", margin: "0 0 4px" }}>Sealed Agent</p>
                         )}
-                        <div style={{ whiteSpace: "pre-wrap" }}>{renderMarkdown(m.content)}</div>
+                        {m.metadata?.attachment ? (
+                          <ChatImageAttachment storageKey={m.metadata.attachment} name={m.content} />
+                        ) : (
+                          <div style={{ whiteSpace: "pre-wrap" }}>{renderMarkdown(m.content)}</div>
+                        )}
                       </div>
                     </div>
                   );
@@ -930,6 +985,28 @@ export default function ActiveDealPage() {
               {wallet && (
                 <div style={{ borderTop: "1px solid var(--card-border-subtle)", padding: "10px 12px", flexShrink: 0 }}>
                   <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="file"
+                      accept=".png,.jpg,.jpeg"
+                      ref={chatFileRef}
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleChatAttach(file);
+                        e.target.value = "";
+                      }}
+                    />
+                    <button
+                      onClick={() => chatFileRef.current?.click()}
+                      disabled={sendingMsg}
+                      className="btn-ghost"
+                      title="Share an image"
+                      style={{ height: 34, width: 34, borderRadius: 6, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                      </svg>
+                    </button>
                     <input
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
@@ -1502,4 +1579,31 @@ function ProjectSealedModal({ onClose }: { onClose: () => void }) {
       </div>
     </>
   );
+}
+
+// Renders a chat image attachment (#3). Fetches a short-lived signed URL for the
+// private storage key and shows the image; falls back to the filename if the URL
+// isn't available (e.g. offline mock mode).
+function ChatImageAttachment({ storageKey, name }: { storageKey: string; name: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    apiFetchSafe<{ url?: string }>(`/api/upload/signed?key=${encodeURIComponent(storageKey)}`, {}, {})
+      .then((d) => { if (!cancelled) setUrl(d.url ?? null); });
+    return () => { cancelled = true; };
+  }, [storageKey]);
+
+  if (url) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={name}
+          style={{ maxWidth: "100%", maxHeight: 220, borderRadius: 8, display: "block" }}
+        />
+      </a>
+    );
+  }
+  return <div style={{ whiteSpace: "pre-wrap", opacity: 0.9 }}>{name}</div>;
 }
