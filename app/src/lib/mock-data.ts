@@ -523,8 +523,11 @@ async function handle(
   if (path === "/api/upload" && method === "POST") {
     const dealId = headers.get("x-deal-id");
     const milestoneIndex = Number(headers.get("x-milestone-index") ?? "0");
+    const isChatAttachment = headers.get("x-chat-attachment") === "1";
     const storage_key = `offline/${uuid()}`;
-    if (dealId) {
+    // Chat attachments (#3) are images shared in chat, not milestone proof — don't
+    // record a deliverable (mirrors the real route).
+    if (dealId && !isChatAttachment) {
       mockData.addDeliverable({
         deal_id: dealId,
         filename: "offline-proof",
@@ -537,8 +540,8 @@ async function handle(
     }
     return json({
       id: uuid(),
-      original_name: "offline-proof",
-      file_type: "application/octet-stream",
+      original_name: isChatAttachment ? "offline-image" : "offline-proof",
+      file_type: isChatAttachment ? "image/png" : "application/octet-stream",
       size_bytes: 0,
       storage_key,
     });

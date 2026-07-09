@@ -25,6 +25,10 @@ export const POST = withRoute(async (request) => {
 
   const dealId = request.headers.get("x-deal-id") ?? "standalone";
   const milestoneIndex = parseInt(request.headers.get("x-milestone-index") ?? "0", 10);
+  // Chat attachment mode (#3): the buyer shares an IMAGE in chat rather than
+  // submitting milestone proof. Stores the file but does NOT create a
+  // deliverable row or replace any milestone proof — it's not proof of work.
+  const isChatAttachment = request.headers.get("x-chat-attachment") === "1";
 
   let formData: FormData;
   try {
@@ -49,6 +53,10 @@ export const POST = withRoute(async (request) => {
   const detected = detectType(buf);
   if (!detected) {
     throw new HttpError(415, "File type not allowed. Accepted: PDF, DOCX, PNG, JPG");
+  }
+  // Chat attachments are images only.
+  if (isChatAttachment && detected.mime !== "image/png" && detected.mime !== "image/jpeg") {
+    throw new HttpError(415, "Chat attachments must be a PNG or JPG image.");
   }
 
   // Step 2: Re-encode images to strip EXIF/payloads
@@ -84,6 +92,17 @@ export const POST = withRoute(async (request) => {
   if (storageError) {
     console.error("[upload] storage error", storageError);
     throw new HttpError(500, "Storage upload failed");
+  }
+
+  // Chat attachment: stored, but not proof — return the key (the client fetches
+  // a signed URL to display it) without touching sealed_deliverables.
+  if (isChatAttachment) {
+    return json({
+      original_name: file.name,
+      file_type: detected.mime,
+      size_bytes: buf.length,
+      storage_key: storagePath,
+    });
   }
 
   // Step 5: Replace any prior proof for this deal + milestone so a re-upload
