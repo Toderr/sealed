@@ -15,6 +15,8 @@ import {
 
 import WalletMultiButton from "@/components/AppWalletButton";
 import { apiFetchSafe } from "@/lib/api-client";
+import { FEATURE_X402 } from "@/lib/env";
+import { LLM_PROVIDERS } from "@/lib/llm-providers";
 
 type Step = "wallet" | "profile" | "agent" | "done";
 
@@ -84,7 +86,8 @@ function OnboardingContent() {
       setApiKey(profile.llmConfig.apiKey);
       setModel(profile.llmConfig.model);
     } else if (profile.llmConfig?.mode === "x402") {
-      setLlmMode("x402");
+      // x402 gated (#10) — fall back to own-key when disabled.
+      setLlmMode(FEATURE_X402 ? "x402" : "own-key");
       setX402Model(profile.llmConfig.model);
     }
   }, [profile]);
@@ -507,13 +510,9 @@ function AgentPanel({
   priceFloor: number; setPriceFloor: (v: number) => void;
   onBack: () => void; onFinish: () => void;
 }) {
-  const PROVIDERS: { id: LLMProvider; label: string }[] = [
-    { id: "anthropic", label: "Anthropic" },
-    { id: "openai", label: "OpenAI" },
-    { id: "groq", label: "Groq" },
-    { id: "gemini", label: "Gemini" },
-    { id: "openrouter", label: "OpenRouter" },
-  ];
+  // Shared provider list (bug #1) — same source as the profile agent-setup panel,
+  // so the two can't drift (onboarding was previously missing DeepSeek).
+  const PROVIDERS = LLM_PROVIDERS;
 
   const styles: { id: "firm" | "flexible" | "collab"; label: string; sub: string }[] = [
     { id: "firm",     label: "Firm",          sub: "Hold the line on price and scope." },
@@ -602,26 +601,34 @@ function AgentPanel({
       {/* AI Provider */}
       <div style={{ marginTop: 20 }}>
         <div style={{ display: "flex", borderRadius: 6, background: "var(--surface)", border: "1px solid var(--card-border)", padding: 2, marginBottom: 14 }}>
-          {(["own-key", "x402"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setLlmMode(m)}
-              style={{
-                flex: 1,
-                height: 30,
-                borderRadius: 4,
-                fontSize: 12,
-                fontWeight: 510,
-                background: llmMode === m ? "var(--surface-hover)" : "transparent",
-                color: llmMode === m ? "var(--primary)" : "var(--muted)",
-                border: "none",
-                cursor: "pointer",
-                transition: "all 150ms",
-              }}
-            >
-              {m === "own-key" ? "Own API key" : "Top up via x402"}
-            </button>
-          ))}
+          {(["own-key", "x402"] as const).map((m) => {
+            // x402 gated behind a "coming soon" flag (#10).
+            const disabled = m === "x402" && !FEATURE_X402;
+            const active = llmMode === m && !disabled;
+            return (
+              <button
+                key={m}
+                disabled={disabled}
+                onClick={() => !disabled && setLlmMode(m)}
+                title={disabled ? "Coming soon" : undefined}
+                style={{
+                  flex: 1,
+                  height: 30,
+                  borderRadius: 4,
+                  fontSize: 12,
+                  fontWeight: 510,
+                  background: active ? "var(--surface-hover)" : "transparent",
+                  color: active ? "var(--primary)" : "var(--muted)",
+                  border: "none",
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  opacity: disabled ? 0.5 : 1,
+                  transition: "all 150ms",
+                }}
+              >
+                {m === "own-key" ? "Own API key" : disabled ? "x402 · Soon" : "Top up via x402"}
+              </button>
+            );
+          })}
         </div>
 
         {llmMode === "own-key" && (
