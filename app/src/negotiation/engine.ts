@@ -227,6 +227,18 @@ Produce the summary JSON now.`;
   try {
     return extractJson<NegotiationSummary>(raw, "agent response");
   } catch {
+    // Retry once, nudging the model to emit ONLY valid JSON, before giving up.
+    // A single format hiccup shouldn't force a "renegotiate" recommendation on
+    // a negotiation that actually concluded (bug #11).
+    try {
+      const retry = await callLlm(
+        `${SUMMARIZER_PROMPT}\n\nIMPORTANT: Respond with ONLY the raw JSON object — no prose, no markdown code fences.`,
+        userMessage
+      );
+      return extractJson<NegotiationSummary>(retry, "agent response");
+    } catch {
+      // ignore and fall through to the minimal summary
+    }
     // Fall back to a minimal summary if the model misbehaves. Better UX than
     // crashing the whole negotiation on a summarizer format error.
     return {
