@@ -575,6 +575,39 @@ async function handle(
     });
   }
 
+  // GET /api/users/:wallet/reviews — the individual revealed reviews received by
+  // a wallet (bug #6), synthesized from the ratings store.
+  const reviewsMatch = path.match(/^\/api\/users\/([^/]+)\/reviews$/);
+  if (reviewsMatch && method === "GET") {
+    const w = decodeURIComponent(reviewsMatch[1]);
+    const allRatings = Object.values(read<Record<string, Rating>>(K.ratings, {}));
+    const profiles = read<Record<string, Record<string, unknown>>>(K.profiles, {});
+    const mine = allRatings
+      .filter((r) => r.ratee_wallet === w && r.revealed)
+      .sort((a, b) => (b.submitted_at ?? "").localeCompare(a.submitted_at ?? ""));
+    const reviews = mine.map((r) => {
+      const p = profiles[r.rater_wallet] ?? {};
+      const deal = mockData.getDeal(r.deal_id);
+      return {
+        id: r.id,
+        stars: r.stars,
+        review_text: r.review_text ?? "",
+        submitted_at: r.submitted_at,
+        deal_id: r.deal_id,
+        deal_title: deal?.title ?? r.deal_id,
+        reviewer: {
+          wallet: r.rater_wallet,
+          handle: (p.handle as string) ?? null,
+          display_name: (p.display_name as string) ?? null,
+        },
+      };
+    });
+    const average = reviews.length
+      ? Math.round((reviews.reduce((s, r) => s + r.stars, 0) / reviews.length) * 10) / 10
+      : 0;
+    return json({ reviews, count: reviews.length, average });
+  }
+
   // POST /api/negotiate/manual — offline manual chat with the buyer's "agent".
   // No LLM: greet on open; on any seller message, agree to the deal's current
   // terms so the flow can proceed (mirrors the offline "treat as agreed" model).
