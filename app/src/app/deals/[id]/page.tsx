@@ -17,7 +17,9 @@ import {
   coSignAndSend,
   getUsdcMint,
   sendTx,
+  findDealPDA,
 } from "@/lib/escrow-client";
+import { useDisplayName } from "@/lib/hooks/use-display-name";
 import { MOCK_CHAIN } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
@@ -139,6 +141,12 @@ export default function ActiveDealPage() {
     : deal?.buyer_wallet === wallet ? "buyer"
     : deal?.seller_wallet === wallet ? "seller"
     : "observer";
+
+  // Counterparty display name (bug #4): resolve the other party's wallet to a
+  // profile name. Called unconditionally (before any early return) to satisfy
+  // the rules of hooks; safe when deal is still null.
+  const counterpartyWallet = role === "buyer" ? deal?.seller_wallet : deal?.buyer_wallet;
+  const counterpartyName = useDisplayName(counterpartyWallet || null);
 
   const milestones = deal?.milestones ?? [];
   const releasedCount = milestones.filter((m) => m.status === "Released").length;
@@ -568,9 +576,18 @@ export default function ActiveDealPage() {
     );
   }
 
-  const shortBuyer = deal.buyer_wallet ? `${deal.buyer_wallet.slice(0, 4)}…${deal.buyer_wallet.slice(-4)}` : "—";
   const shortSeller = deal.seller_wallet ? `${deal.seller_wallet.slice(0, 4)}…${deal.seller_wallet.slice(-4)}` : "—";
-  const explorerUrl = `https://explorer.solana.com/address/${deal.deal_id}?cluster=devnet`;
+  // View-on-chain must point at the on-chain Deal PDA, not the human-readable
+  // deal_id slug (bug #5) — the slug isn't a valid base58 address, so the old
+  // link produced "Address ... is not valid" on the explorer.
+  const explorerUrl = (() => {
+    try {
+      const [pda] = findDealPDA(deal.deal_id);
+      return `https://explorer.solana.com/address/${pda.toBase58()}?cluster=devnet`;
+    } catch {
+      return null;
+    }
+  })();
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--background)", position: "relative" }}>
@@ -613,20 +630,22 @@ export default function ActiveDealPage() {
             {deal.deal_id.slice(0, 20)}
           </span>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <a
-            href={explorerUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-ghost"
-            style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none" }}
-          >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-            View on chain
-          </a>
-        </div>
+        {explorerUrl && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <a
+              href={explorerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost"
+              style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none" }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+              View on chain
+            </a>
+          </div>
+        )}
       </header>
 
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: "26px 24px", position: "relative", zIndex: 1 }}>
@@ -645,7 +664,7 @@ export default function ActiveDealPage() {
         <div className="surface-card" style={{ borderRadius: 12, padding: 16, marginBottom: 16, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0 }}>
           <StatBlock label="Total value" value={`$${totalValue.toLocaleString()}`} sub="USDC" />
           <StatBlock label="Released" value={`$${releasedValue.toLocaleString()}`} sub={`${releasedCount} of ${milestones.length} milestones`} accent="success" />
-          <StatBlock label="Counterparty" value={role === "buyer" ? shortSeller : shortBuyer} sub={`You as ${role}`} />
+          <StatBlock label="Counterparty" value={counterpartyName} sub={`You as ${role}`} />
           <StatBlock label="Status" value={isComplete ? "Completed" : "In progress"} sub="Buyer confirms releases" accent={isComplete ? "success" : "warning"} />
         </div>
 
@@ -1165,6 +1184,9 @@ function StatBlock({ label, value, sub, accent }: { label: string; value: string
 }
 
 function PartyRow({ label, wallet, isYou }: { label: string; wallet: string; isYou: boolean }) {
+  // Resolve the wallet to a profile name; keep the short wallet as a secondary
+  // line so the address is still available (bug #4).
+  const name = useDisplayName(wallet || null);
   const short = wallet ? `${wallet.slice(0, 4)}…${wallet.slice(-4)}` : "—";
   const initials = wallet ? wallet.slice(0, 2).toUpperCase() : "?";
   return (
@@ -1186,12 +1208,12 @@ function PartyRow({ label, wallet, isYou }: { label: string; wallet: string; isY
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 12, color: "var(--primary)", fontFamily: "ui-monospace, monospace" }}>{short}</span>
+          <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
           {isYou && (
             <span style={{ background: "transparent", border: "1px solid rgba(113,112,255,0.3)", borderRadius: 9999, padding: "1px 8px", fontSize: 10, color: "var(--accent)", fontWeight: 510 }}>You</span>
           )}
         </div>
-        <div style={{ fontSize: 11, color: "var(--muted)" }}>{label}</div>
+        <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "ui-monospace, monospace" }}>{short} · {label}</div>
       </div>
     </div>
   );
