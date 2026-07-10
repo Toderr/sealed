@@ -16,6 +16,8 @@ import {
 } from "@/lib/profile-store";
 import { useDealsStore } from "@/lib/deals-store";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
+import { FEATURE_X402, FEATURE_GET_VERIFIED } from "@/lib/env";
+import { LLM_PROVIDERS } from "@/lib/llm-providers";
 import type { Deal, AgentTemplate, NotificationPrefs, PublicProfile } from "@/lib/types";
 
 import WalletMultiButton from "@/components/AppWalletButton";
@@ -718,9 +720,8 @@ function ProfileHeader({ activeTab }: { activeTab: SelfProfileTab }) {
           <NavLink href="/app">
             Deals
           </NavLink>
-          <NavLink href="/app?compose=1">
-            New Deal
-          </NavLink>
+          {/* "New Deal" removed from the nav here — the profile deals section
+              already has a "+ New deal" button, so this was redundant (#7). */}
           <NavLink href={agentHref} active={activeTab === "agent"}>
             Agent
           </NavLink>
@@ -847,12 +848,25 @@ function VerifiedAccountBanner() {
           Add account verification to raise trust signals on your profile and unlock more agent templates.
         </p>
       </div>
-      <Link
-        href="/profile/verify"
-        className="btn-primary h-10 px-4 rounded-md text-[13px] flex items-center justify-center flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
-      >
-        Get verified
-      </Link>
+      {/* "Get verified" is gated behind a "coming soon" flag (#18) — it will
+          become a paid feature. Disabled state until enabled. */}
+      {FEATURE_GET_VERIFIED ? (
+        <Link
+          href="/profile/verify"
+          className="btn-primary h-10 px-4 rounded-md text-[13px] flex items-center justify-center flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+        >
+          Get verified
+        </Link>
+      ) : (
+        <button
+          type="button"
+          disabled
+          title="Coming soon"
+          className="btn-primary h-10 px-4 rounded-md text-[13px] flex items-center justify-center flex-shrink-0 opacity-50 cursor-not-allowed"
+        >
+          Verification · Coming soon
+        </button>
+      )}
     </div>
   );
 }
@@ -1084,7 +1098,8 @@ function SocialRow({
   if (links.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2">
+    // Centered to match the centered profile card layout (#17).
+    <div className="flex flex-wrap gap-2 justify-center">
       {links.map((l) => (
         <a
           key={l.key}
@@ -1114,15 +1129,6 @@ const STYLE_LABELS: Record<string, string> = {
 
 type LlmMode = "own-key" | "x402";
 
-const LLM_PROVIDERS: { id: LLMProvider; label: string; hint: string }[] = [
-  { id: "anthropic", label: "Anthropic", hint: "sk-ant-..." },
-  { id: "openai", label: "OpenAI", hint: "sk-..." },
-  { id: "groq", label: "Groq", hint: "gsk_..." },
-  { id: "gemini", label: "Gemini", hint: "AIza..." },
-  { id: "openrouter", label: "OpenRouter", hint: "sk-or-..." },
-  { id: "deepseek", label: "DeepSeek", hint: "sk-..." },
-];
-
 function isLlmProvider(value: string | undefined): value is LLMProvider {
   return Boolean(value && value in LLM_MODELS);
 }
@@ -1149,7 +1155,9 @@ function AiProviderPanel({ wallet }: { wallet: string }) {
       setLlmModel(profile.llmConfig.model || LLM_MODELS[provider][0]);
       setLlmKey(profile.llmConfig.apiKey);
     } else if (profile?.llmConfig?.mode === "x402") {
-      setLlmMode("x402");
+      // x402 is gated (#10) — fall back to own-key when the feature is off so a
+      // previously-saved x402 config doesn't select a disabled tab.
+      setLlmMode(FEATURE_X402 ? "x402" : "own-key");
       setX402Model(profile.llmConfig.model);
     }
   }, [profile]);
@@ -1206,21 +1214,29 @@ function AiProviderPanel({ wallet }: { wallet: string }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2" role="group" aria-label="AI provider mode">
-        {(["own-key", "x402"] as const).map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => setLlmMode(mode)}
-            className={`h-9 rounded-md text-[12px] border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
-              llmMode === mode
-                ? "border-accent bg-accent/10 text-accent"
-                : "border-card-border bg-surface text-muted hover:text-primary"
-            }`}
-            style={{ fontWeight: 510 }}
-          >
-            {mode === "own-key" ? "Own API Key" : "Buy via x402"}
-          </button>
-        ))}
+        {(["own-key", "x402"] as const).map((mode) => {
+          // x402 is gated behind a "coming soon" flag (#10). When off, the tab is
+          // disabled and labeled Soon, and can't be selected.
+          const disabled = mode === "x402" && !FEATURE_X402;
+          const active = llmMode === mode && !disabled;
+          return (
+            <button
+              key={mode}
+              type="button"
+              disabled={disabled}
+              onClick={() => !disabled && setLlmMode(mode)}
+              className={`h-9 rounded-md text-[12px] border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
+                active
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-card-border bg-surface text-muted hover:text-primary"
+              } ${disabled ? "opacity-50 cursor-not-allowed hover:text-muted" : ""}`}
+              style={{ fontWeight: 510 }}
+              title={disabled ? "Coming soon" : undefined}
+            >
+              {mode === "own-key" ? "Own API Key" : disabled ? "Buy via x402 · Soon" : "Buy via x402"}
+            </button>
+          );
+        })}
       </div>
 
       {llmMode === "own-key" ? (
@@ -1508,7 +1524,7 @@ function AgentSetupTab({ wallet }: { wallet: string }) {
               : `Using ${templates.length} of 1 template. Get verified to unlock 10.`}
           </p>
         </div>
-        {limit < 10 && (
+        {limit < 10 && FEATURE_GET_VERIFIED && (
           <Link
             href="/profile/verify"
             className="btn-ghost h-8 px-3 rounded-md text-[12px] flex-shrink-0"

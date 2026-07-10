@@ -1078,8 +1078,8 @@ export default function ActiveDealPage() {
 
       {/* Request-changes modal (buyer, In Review) */}
       {changesModal !== null && (
-        <div onClick={() => setChangesModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} className="surface-card" style={{ width: "100%", maxWidth: 420, borderRadius: 14, padding: 22 }}>
+        <div onClick={() => setChangesModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} className="modal-card" style={{ width: "100%", maxWidth: 420, borderRadius: 14, padding: 22 }}>
             <p style={{ fontSize: 15, fontWeight: 600, color: "var(--primary)", margin: "0 0 4px" }}>Request changes</p>
             <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 16px", lineHeight: 1.5 }}>
               Send Milestone {changesModal + 1} back to the seller to revise. It returns to <strong>Pending</strong> so they can re-submit proof. No funds move.
@@ -1104,8 +1104,8 @@ export default function ActiveDealPage() {
 
       {/* Report-a-problem modal */}
       {reportOpen && (
-        <div onClick={() => setReportOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} className="surface-card" style={{ width: "100%", maxWidth: 440, borderRadius: 14, padding: 22 }}>
+        <div onClick={() => setReportOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} className="modal-card" style={{ width: "100%", maxWidth: 440, borderRadius: 14, padding: 22 }}>
             {reportDone ? (
               <>
                 <p style={{ fontSize: 15, fontWeight: 600, color: "var(--primary)", margin: "0 0 6px" }}>Report received</p>
