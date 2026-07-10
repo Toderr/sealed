@@ -116,6 +116,11 @@ export const mockData = {
     all[deal.deal_id] = deal;
     write(K.deals, all);
   },
+  deleteDeal(dealId: string): void {
+    const all = read<Record<string, MirrorDeal>>(K.deals, {});
+    delete all[dealId];
+    write(K.deals, all);
+  },
   dealsFor(wallet: string): MirrorDeal[] {
     return this.allDeals().filter(
       (d) => d.buyer_wallet === wallet || d.seller_wallet === wallet
@@ -443,6 +448,19 @@ async function handle(
       if (isCompleted(next)) next.status = "completed";
       mockData.putDeal(next);
       return json({ deal: next });
+    }
+    if (method === "DELETE") {
+      if (!deal) return json({ error: "Deal not found" }, 404);
+      if (deal.buyer_wallet !== wallet && deal.seller_wallet !== wallet) {
+        return json({ error: "Forbidden" }, 403);
+      }
+      // Pre-escrow only — mirrors the real route's guard (bug #15).
+      const preEscrow = ["draft", "seller-ready", "seller-agreed", "proposed", "escalated"];
+      if (!preEscrow.includes(deal.status)) {
+        return json({ error: "This deal has funds in escrow and can't be deleted" }, 409);
+      }
+      mockData.deleteDeal(dealId);
+      return json({ ok: true, deleted: dealId });
     }
   }
 

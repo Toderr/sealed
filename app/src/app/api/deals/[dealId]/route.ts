@@ -92,6 +92,52 @@ export const GET = withRoute<{ params: Promise<{ dealId: string }> }>(
   }
 );
 
+// Statuses where escrow is NOT yet on-chain — the only deals that may be
+// deleted (bug #15). Once a deal is funded/in-progress/etc. it holds real
+// on-chain state and must never be removed from the mirror.
+const PRE_ESCROW_STATUSES = new Set([
+  "draft",
+  "seller-ready",
+  "seller-agreed",
+  "proposed",
+  "escalated",
+]);
+
+export const DELETE = withRoute<{ params: Promise<{ dealId: string }> }>(
+  async (req, { params }) => {
+    const wallet = requireWallet(req);
+    const { dealId } = await params;
+
+    const { data: existing } = await supabase
+      .from(table("deals"))
+      .select("buyer_wallet, seller_wallet, status")
+      .eq("deal_id", dealId)
+      .single();
+
+    if (!existing) throw new HttpError(404, "Deal not found");
+
+    // Only a party to the deal may delete it.
+    if (existing.buyer_wallet !== wallet && existing.seller_wallet !== wallet) {
+      throw new HttpError(403, "Forbidden");
+    }
+
+    // Hard guard: reject deletion once escrow exists on-chain. The client hides
+    // the button for these, but never trust the client for a destructive action.
+    const status = normalizeDealStatus(existing.status) ?? existing.status;
+    if (!PRE_ESCROW_STATUSES.has(status)) {
+      throw new HttpError(409, "This deal has funds in escrow and can't be deleted");
+    }
+
+    const { error } = await supabase
+      .from(table("deals"))
+      .delete()
+      .eq("deal_id", dealId);
+
+    if (error) throw new HttpError(500, error.message);
+    return json({ ok: true, deleted: dealId });
+  }
+);
+
 export const PATCH = withRoute<{ params: Promise<{ dealId: string }> }>(
   async (req, { params }) => {
   const wallet = requireWallet(req);
@@ -151,6 +197,23 @@ export const PATCH = withRoute<{ params: Promise<{ dealId: string }> }>(
 
   if (typeof body.seller_wallet === "string") patch.seller_wallet = body.seller_wallet;
   if (typeof body.buyer_wallet === "string") patch.buyer_wallet = body.buyer_wallet;
+
+  // Reject-and-recycle (#19): a party may explicitly CLEAR the OTHER slot (set to
+  // null) to release the current counterparty and reopen the deal for a new
+  // joiner via the same invite link. Only the deal owner's own slot must stay;
+  // clearing your own slot is not allowed. Only valid pre-escrow.
+  for (const field of ["seller_wallet", "buyer_wallet"] as const) {
+    if (body[field] === null) {
+      const mine = existing.buyer_wallet === wallet ? "buyer_wallet" : "seller_wallet";
+      if (field === mine) {
+        throw new HttpError(400, "You can't clear your own slot");
+      }
+      if (!PRE_ESCROW_STATUSES.has(normalizeDealStatus(existing.status) ?? existing.status)) {
+        throw new HttpError(409, "Can't change parties once escrow exists");
+      }
+      patch[field] = null;
+    }
+  }
 
   // The two parties must stay distinct. Compute the resulting slots (patched
   // value wins, else the existing one) and reject a collapse — e.g. a joiner

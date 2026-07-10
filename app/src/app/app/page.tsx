@@ -451,6 +451,7 @@ function DealsBoldBoard({
 }) {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
+  const toast = useToast();
 
   const [deals, setDeals] = useState<SupabaseDeal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -458,6 +459,31 @@ function DealsBoldBoard({
   const [counterpartyProfiles, setCounterpartyProfiles] = useState<Record<string, CounterpartyProfile>>({});
   // Clicking a deal card opens this in the right-side detail panel.
   const [panelDeal, setPanelDeal] = useState<SupabaseDeal | null>(null);
+  // Delete flow (#15): the deal pending a confirm-modal decision, + in-flight state.
+  const [deleteTarget, setDeleteTarget] = useState<SupabaseDeal | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget || !wallet) return;
+    setDeleting(true);
+    try {
+      await apiFetch(`/api/deals/${encodeURIComponent(deleteTarget.deal_id)}`, {
+        method: "DELETE",
+        wallet,
+      });
+      setDeals((prev) => prev.filter((d) => d.deal_id !== deleteTarget.deal_id));
+      toast.show({ variant: "success", title: "Deal deleted" });
+      setDeleteTarget(null);
+    } catch (e) {
+      toast.show({
+        variant: "error",
+        title: "Couldn't delete",
+        description: e instanceof ApiError ? e.message : "Please try again.",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const counterpartyWallets = useMemo(() => {
     return Array.from(
@@ -608,6 +634,7 @@ function DealsBoldBoard({
                       myWallet={wallet}
                       href={dealHref(d)}
                       onOpen={setPanelDeal}
+                      onRequestDelete={setDeleteTarget}
                       counterpartyProfile={
                         getCounterpartyWallet(d, wallet)
                           ? counterpartyProfiles[getCounterpartyWallet(d, wallet) as string]
@@ -637,6 +664,31 @@ function DealsBoldBoard({
 
       {/* Right-side detail panel — opens on deal-card click, links to full page. */}
       <DealDetailPanel deal={panelDeal} myWallet={wallet} onClose={() => setPanelDeal(null)} />
+
+      {/* Delete confirmation (#15) — only reachable for pre-escrow deals. */}
+      {deleteTarget && (
+        <div
+          onClick={() => { if (!deleting) setDeleteTarget(null); }}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16 }}
+        >
+          <div onClick={(e) => e.stopPropagation()} className="modal-card" style={{ width: "100%", maxWidth: 420, borderRadius: 14, padding: 22 }}>
+            <p style={{ fontSize: 15, fontWeight: 600, color: "var(--primary)", margin: "0 0 6px" }}>Delete this deal?</p>
+            <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 18px", lineHeight: 1.5 }}>
+              <b style={{ color: "var(--foreground)" }}>{deleteTarget.title || deleteTarget.deal_id}</b> will be permanently removed. This deal has no escrow yet, so no funds are affected. This can&apos;t be undone.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn-ghost" disabled={deleting} onClick={() => setDeleteTarget(null)} style={{ height: 38, borderRadius: 8, fontSize: 13, flex: 1 }}>Cancel</button>
+              <button
+                disabled={deleting}
+                onClick={handleConfirmDelete}
+                style={{ height: 38, borderRadius: 8, fontSize: 13, flex: 1, background: "var(--danger)", color: "#fff", border: "none", fontWeight: 510, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.6 : 1 }}
+              >
+                {deleting ? "Deleting…" : "Delete deal"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -989,6 +1041,7 @@ function DealCardBold({
   myWallet,
   href,
   onOpen,
+  onRequestDelete,
   counterpartyProfile,
 }: {
   deal: SupabaseDeal;
@@ -997,6 +1050,7 @@ function DealCardBold({
   myWallet: string | null;
   href: string;
   onOpen?: (deal: SupabaseDeal) => void;
+  onRequestDelete?: (deal: SupabaseDeal) => void;
   counterpartyProfile?: CounterpartyProfile | null;
 }) {
   const isBuyer = deal.buyer_wallet === myWallet;
@@ -1011,6 +1065,11 @@ function DealCardBold({
 
   const inReview = (deal.milestones ?? []).some((m) => m.status === "In Review");
   const displayStatus = inferDealStatus(deal);
+  // Deletable only before escrow exists (#15) — funded/in-progress/completed
+  // deals hold on-chain state and must not be removed.
+  const canDelete =
+    !!onRequestDelete &&
+    ["draft", "seller-ready", "seller-agreed", "proposed", "escalated"].includes(displayStatus);
 
   const statusLabel: Record<string, string> = {
     draft:          counterparty ? "Counterparty joined" : "Awaiting counterparty",
@@ -1082,7 +1141,29 @@ function DealCardBold({
             {deal.deal_id.slice(0, 18)}
           </p>
         </div>
-        <StatusPill tone={tone}>{statusLabel[displayStatus] ?? deal.status}</StatusPill>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <StatusPill tone={tone}>{statusLabel[displayStatus] ?? deal.status}</StatusPill>
+          {canDelete && (
+            <button
+              type="button"
+              title="Delete deal"
+              aria-label="Delete deal"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRequestDelete!(deal); }}
+              style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+                background: "transparent", border: "1px solid var(--card-border)",
+                color: "var(--muted)", cursor: "pointer",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--danger)"; e.currentTarget.style.borderColor = "rgba(248,113,113,0.4)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--muted)"; e.currentTarget.style.borderColor = "var(--card-border)"; }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Counterparty + role */}
