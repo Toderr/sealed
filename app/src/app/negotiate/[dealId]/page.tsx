@@ -33,7 +33,6 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import { apiFetch, apiFetchSafe } from "@/lib/api-client";
 import { useApi, POLL_MS } from "@/lib/swr";
 import { useDeal } from "@/lib/hooks/use-deal";
-import type { NegotiationBoundaries } from "@/memory/types";
 import { AgentRole } from "@/agents/types";
 import { ArrowLeft } from "lucide-react";
 
@@ -44,16 +43,6 @@ type NegState =
   | { kind: "running" }
   | { kind: "done"; proposal: Proposal }
   | { kind: "error"; message: string };
-
-type EscalatedProposalArgs = {
-  deal: SupabaseDeal;
-  dealParams: DealParams;
-  role: "buyer" | "seller" | "observer";
-  buyerBoundaries: NegotiationBoundaries;
-  sellerBoundaries: NegotiationBoundaries;
-  renegotiationRequest: string;
-  reason: string;
-};
 
 type RenegotiationNotice = {
   content: string;
@@ -70,10 +59,6 @@ type DbMsg = {
   created_at: string;
 };
 
-function isRateLimitedNegotiationError(message: string) {
-  return /429|rate.?limit|temporarily rate-limited|quota/i.test(message);
-}
-
 function dealStatusLabel(status: string) {
   const labels: Record<string, string> = {
     draft: "Draft",
@@ -88,52 +73,6 @@ function dealStatusLabel(status: string) {
     disputed: "Disputed",
   };
   return labels[status] ?? status;
-}
-
-function buildEscalatedProposal({
-  deal,
-  dealParams,
-  role,
-  buyerBoundaries,
-  sellerBoundaries,
-  renegotiationRequest,
-  reason,
-}: EscalatedProposalArgs): Proposal {
-  const now = Date.now();
-  return {
-    id: `${deal.deal_id}-escalated-${now}`,
-    origin: "manual",
-    buyerWallet: deal.buyer_wallet,
-    sellerWallet: dealParams.sellerWallet ?? "",
-    initialTerms: dealParams,
-    revisions: [
-      {
-        round: 1,
-        by: AgentRole.Negotiator,
-        onBehalfOf: role === "seller" ? "seller" : "buyer",
-        action: "counter",
-        proposedTerms: dealParams,
-        reasoning: renegotiationRequest,
-        concessions: [],
-        asks: [renegotiationRequest],
-        timestamp: now,
-      },
-    ],
-    status: "escalated",
-    summary: {
-      pros: ["Renegotiation request captured for both parties"],
-      cons: ["The automated negotiation needs manual review before it can continue"],
-      keyConcessions: [],
-      riskFlags: [reason],
-      confidenceScore: 0.35,
-      recommendation: "renegotiate",
-      recommendationReasoning: reason,
-    },
-    buyerBoundaries,
-    sellerBoundaries,
-    createdAt: now,
-    updatedAt: now,
-  };
 }
 
 function renegotiationNoticeFromMessages(messages: DbMsg[]): RenegotiationNotice | null {
@@ -626,26 +565,12 @@ export default function NegotiateRoom() {
         applyServerPatch((prev) => (prev ? { ...prev, status: "escalated" } : prev));
       }
     } catch (err) {
+      // A failed run (rate limit, out of credits, provider error) is an error to
+      // retry — not a "renegotiate" recommendation, which reads as a dispute
+      // even though no negotiation happened (bug #11). The server already returns
+      // a clean, user-facing message (bug #12); surface it in the retry state.
       const message = err instanceof Error ? err.message : "Negotiation failed";
-      if (renegotiationRequest && isRateLimitedNegotiationError(message)) {
-        setNegState({
-          kind: "done",
-          proposal: buildEscalatedProposal({
-            deal,
-            dealParams,
-            role,
-            buyerBoundaries,
-            sellerBoundaries,
-            renegotiationRequest,
-            reason: "The automated negotiation paused before reaching a clear agreement. Both parties should review the requested changes before signing.",
-          }),
-        });
-        return;
-      }
-      setNegState({
-        kind: "error",
-        message,
-      });
+      setNegState({ kind: "error", message });
     }
   }, [deal, wallet, memory, role, dealParams, applyServerPatch]);
 
@@ -911,49 +836,14 @@ export default function NegotiateRoom() {
           </div>
         )}
 
+        {/* Chat takes the primary (wider) column; deal terms + parties sit in the
+            right sidebar so the negotiation conversation has room (bug #16). */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: deal terms + invite */}
+          {/* Left: conversation + negotiation */}
           <div className="lg:col-span-2 space-y-4">
-            {/* Deal terms */}
-            <div className="surface-card rounded-xl p-5 space-y-4">
-              <p className="text-[13px] text-primary" style={labelStyle}>Deal terms</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>Total value</p>
-                  <p className="text-[20px] text-primary tabular-nums mt-0.5" style={headingStyle}>
-                    ${formatUsdc(deal.total_amount_usdc)}
-                  </p>
-                  <p className="text-[11px] text-subtle">USDC</p>
-                </div>
-                <div>
-                  <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>Milestones</p>
-                  <p className="text-[20px] text-primary tabular-nums mt-0.5" style={headingStyle}>
-                    {(deal.milestones ?? []).length}
-                  </p>
-                  <p className="text-[11px] text-subtle">payment stages</p>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>
-                  Milestones
-                </p>
-                <div className="space-y-1">
-                  {(deal.milestones ?? []).map((m, i) => (
-                    <div key={i} className="flex items-center justify-between text-[12px] bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded-md px-3 py-2">
-                      <span className="truncate mr-2 text-foreground">
-                        <span className="text-subtle mr-1.5">{i + 1}.</span>
-                        {m.description}
-                      </span>
-                      <span className="shrink-0 font-mono text-muted">${formatUsdc(m.amount ?? 0)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
             {/* Shared conversation view — buyer always, seller only in non-manual mode */}
             {!!deal.seller_wallet && !(role === "seller" && sellerView === "manual") && (
-              <ConversationView dealId={deal.deal_id} buyerView={role === "buyer"} />
+              <ConversationView dealId={deal.deal_id} buyerView={role === "buyer"} myWallet={wallet} />
             )}
 
             {/* Invite counterparty (buyer only, no seller yet) */}
@@ -1281,8 +1171,45 @@ export default function NegotiateRoom() {
             </div>
           </div>
 
-          {/* Right: parties */}
+          {/* Right: deal terms + parties */}
           <div className="space-y-4">
+            {/* Deal terms */}
+            <div className="surface-card rounded-xl p-5 space-y-4">
+              <p className="text-[13px] text-primary" style={labelStyle}>Deal terms</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>Total value</p>
+                  <p className="text-[20px] text-primary tabular-nums mt-0.5" style={headingStyle}>
+                    ${formatUsdc(deal.total_amount_usdc)}
+                  </p>
+                  <p className="text-[11px] text-subtle">USDC</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>Milestones</p>
+                  <p className="text-[20px] text-primary tabular-nums mt-0.5" style={headingStyle}>
+                    {(deal.milestones ?? []).length}
+                  </p>
+                  <p className="text-[11px] text-subtle">payment stages</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>
+                  Milestones
+                </p>
+                <div className="space-y-1">
+                  {(deal.milestones ?? []).map((m, i) => (
+                    <div key={i} className="flex items-center justify-between text-[12px] bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded-md px-3 py-2">
+                      <span className="truncate mr-2 text-foreground">
+                        <span className="text-subtle mr-1.5">{i + 1}.</span>
+                        {m.description}
+                      </span>
+                      <span className="shrink-0 font-mono text-muted">${formatUsdc(m.amount ?? 0)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <PartyCard
               label="Buyer"
               wallet={deal.buyer_wallet}
@@ -1808,7 +1735,7 @@ function NegotiationResult({
 
 /* ── Shared conversation view ───────────────────────────────────────────── */
 
-function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: boolean }) {
+function ConversationView({ dealId, buyerView, myWallet }: { dealId: string; buyerView: boolean; myWallet: string | null }) {
   // SWR refreshInterval replaces the 4s poll (errors → empty list, same as the
   // old apiFetchSafe fallback). Memoized so the scroll effect's dep is stable.
   const { data } = useApi<{ messages?: DbMsg[] }>(
@@ -1864,21 +1791,30 @@ function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: bo
             );
           }
           const isAgent = m.role === "assistant";
+          // Align by SENDER identity, not just role: my own messages go right,
+          // the counterparty's (and the agent's) go left — otherwise both human
+          // parties render on the same side (bug #13). Fall back to the old
+          // role-based split only when the message has no wallet to compare.
+          const isMine = isAgent
+            ? false
+            : myWallet != null && m.wallet != null
+            ? m.wallet === myWallet
+            : !buyerView;
+          const label = isAgent
+            ? buyerView
+              ? "Your agent"
+              : "Buyer's agent"
+            : isMine
+            ? "You"
+            : "Counterparty";
           return (
-            <div key={m.id} className={`flex ${isAgent ? "justify-start" : "justify-end"}`}>
+            <div key={m.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[82%] rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
-                isAgent ? "surface-card text-foreground" : "bg-brand text-white"
+                isMine ? "bg-brand text-white" : "surface-card text-foreground"
               }`}>
-                {!isAgent && (
-                  <p className="text-[10px] opacity-70 mb-1">
-                    {buyerView ? "Counterparty" : "You"}
-                  </p>
-                )}
-                {isAgent && (
-                  <p className="text-[10px] text-accent mb-1">
-                    {buyerView ? "Your agent" : "Buyer's agent"}
-                  </p>
-                )}
+                <p className={`text-[10px] mb-1 ${isAgent ? "text-accent" : "opacity-70"}`}>
+                  {label}
+                </p>
                 <div className="whitespace-pre-wrap">{renderMarkdown(m.content)}</div>
               </div>
             </div>
@@ -1892,7 +1828,7 @@ function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: bo
 
 /* ── Manual negotiation panel (seller without agent) ───────────────────── */
 
-type ChatMsg = { role: "user" | "assistant" | "system"; content: string };
+type ChatMsg = { role: "user" | "assistant" | "system"; content: string; error?: boolean };
 
 type NegotiatedTerms = { totalAmount: number; milestones: Array<{ description: string; amount: number }> };
 
@@ -1990,9 +1926,16 @@ function ManualNegotiationPanel({
         if (data.agreedTerms) setAgreedTerms(data.agreedTerms);
       }
     } catch (err) {
+      // Render as a distinct system error notice (not a normal agent message) so
+      // a provider failure never masquerades as something the agent "said". The
+      // server already returns a clean message (bugs #11/#12).
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: err instanceof Error ? err.message : "Failed to respond. Try again." },
+        {
+          role: "system",
+          error: true,
+          content: err instanceof Error ? err.message : "The negotiation service is temporarily unavailable. Please try again.",
+        },
       ]);
     } finally {
       setLoading(false);
@@ -2042,8 +1985,18 @@ function ManualNegotiationPanel({
           {messages.map((m, i) => (
             m.role === "system" ? (
               <div key={i} className="flex justify-center">
-                <div className="max-w-[88%] rounded-xl border border-warning/25 bg-warning/5 px-3.5 py-2.5 text-[12px] text-foreground leading-relaxed">
-                  <p className="text-[10px] text-warning uppercase tracking-[0.06em] mb-1">Renegotiation</p>
+                <div
+                  className={`max-w-[88%] rounded-xl border px-3.5 py-2.5 text-[12px] text-foreground leading-relaxed ${
+                    m.error ? "border-danger/30 bg-danger/5" : "border-warning/25 bg-warning/5"
+                  }`}
+                >
+                  <p
+                    className={`text-[10px] uppercase tracking-[0.06em] mb-1 ${
+                      m.error ? "text-danger" : "text-warning"
+                    }`}
+                  >
+                    {m.error ? "Couldn't reach the agent" : "Renegotiation"}
+                  </p>
                   <div className="whitespace-pre-wrap">{renderMarkdown(m.content)}</div>
                 </div>
               </div>
@@ -2098,14 +2051,68 @@ function ManualNegotiationPanel({
       )}
 
       {/* Accept button */}
-      {(agreedByAgent || messages.length > 0) && (
-        <button
-          onClick={() => onAgree(agreedTerms ?? undefined)}
-          className="btn-primary h-10 px-6 rounded-md text-[13px] w-full"
-        >
-          {agreedByAgent ? "Confirm agreement ✓" : "Accept current terms as-is"}
-        </button>
-      )}
+      {(agreedByAgent || messages.length > 0) && (() => {
+        // Guard: if the agent proposed terms whose milestone amounts don't add up
+        // to the total, don't let them slide silently into escrow. Surface an
+        // explicit Confirm (auto-balances to the total) / Back-to-editing choice
+        // instead of a dead-end message (bug #14).
+        const milestones = agreedTerms?.milestones ?? [];
+        const allocated = milestones.reduce((s, m) => s + (Number(m.amount) || 0), 0);
+        const total = agreedTerms?.totalAmount ?? 0;
+        const mismatch =
+          agreedTerms != null && milestones.length > 0 && Math.abs(allocated - total) > 0.005;
+
+        if (mismatch) {
+          return (
+            <div className="rounded-lg border border-warning/30 bg-warning/5 p-3.5 space-y-3">
+              <div className="space-y-1">
+                <p className="text-[12px] text-warning uppercase tracking-[0.06em]" style={{ fontWeight: 510 }}>
+                  Milestone amounts don&apos;t add up
+                </p>
+                <p className="text-[12.5px] text-foreground leading-relaxed">
+                  The milestones total <b>${allocated.toLocaleString()}</b>, but the deal total is{" "}
+                  <b>${total.toLocaleString()}</b>. Confirm to scale the milestones to match the total, or go back to adjust them.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    // Rescale milestone amounts proportionally to sum to the total.
+                    const factor = allocated > 0 ? total / allocated : 0;
+                    const balanced = milestones.map((m) => ({
+                      ...m,
+                      amount: Math.round((Number(m.amount) || 0) * factor * 100) / 100,
+                    }));
+                    onAgree({ totalAmount: total, milestones: balanced });
+                  }}
+                  className="btn-primary h-9 px-4 rounded-md text-[13px] flex-1"
+                >
+                  Confirm corrected allocation
+                </button>
+                <button
+                  onClick={() => {
+                    // Return to editing: clear the agreed state so the input re-opens.
+                    setAgreedByAgent(false);
+                    setAgreedTerms(null);
+                  }}
+                  className="btn-ghost h-9 px-4 rounded-md text-[13px]"
+                >
+                  Back to editing
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <button
+            onClick={() => onAgree(agreedTerms ?? undefined)}
+            className="btn-primary h-10 px-6 rounded-md text-[13px] w-full"
+          >
+            {agreedByAgent ? "Confirm agreement ✓" : "Accept current terms as-is"}
+          </button>
+        );
+      })()}
     </div>
   );
 }

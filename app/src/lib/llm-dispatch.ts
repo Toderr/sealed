@@ -1,5 +1,44 @@
 import Anthropic from "@anthropic-ai/sdk";
 
+/**
+ * A provider call that failed. Carries the HTTP status (when known) and the raw
+ * provider body (for server-side logging only) so callers can translate it into
+ * a clean, user-facing message instead of leaking raw JSON. Never put `raw` in a
+ * response returned to the client.
+ */
+export class LlmError extends Error {
+  constructor(
+    public status: number | null,
+    public raw: string,
+    public provider?: string
+  ) {
+    super(`LLM error ${status ?? "?"}: ${raw}`);
+    this.name = "LlmError";
+  }
+}
+
+/**
+ * Translate any error from an LLM call into a short, safe, user-facing message.
+ * Handles quota/credits (402), auth (401/403), rate limits (429), and empty-key
+ * cases specifically; everything else gets a generic "temporarily unavailable".
+ * Never returns raw provider JSON.
+ */
+export function friendlyLlmError(err: unknown): string {
+  const status = err instanceof LlmError ? err.status : null;
+  const msg = err instanceof Error ? err.message : String(err);
+
+  if (status === 402 || /quota|insufficient|more credits|can only afford|billing/i.test(msg)) {
+    return "The negotiation service has run out of credits. Please try again later or contact support.";
+  }
+  if (status === 401 || status === 403 || /unauthor|invalid.*key|api key/i.test(msg)) {
+    return "The negotiation service is misconfigured (authentication failed). Please contact support.";
+  }
+  if (status === 429 || /rate.?limit|too many requests/i.test(msg)) {
+    return "The negotiation service is busy right now. Please wait a moment and try again.";
+  }
+  return "The negotiation service is temporarily unavailable. Please try again.";
+}
+
 export type LlmMessage = {
   role: "user" | "assistant";
   content: string | Array<{ text: string } | { imageDataUrl: string }>;
@@ -60,7 +99,7 @@ async function callOpenAiCompat(
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`LLM error ${res.status}: ${err}`);
+    throw new LlmError(res.status, err);
   }
   const data = await res.json();
   return data.choices[0].message.content as string;
@@ -107,7 +146,7 @@ async function callGemini(
   );
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Gemini error ${res.status}: ${err}`);
+    throw new LlmError(res.status, err, "gemini");
   }
   const data = await res.json();
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
@@ -161,6 +200,7 @@ async function sleep(ms: number) {
 }
 
 function is429(err: unknown): boolean {
+  if (err instanceof LlmError) return err.status === 429;
   return err instanceof Error && err.message.includes("429");
 }
 
