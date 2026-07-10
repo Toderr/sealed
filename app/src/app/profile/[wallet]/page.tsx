@@ -224,6 +224,7 @@ export default function PublicProfilePage() {
                     value={profile.avg_rating > 0 ? profile.avg_rating.toFixed(1) : "—"}
                     label="Avg rating"
                     star={profile.avg_rating > 0}
+                    onClick={profile.avg_rating > 0 ? () => setTab("reviews") : undefined}
                   />
                 </div>
 
@@ -355,11 +356,7 @@ export default function PublicProfilePage() {
               )
             )}
 
-            {tab === "reviews" && (
-              <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
-                {profile.avg_rating > 0 ? "Reviews will load here." : "No reviews yet."}
-              </div>
-            )}
+            {tab === "reviews" && <ReviewsList wallet={wallet ?? ""} />}
 
             {tab === "agents" && (
               <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
@@ -378,15 +375,22 @@ function TrustStat({
   label,
   accent,
   star,
+  onClick,
 }: {
   value: string | number;
   label: string;
   accent?: "success";
   star?: boolean;
+  onClick?: () => void;
 }) {
   const color = accent === "success" ? "var(--success)" : "var(--primary)";
   return (
-    <div>
+    <div
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      style={onClick ? { cursor: "pointer" } : undefined}
+      title={onClick ? "View reviews" : undefined}
+    >
       <div style={{
         fontSize: 28,
         fontWeight: 590,
@@ -424,5 +428,94 @@ function SocialBtn({ href, label }: { href: string; label: string }) {
       </svg>
       {label}
     </a>
+  );
+}
+
+/* ── Reviews list (bug #6) — the individual reviews behind "Avg rating" ────── */
+
+type ReviewItem = {
+  id: string;
+  stars: number;
+  review_text: string;
+  submitted_at: string;
+  deal_id: string;
+  deal_title: string;
+  reviewer: { wallet: string; handle: string | null; display_name: string | null };
+};
+
+function Stars({ value }: { value: number }) {
+  return (
+    <span style={{ color: "var(--accent)", fontSize: 13, letterSpacing: 1 }} aria-label={`${value} of 5 stars`}>
+      {"★".repeat(Math.max(0, Math.min(5, value)))}
+      <span style={{ color: "var(--card-border)" }}>{"★".repeat(5 - Math.max(0, Math.min(5, value)))}</span>
+    </span>
+  );
+}
+
+function ReviewsList({ wallet }: { wallet: string }) {
+  const [reviews, setReviews] = useState<ReviewItem[] | null>(null);
+
+  useEffect(() => {
+    if (!wallet) return;
+    let cancelled = false;
+    apiFetchSafe<{ reviews?: ReviewItem[] }>(`/api/users/${wallet}/reviews`, {}, { reviews: [] })
+      .then((data) => {
+        if (!cancelled) setReviews(data.reviews ?? []);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet]);
+
+  if (reviews === null) {
+    return (
+      <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
+        Loading reviews…
+      </div>
+    );
+  }
+
+  if (reviews.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
+        No reviews yet.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {reviews.map((r) => {
+        const reviewerName =
+          r.reviewer.display_name?.trim() ||
+          atDisplayHandle(r.reviewer.handle) ||
+          `${r.reviewer.wallet.slice(0, 4)}…${r.reviewer.wallet.slice(-4)}`;
+        const date = r.submitted_at ? new Date(r.submitted_at).toLocaleDateString() : "";
+        return (
+          <div key={r.id} className="surface-card" style={{ borderRadius: 12, padding: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: r.review_text ? 8 : 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <Stars value={r.stars} />
+                <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {reviewerName}
+                </span>
+              </div>
+              <span style={{ fontSize: 11, color: "var(--subtle)", flexShrink: 0 }}>{date}</span>
+            </div>
+            {r.review_text && (
+              <p style={{ fontSize: 13, color: "var(--foreground)", margin: "0 0 8px", lineHeight: 1.55 }}>
+                {r.review_text}
+              </p>
+            )}
+            <Link
+              href={`/deals/${encodeURIComponent(r.deal_id)}`}
+              style={{ fontSize: 11.5, color: "var(--muted)", textDecoration: "none" }}
+            >
+              on “{r.deal_title}” →
+            </Link>
+          </div>
+        );
+      })}
+    </div>
   );
 }

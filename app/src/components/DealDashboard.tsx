@@ -7,6 +7,7 @@ import Link from "next/link";
 import { labelStyle, headingStyle } from "@/lib/typography";
 import type { SupabaseDeal } from "@/lib/types";
 import { apiFetchSafe } from "@/lib/api-client";
+import { useDisplayName } from "@/lib/hooks/use-display-name";
 
 function statusStyle(status: string): string {
   switch (status) {
@@ -130,9 +131,10 @@ function DealRow({
 }) {
   const isBuyer = deal.buyer_wallet === myWallet;
   const counterparty = isBuyer ? deal.seller_wallet : deal.buyer_wallet;
-  const shortCp = counterparty
-    ? `${counterparty.slice(0, 4)}…${counterparty.slice(-4)}`
-    : "Awaiting counterparty";
+  // Resolve the counterparty wallet to a profile name (bug #4); "Awaiting
+  // counterparty" when the other slot is still empty.
+  const resolvedCp = useDisplayName(counterparty || null);
+  const shortCp = counterparty ? resolvedCp : "Awaiting counterparty";
 
   const completedMilestones = (deal.milestones ?? []).filter(
     (m) => m.status === "Released" || m.status === "Completed"
@@ -154,7 +156,7 @@ function DealRow({
           <h3 className="text-[14px] text-primary truncate" style={labelStyle}>
             {deal.title || deal.deal_id}
           </h3>
-          <p className="text-[11px] text-subtle font-mono mt-0.5">
+          <p className="text-[11px] text-subtle mt-0.5">
             {isBuyer ? "Buyer" : "Seller"} · {shortCp}
           </p>
         </div>

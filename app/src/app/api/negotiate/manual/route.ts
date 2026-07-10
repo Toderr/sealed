@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
-import { dispatchLlm } from "@/lib/llm-dispatch";
+import { dispatchLlm, friendlyLlmError } from "@/lib/llm-dispatch";
 import { HttpError, json, withRoute } from "@/lib/api-error";
 
 // Always use a reliable paid model for agent responses.
@@ -124,7 +124,9 @@ Be concise and professional. Respond in the same language the seller uses.`;
       ...llm,
       system: systemPrompt,
       messages: callMessages,
-      maxTokens: 600,
+      // Needs headroom for the reply plus the <agreed_terms> JSON block; 600 was
+      // low enough to truncate the block (and to trip low-credit token ceilings).
+      maxTokens: 1200,
     });
 
     const agreed = response.includes("[AGREED]");
@@ -154,7 +156,9 @@ Be concise and professional. Respond in the same language the seller uses.`;
     return json({ response: cleanResponse, agreed, agreedTerms });
   } catch (err) {
     if (err instanceof HttpError) throw err;
-    const message = err instanceof Error ? err.message : String(err);
-    throw new HttpError(500, message);
+    // Log the real error (may contain raw provider JSON) server-side only, and
+    // return a clean, user-facing message — never leak provider errors to chat.
+    console.error("[negotiate/manual] LLM call failed:", err);
+    throw new HttpError(502, friendlyLlmError(err));
   }
 });

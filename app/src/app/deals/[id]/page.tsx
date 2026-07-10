@@ -17,7 +17,9 @@ import {
   coSignAndSend,
   getUsdcMint,
   sendTx,
+  findDealPDA,
 } from "@/lib/escrow-client";
+import { useDisplayName } from "@/lib/hooks/use-display-name";
 import { MOCK_CHAIN } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
@@ -38,7 +40,14 @@ type RefundRequest = {
   status: string;
   created_at: string;
 };
-type DbMsg = { id: string; role: string; content: string; wallet: string | null; created_at: string };
+type DbMsg = {
+  id: string;
+  role: string;
+  content: string;
+  wallet: string | null;
+  created_at: string;
+  metadata?: { attachment?: string; kind?: string } | null;
+};
 type Deliverable = {
   id: string;
   filename: string;
@@ -133,12 +142,19 @@ export default function ActiveDealPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMsgCount = useRef(0);
   const fileInputRefs = useRef<{ [k: number]: HTMLInputElement | null }>({});
+  const chatFileRef = useRef<HTMLInputElement>(null);
 
   const role: "buyer" | "seller" | "observer" = !wallet
     ? "observer"
     : deal?.buyer_wallet === wallet ? "buyer"
     : deal?.seller_wallet === wallet ? "seller"
     : "observer";
+
+  // Counterparty display name (bug #4): resolve the other party's wallet to a
+  // profile name. Called unconditionally (before any early return) to satisfy
+  // the rules of hooks; safe when deal is still null.
+  const counterpartyWallet = role === "buyer" ? deal?.seller_wallet : deal?.buyer_wallet;
+  const counterpartyName = useDisplayName(counterpartyWallet || null);
 
   const milestones = deal?.milestones ?? [];
   const releasedCount = milestones.filter((m) => m.status === "Released").length;
@@ -445,6 +461,46 @@ export default function ActiveDealPage() {
     }
   }
 
+  // Share an image in the chat (#3). Uploads via /api/upload in chat-attachment
+  // mode (image-only, no deliverable row), then posts a message carrying the
+  // storage key so it renders inline. Buyers use this instead of proof upload.
+  async function handleChatAttach(file: File) {
+    if (!wallet || sendingMsg) return;
+    setSendingMsg(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      let key: string | undefined;
+      try {
+        const res = await apiFetch<{ storage_key: string }>("/api/upload", {
+          method: "POST",
+          rawBody: form,
+          headers: { "x-wallet": wallet, "x-deal-id": dealId, "x-chat-attachment": "1" },
+        });
+        key = res.storage_key;
+      } catch (e) {
+        alert(e instanceof ApiError ? e.message : "Image upload failed");
+        return;
+      }
+      if (key) {
+        await apiFetchSafe("/api/messages", {
+          method: "POST",
+          wallet,
+          body: {
+            deal_id: dealId,
+            role: "user",
+            content: `📎 ${file.name}`,
+            wallet,
+            metadata: { attachment: key, kind: "image" },
+          },
+        }, undefined);
+        await refreshAll();
+      }
+    } finally {
+      setSendingMsg(false);
+    }
+  }
+
   const isComplete = milestones.length > 0 && milestones.every((m) => m.status === "Released");
   const currentInReview = currentMilestoneIndex >= 0 && milestones[currentMilestoneIndex]?.status === "In Review";
   const totalValue = milestones.reduce((s, m) => s + m.amount, 0);
@@ -568,9 +624,18 @@ export default function ActiveDealPage() {
     );
   }
 
-  const shortBuyer = deal.buyer_wallet ? `${deal.buyer_wallet.slice(0, 4)}…${deal.buyer_wallet.slice(-4)}` : "—";
   const shortSeller = deal.seller_wallet ? `${deal.seller_wallet.slice(0, 4)}…${deal.seller_wallet.slice(-4)}` : "—";
-  const explorerUrl = `https://explorer.solana.com/address/${deal.deal_id}?cluster=devnet`;
+  // View-on-chain must point at the on-chain Deal PDA, not the human-readable
+  // deal_id slug (bug #5) — the slug isn't a valid base58 address, so the old
+  // link produced "Address ... is not valid" on the explorer.
+  const explorerUrl = (() => {
+    try {
+      const [pda] = findDealPDA(deal.deal_id);
+      return `https://explorer.solana.com/address/${pda.toBase58()}?cluster=devnet`;
+    } catch {
+      return null;
+    }
+  })();
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--background)", position: "relative" }}>
@@ -613,20 +678,22 @@ export default function ActiveDealPage() {
             {deal.deal_id.slice(0, 20)}
           </span>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <a
-            href={explorerUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-ghost"
-            style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none" }}
-          >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-            View on chain
-          </a>
-        </div>
+        {explorerUrl && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <a
+              href={explorerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost"
+              style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none" }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+              View on chain
+            </a>
+          </div>
+        )}
       </header>
 
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: "26px 24px", position: "relative", zIndex: 1 }}>
@@ -645,7 +712,7 @@ export default function ActiveDealPage() {
         <div className="surface-card" style={{ borderRadius: 12, padding: 16, marginBottom: 16, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0 }}>
           <StatBlock label="Total value" value={`$${totalValue.toLocaleString()}`} sub="USDC" />
           <StatBlock label="Released" value={`$${releasedValue.toLocaleString()}`} sub={`${releasedCount} of ${milestones.length} milestones`} accent="success" />
-          <StatBlock label="Counterparty" value={role === "buyer" ? shortSeller : shortBuyer} sub={`You as ${role}`} />
+          <StatBlock label="Counterparty" value={counterpartyName} sub={`You as ${role}`} />
           <StatBlock label="Status" value={isComplete ? "Completed" : "In progress"} sub="Buyer confirms releases" accent={isComplete ? "success" : "warning"} />
         </div>
 
@@ -772,8 +839,9 @@ export default function ActiveDealPage() {
                         </div>
                       )}
 
-                      {/* Either party can upload proof — release stays buyer-only */}
-                      {role !== "observer" && (isPending || isInReview) && i === currentMilestoneIndex && (
+                      {/* Only the SELLER uploads milestone proof (#3); the buyer
+                          shares files via the chat instead. Release stays buyer-only. */}
+                      {role === "seller" && (isPending || isInReview) && i === currentMilestoneIndex && (
                         <div style={{ marginTop: 10 }}>
                           <input
                             type="file"
@@ -873,7 +941,9 @@ export default function ActiveDealPage() {
                     <p style={{ fontSize: 12, color: "var(--muted)" }}>
                       {role === "observer"
                         ? "No activity yet."
-                        : "Upload proof for the current milestone to get started — either party can submit."}
+                        : role === "seller"
+                        ? "Upload proof for the current milestone to get started."
+                        : "Send a message or share a file with the seller to get started."}
                     </p>
                   </div>
                 )}
@@ -900,7 +970,11 @@ export default function ActiveDealPage() {
                         {isAgent && (
                           <p style={{ fontSize: 10, color: "var(--accent)", margin: "0 0 4px" }}>Sealed Agent</p>
                         )}
-                        <div style={{ whiteSpace: "pre-wrap" }}>{renderMarkdown(m.content)}</div>
+                        {m.metadata?.attachment ? (
+                          <ChatImageAttachment storageKey={m.metadata.attachment} name={m.content} />
+                        ) : (
+                          <div style={{ whiteSpace: "pre-wrap" }}>{renderMarkdown(m.content)}</div>
+                        )}
                       </div>
                     </div>
                   );
@@ -930,6 +1004,28 @@ export default function ActiveDealPage() {
               {wallet && (
                 <div style={{ borderTop: "1px solid var(--card-border-subtle)", padding: "10px 12px", flexShrink: 0 }}>
                   <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="file"
+                      accept=".png,.jpg,.jpeg"
+                      ref={chatFileRef}
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleChatAttach(file);
+                        e.target.value = "";
+                      }}
+                    />
+                    <button
+                      onClick={() => chatFileRef.current?.click()}
+                      disabled={sendingMsg}
+                      className="btn-ghost"
+                      title="Share an image"
+                      style={{ height: 34, width: 34, borderRadius: 6, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                      </svg>
+                    </button>
                     <input
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
@@ -1165,6 +1261,9 @@ function StatBlock({ label, value, sub, accent }: { label: string; value: string
 }
 
 function PartyRow({ label, wallet, isYou }: { label: string; wallet: string; isYou: boolean }) {
+  // Resolve the wallet to a profile name; keep the short wallet as a secondary
+  // line so the address is still available (bug #4).
+  const name = useDisplayName(wallet || null);
   const short = wallet ? `${wallet.slice(0, 4)}…${wallet.slice(-4)}` : "—";
   const initials = wallet ? wallet.slice(0, 2).toUpperCase() : "?";
   return (
@@ -1186,12 +1285,12 @@ function PartyRow({ label, wallet, isYou }: { label: string; wallet: string; isY
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 12, color: "var(--primary)", fontFamily: "ui-monospace, monospace" }}>{short}</span>
+          <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
           {isYou && (
             <span style={{ background: "transparent", border: "1px solid rgba(113,112,255,0.3)", borderRadius: 9999, padding: "1px 8px", fontSize: 10, color: "var(--accent)", fontWeight: 510 }}>You</span>
           )}
         </div>
-        <div style={{ fontSize: 11, color: "var(--muted)" }}>{label}</div>
+        <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "ui-monospace, monospace" }}>{short} · {label}</div>
       </div>
     </div>
   );
@@ -1502,4 +1601,31 @@ function ProjectSealedModal({ onClose }: { onClose: () => void }) {
       </div>
     </>
   );
+}
+
+// Renders a chat image attachment (#3). Fetches a short-lived signed URL for the
+// private storage key and shows the image; falls back to the filename if the URL
+// isn't available (e.g. offline mock mode).
+function ChatImageAttachment({ storageKey, name }: { storageKey: string; name: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    apiFetchSafe<{ url?: string }>(`/api/upload/signed?key=${encodeURIComponent(storageKey)}`, {}, {})
+      .then((d) => { if (!cancelled) setUrl(d.url ?? null); });
+    return () => { cancelled = true; };
+  }, [storageKey]);
+
+  if (url) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={name}
+          style={{ maxWidth: "100%", maxHeight: 220, borderRadius: 8, display: "block" }}
+        />
+      </a>
+    );
+  }
+  return <div style={{ whiteSpace: "pre-wrap", opacity: 0.9 }}>{name}</div>;
 }

@@ -541,8 +541,11 @@ async function handle(
   if (path === "/api/upload" && method === "POST") {
     const dealId = headers.get("x-deal-id");
     const milestoneIndex = Number(headers.get("x-milestone-index") ?? "0");
+    const isChatAttachment = headers.get("x-chat-attachment") === "1";
     const storage_key = `offline/${uuid()}`;
-    if (dealId) {
+    // Chat attachments (#3) are images shared in chat, not milestone proof — don't
+    // record a deliverable (mirrors the real route).
+    if (dealId && !isChatAttachment) {
       mockData.addDeliverable({
         deal_id: dealId,
         filename: "offline-proof",
@@ -555,8 +558,8 @@ async function handle(
     }
     return json({
       id: uuid(),
-      original_name: "offline-proof",
-      file_type: "application/octet-stream",
+      original_name: isChatAttachment ? "offline-image" : "offline-proof",
+      file_type: isChatAttachment ? "image/png" : "application/octet-stream",
       size_bytes: 0,
       storage_key,
     });
@@ -591,6 +594,39 @@ async function handle(
       member_since: (p.member_since as string) ?? nowIso(),
       socials: {},
     });
+  }
+
+  // GET /api/users/:wallet/reviews — the individual revealed reviews received by
+  // a wallet (bug #6), synthesized from the ratings store.
+  const reviewsMatch = path.match(/^\/api\/users\/([^/]+)\/reviews$/);
+  if (reviewsMatch && method === "GET") {
+    const w = decodeURIComponent(reviewsMatch[1]);
+    const allRatings = Object.values(read<Record<string, Rating>>(K.ratings, {}));
+    const profiles = read<Record<string, Record<string, unknown>>>(K.profiles, {});
+    const mine = allRatings
+      .filter((r) => r.ratee_wallet === w && r.revealed)
+      .sort((a, b) => (b.submitted_at ?? "").localeCompare(a.submitted_at ?? ""));
+    const reviews = mine.map((r) => {
+      const p = profiles[r.rater_wallet] ?? {};
+      const deal = mockData.getDeal(r.deal_id);
+      return {
+        id: r.id,
+        stars: r.stars,
+        review_text: r.review_text ?? "",
+        submitted_at: r.submitted_at,
+        deal_id: r.deal_id,
+        deal_title: deal?.title ?? r.deal_id,
+        reviewer: {
+          wallet: r.rater_wallet,
+          handle: (p.handle as string) ?? null,
+          display_name: (p.display_name as string) ?? null,
+        },
+      };
+    });
+    const average = reviews.length
+      ? Math.round((reviews.reduce((s, r) => s + r.stars, 0) / reviews.length) * 10) / 10
+      : 0;
+    return json({ reviews, count: reviews.length, average });
   }
 
   // POST /api/negotiate/manual — offline manual chat with the buyer's "agent".
