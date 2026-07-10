@@ -128,6 +128,9 @@ export default function NegotiateRoom() {
   const [renegotiateOpen, setRenegotiateOpen] = useState(false);
   const [renegotiateRequest, setRenegotiateRequest] = useState("");
   const [renegotiateError, setRenegotiateError] = useState<string | null>(null);
+  // Reject-and-recycle (#19) confirm modal.
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectError, setRejectError] = useState<string | null>(null);
   const [renegotiationNotice, setRenegotiationNotice] = useState<RenegotiationNotice | null>(null);
   // Seller's chosen negotiation mode ("choice" = not decided yet)
   const [sellerView, setSellerView] = useState<"choice" | "manual" | "agent-waiting">("choice");
@@ -625,6 +628,31 @@ export default function NegotiateRoom() {
     }
   }
 
+  // Reject-and-recycle (#19): release the current counterparty and reopen the
+  // deal so the SAME invite link can be reused for someone else — no new deal
+  // needed. Clears the counterparty's slot and resets the deal to "draft".
+  async function handleReject() {
+    if (!deal || !wallet) return;
+    const iAmBuyer = deal.buyer_wallet === wallet;
+    const counterpartyField = iAmBuyer ? "seller_wallet" : "buyer_wallet";
+    try {
+      await patchDeal(
+        { [counterpartyField]: null, status: "draft" } as Partial<SupabaseDeal>,
+        () =>
+          apiFetch(`/api/deals/${encodeURIComponent(deal.deal_id)}`, {
+            method: "PATCH",
+            wallet,
+            body: { [counterpartyField]: null, status: "draft" },
+          })
+      );
+      // Back to the invite/awaiting state; the stateless invite link re-derives.
+      setNegState({ kind: "idle" });
+      setRejectOpen(false);
+    } catch (error) {
+      setRejectError(error instanceof Error ? error.message : "Could not reject the deal.");
+    }
+  }
+
   async function handleAcceptAndDeploy(finalTerms: DealParams) {
     if (!publicKey || !signTransaction) {
       setDeployError("Connect a wallet that can sign this transaction.");
@@ -1082,6 +1110,7 @@ export default function NegotiateRoom() {
                       deployError={deployError}
                       onAccept={handleAcceptAndDeploy}
                       onRenegotiate={() => setRenegotiateOpen(true)}
+                      onReject={deal.seller_wallet ? () => { setRejectError(null); setRejectOpen(true); } : undefined}
                     />
                   )}
 
@@ -1166,6 +1195,11 @@ export default function NegotiateRoom() {
                   deployError={deployError}
                   onAccept={handleAcceptAndDeploy}
                   onRenegotiate={() => setRenegotiateOpen(true)}
+                  onReject={
+                    (role === "buyer" ? deal.seller_wallet : deal.buyer_wallet)
+                      ? () => { setRejectError(null); setRejectOpen(true); }
+                      : undefined
+                  }
                 />
               )}
             </div>
@@ -1245,6 +1279,31 @@ export default function NegotiateRoom() {
           }}
           onSubmit={submitRenegotiation}
         />
+      )}
+
+      {/* Reject-and-recycle confirmation (#19) */}
+      {rejectOpen && (
+        <div
+          onClick={() => setRejectOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16 }}
+        >
+          <div onClick={(e) => e.stopPropagation()} className="modal-card" style={{ width: "100%", maxWidth: 420, borderRadius: 14, padding: 22 }}>
+            <p style={{ fontSize: 15, fontWeight: 600, color: "var(--primary)", margin: "0 0 6px" }}>Reject this counterparty?</p>
+            <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 16px", lineHeight: 1.5 }}>
+              This removes the current counterparty and reopens the deal. Your <b style={{ color: "var(--foreground)" }}>same invite link</b> will work again for someone else — no need to recreate the deal. No funds are involved (nothing is in escrow yet).
+            </p>
+            {rejectError && <p style={{ fontSize: 12, color: "var(--danger)", margin: "0 0 12px" }}>{rejectError}</p>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn-ghost" onClick={() => setRejectOpen(false)} style={{ height: 38, borderRadius: 8, fontSize: 13, flex: 1 }}>Cancel</button>
+              <button
+                onClick={handleReject}
+                style={{ height: 38, borderRadius: 8, fontSize: 13, flex: 1, background: "var(--danger)", color: "#fff", border: "none", fontWeight: 510, cursor: "pointer" }}
+              >
+                Reject &amp; reopen
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </Shell>
   );
@@ -1602,6 +1661,7 @@ function NegotiationResult({
   deployError,
   onAccept,
   onRenegotiate,
+  onReject,
 }: {
   proposal: Proposal;
   role: "buyer" | "seller" | "observer";
@@ -1609,6 +1669,7 @@ function NegotiationResult({
   deployError?: string | null;
   onAccept: (terms: DealParams) => void;
   onRenegotiate: () => void;
+  onReject?: () => void;
 }) {
   const summary = proposal.summary;
   const finalTerms = proposal.finalTerms;
@@ -1711,6 +1772,18 @@ function NegotiationResult({
             Renegotiate
           </button>
         </div>
+      )}
+      {/* Reject-and-recycle (#19): drop this counterparty and reuse the invite
+          link for someone else. Only before escrow (the whole result view is
+          pre-deploy), and only when a counterparty is present to reject. */}
+      {onReject && (
+        <button
+          onClick={onReject}
+          disabled={deploying}
+          className="btn-ghost h-9 px-4 rounded-md text-[12px] text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/50"
+        >
+          Reject &amp; find another counterparty
+        </button>
       )}
       {isBuyer && agreed && finalTerms && deployError && (
         <p className="text-[12px] text-danger" role="alert">
