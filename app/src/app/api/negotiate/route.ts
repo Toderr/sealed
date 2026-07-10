@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { runNegotiation } from "@/negotiation/engine";
 import { defaultSellerBoundaries } from "@/negotiation/types";
+import type { Proposal } from "@/negotiation/types";
 import type { DealParams } from "@/lib/types";
 import type { NegotiationBoundaries, NegotiationStyle } from "@/memory/types";
 import { dispatchLlm, getLlmOptsFromEnv, getLlmOptsFromRequest, friendlyLlmError } from "@/lib/llm-dispatch";
@@ -50,6 +51,53 @@ function selectSellerLlm(
 function isRateLimitedNegotiationError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return /429|rate.?limit|temporarily rate-limited|quota/i.test(message);
+}
+
+// Persist the agent-to-agent negotiation turns into the deal chat (bug #11) so
+// the exchange is visible in the conversation box, not hidden behind a spinner.
+// Idempotent-ish: tagged with the proposalId so re-runs don't double up the same
+// round. Best-effort — a logging failure must not break the negotiation.
+async function persistNegotiationTurns(
+  proposalId: string,
+  buyerWallet: string,
+  proposal: Proposal
+) {
+  try {
+    const dealId = proposal.initialTerms.dealId;
+    if (!dealId) return;
+
+    // Skip if we've already logged this proposal's turns (avoid duplicates on
+    // client retry / double POST).
+    const { data: already } = await supabase
+      .from(table("messages"))
+      .select("id")
+      .eq("deal_id", dealId)
+      .contains("metadata", { proposalId })
+      .limit(1);
+    if (already && already.length > 0) return;
+
+    const rows = proposal.revisions
+      // The round-0 seed isn't an agent turn; skip it.
+      .filter((r) => r.action !== "open")
+      .map((r) => {
+        const who = r.onBehalfOf === "buyer" ? "Buyer's agent" : "Seller's agent";
+        const verb =
+          r.action === "accept" ? "accepted" : r.action === "reject" ? "declined" : "proposed";
+        return {
+          deal_id: dealId,
+          role: "assistant",
+          content: `**${who}** ${verb}: ${r.reasoning}`,
+          wallet: buyerWallet,
+          metadata: { proposalId, agentTurn: true, onBehalfOf: r.onBehalfOf, round: r.round },
+        };
+      });
+
+    if (rows.length > 0) {
+      await supabase.from(table("messages")).insert(rows);
+    }
+  } catch (err) {
+    console.error("[negotiate] failed to persist agent turns:", err);
+  }
 }
 
 export const POST = withRoute(async (request: NextRequest) => {
@@ -148,6 +196,12 @@ export const POST = withRoute(async (request: NextRequest) => {
       buyerCallLlm,
       sellerCallLlm
     );
+
+    // Persist each agent turn to the chat so users can actually SEE the
+    // agent-to-agent negotiation in the conversation box, instead of a silent
+    // jump straight to the result (bug #11). Best-effort — never fail the
+    // negotiation on a logging write.
+    await persistNegotiationTurns(body.proposalId, body.buyerWallet, proposal);
 
     return json({ proposal });
   } catch (err) {

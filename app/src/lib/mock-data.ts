@@ -665,22 +665,44 @@ async function handle(
   }
 
   // POST /api/negotiate — offline AI negotiation: return an immediately-agreed
-  // proposal using the requested terms (no LLM rounds offline).
+  // proposal using the requested terms (no real LLM rounds offline).
   if (path === "/api/negotiate" && method === "POST") {
     const b = (body ?? {}) as {
       proposalId?: string;
       buyerWallet?: string;
-      initialTerms?: unknown;
+      initialTerms?: { dealId?: string } & Record<string, unknown>;
     };
     const terms = b.initialTerms ?? {};
     const now = Date.now();
+    const proposalId = b.proposalId ?? "offline";
+    // Synthesize a short two-turn exchange so the offline demo also shows the
+    // agent-to-agent conversation in the chat box (bug #11).
+    const revisions = [
+      { round: 1, by: "negotiator", onBehalfOf: "seller", action: "counter", proposedTerms: terms, reasoning: "Reviewed the terms and they look fair — happy to proceed.", concessions: [], asks: [], timestamp: Math.floor(now / 1000) },
+      { round: 2, by: "negotiator", onBehalfOf: "buyer", action: "accept", proposedTerms: terms, reasoning: "Great — accepting the terms as proposed.", concessions: [], asks: [], timestamp: Math.floor(now / 1000) },
+    ];
+    // Persist the turns to the chat, mirroring the real route (#11).
+    const dealId = b.initialTerms?.dealId;
+    if (dealId && !mockData.messagesFor(dealId).some((m) => (m.metadata as { proposalId?: string } | null)?.proposalId === proposalId)) {
+      for (const r of revisions) {
+        const who = r.onBehalfOf === "buyer" ? "Buyer's agent" : "Seller's agent";
+        const verb = r.action === "accept" ? "accepted" : r.action === "reject" ? "declined" : "proposed";
+        mockData.addMessage({
+          deal_id: dealId,
+          role: "assistant",
+          content: `**${who}** ${verb}: ${r.reasoning}`,
+          wallet: b.buyerWallet ?? null,
+          metadata: { proposalId, agentTurn: true, onBehalfOf: r.onBehalfOf, round: r.round },
+        });
+      }
+    }
     return json({
       proposal: {
-        id: `${b.proposalId ?? "offline"}-agreed`,
+        id: `${proposalId}-agreed`,
         origin: "agent",
         buyerWallet: b.buyerWallet ?? "",
         initialTerms: terms,
-        revisions: [],
+        revisions,
         status: "agreed",
         finalTerms: terms,
         summary: {
