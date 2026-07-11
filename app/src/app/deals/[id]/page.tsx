@@ -712,7 +712,7 @@ export default function ActiveDealPage() {
         </div>
       </header>
 
-      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "26px 24px", position: "relative", zIndex: 1 }}>
+      <div style={{ maxWidth: 1250, margin: "0 auto", padding: "26px 24px", position: "relative", zIndex: 1 }}>
         {/* Header */}
         <div style={{ marginBottom: 18 }}>
           <p style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted)", margin: 0, fontWeight: 510 }}>Deal</p>
@@ -732,24 +732,29 @@ export default function ActiveDealPage() {
           <StatBlock last label="Status" value={isComplete ? "Completed" : "In progress"} sub="Buyer confirms releases" accent={isComplete ? "success" : "warning"} />
         </div>
 
-        {/* Two-column main */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16 }}>
+        {/* Two-column main. minmax(0, …) tracks (not bare fr) so a long unbroken
+            string in a column — e.g. the on-chain tx signature in the chat —
+            can't force the column past its share and overflow the container,
+            which made this row wider than the stat strip above it. */}
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 2fr)", gap: 16 }}>
           {/* Milestones */}
-          <div className="surface-card" style={{ borderRadius: 12, padding: 18 }}>
+          <div className="surface-card" style={{ minWidth: 0, borderRadius: 12, padding: 18 }}>
             <p style={{ fontSize: 13, color: "var(--primary)", fontWeight: 590, margin: 0 }}>Milestones</p>
             <p style={{ fontSize: 12, color: "var(--muted)", margin: "2px 0 14px" }}>Each release requires your confirmation.</p>
-            {/* Timeline. Line and dots share one axis: the wrapper's left gutter
-                is 24px; the 1px line sits at x=11.5 (left:11), and each 11px dot
-                is left:-18 from its 24px-inset row → dot left 6, center 11.5 —
-                so every dot sits centered on the line (N6). */}
+            {/* Timeline. The connector is drawn per-row as two half-segments off
+                each dot's center — an "up" half (skipped on the first dot) and a
+                "down" half (skipped on the last) — so the line runs only BETWEEN
+                dots, with nothing above the first or below the last. Dots stay
+                centered on their box regardless of height (N6). */}
             <div style={{ position: "relative", paddingLeft: 24 }}>
-              <div style={{ position: "absolute", left: 11, top: 12, bottom: 12, width: 1, background: "var(--card-border)" }} />
               {milestones.map((m, i) => {
                 const isReleased = m.status === "Released";
                 const isInReview = m.status === "In Review";
                 const isPending = !m.status || m.status === "Pending";
                 const isActive = isInReview || (isPending && i === currentMilestoneIndex);
                 const proofs = deliverables.filter((d) => d.milestone_index === i);
+                const isFirst = i === 0;
+                const isLast = i === milestones.length - 1;
 
                 return (
                   <div key={i} style={{ position: "relative", paddingBottom: 12 }}>
@@ -764,8 +769,19 @@ export default function ActiveDealPage() {
                       bottom: 12,
                       display: "flex",
                       alignItems: "center",
+                      justifyContent: "center",
                     }}>
+                      {/* "up" half: box top → dot center (skip on first dot) */}
+                      {!isFirst && (
+                        <span style={{ position: "absolute", left: 5, top: 0, height: "50%", width: 1, background: "var(--card-border)" }} />
+                      )}
+                      {/* "down" half: dot center → next dot (through the 12px gap).
+                          Skip on the last dot so nothing dangles below it. */}
+                      {!isLast && (
+                        <span style={{ position: "absolute", left: 5, top: "50%", bottom: -12, width: 1, background: "var(--card-border)" }} />
+                      )}
                       <span style={{
+                        position: "relative",
                         width: 11,
                         height: 11,
                         borderRadius: "50%",
@@ -995,7 +1011,10 @@ export default function ActiveDealPage() {
                   const isSystem = m.role === "system";
                   if (isSystem) return (
                     <div key={m.id} style={{ textAlign: "center" }}>
-                      <span style={{ fontSize: 11, color: "var(--subtle)", padding: "0 8px" }}>{m.content}</span>
+                      {/* Break long unbroken strings (e.g. a full tx signature)
+                          so a system line can't stretch the chat column and push
+                          the two-column row past the container width. */}
+                      <span style={{ fontSize: 11, color: "var(--subtle)", padding: "0 8px", overflowWrap: "anywhere", wordBreak: "break-word" }}>{m.content}</span>
                     </div>
                   );
                   // Align by sender: my own messages on the right, the agent and
