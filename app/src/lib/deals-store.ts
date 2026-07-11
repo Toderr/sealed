@@ -111,6 +111,28 @@ function subscribe(key: string, onChange: () => void) {
   };
 }
 
+// Remove a deal from ALL client-side stores so a delete actually sticks:
+// the per-wallet localStorage deals-store AND the sessionStorage draft. Without
+// this, deleting only the server mirror leaves the deal in localStorage, so it
+// reappears on the next refresh (and the direct /deals/<id> link still resolves
+// from the local copy). Call this alongside the DELETE API request.
+export function purgeDealLocally(dealId: string, wallet: string | null) {
+  if (typeof window === "undefined") return;
+  // 1) per-wallet deals-store (localStorage) — also clear the guest bucket in
+  //    case the deal was drafted before connect.
+  for (const w of [wallet, null]) {
+    const key = storageKey(w);
+    const remaining = readSnapshot(key).filter((d) => d.dealId !== dealId);
+    if (remaining.length !== readSnapshot(key).length) writeDeals(key, remaining);
+  }
+  // 2) sessionStorage draft written at deal-composition time.
+  try {
+    window.sessionStorage.removeItem(`deal:${dealId}`);
+  } catch {
+    // sessionStorage unavailable — nothing to clear.
+  }
+}
+
 export function useDealsStore(wallet: PublicKey | null) {
   const walletKey = wallet ? wallet.toBase58() : null;
   const key = storageKey(walletKey);
