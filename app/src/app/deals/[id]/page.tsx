@@ -753,17 +753,27 @@ export default function ActiveDealPage() {
 
                 return (
                   <div key={i} style={{ position: "relative", paddingBottom: 12 }}>
-                    <span style={{
+                    {/* Marker column spans exactly the box's height (the wrapper
+                        minus its 12px bottom gap) and flex-centers the dot, so the
+                        dot stays vertically centered on the box no matter how tall
+                        it grows (N6). */}
+                    <div style={{
                       position: "absolute",
                       left: -18,
-                      top: 8,
-                      width: 11,
-                      height: 11,
-                      borderRadius: "50%",
-                      background: isReleased ? "var(--success)" : isInReview ? "var(--warning)" : "var(--muted)",
-                      border: "2px solid var(--background)",
-                      boxShadow: isActive ? "0 0 0 4px rgba(251,191,36,0.18)" : "none",
-                    }} />
+                      top: 0,
+                      bottom: 12,
+                      display: "flex",
+                      alignItems: "center",
+                    }}>
+                      <span style={{
+                        width: 11,
+                        height: 11,
+                        borderRadius: "50%",
+                        background: isReleased ? "var(--success)" : isInReview ? "var(--warning)" : "var(--muted)",
+                        border: "2px solid var(--background)",
+                        boxShadow: isActive ? "0 0 0 4px rgba(251,191,36,0.18)" : "none",
+                      }} />
+                    </div>
                     <div style={{
                       padding: "12px 14px",
                       borderRadius: 10,
