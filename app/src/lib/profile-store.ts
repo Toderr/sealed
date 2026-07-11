@@ -89,6 +89,47 @@ function persist(wallet: string, profile: UserProfile) {
   localStorage.setItem(storageKey(wallet), JSON.stringify(profile));
 }
 
+// Shape of the public profile API (only the identity fields we hydrate).
+type PublicProfileResponse = {
+  handle?: string | null;
+  display_name?: string | null;
+  bio?: string | null;
+  avatar_url?: string | null;
+  website?: string | null;
+  twitter_handle?: string | null;
+  telegram_handle?: string | null;
+  instagram_handle?: string | null;
+  linkedin_url?: string | null;
+  member_since?: string | null;
+};
+
+// Map a DB profile into the local UserProfile shape. Returns null if the DB has
+// no real identity yet (so we don't mark a brand-new wallet as onboarded).
+function profileFromDb(p: PublicProfileResponse): UserProfile | null {
+  const hasIdentity = Boolean(p.member_since || p.handle || p.display_name);
+  if (!hasIdentity) return null;
+  const now = Date.now();
+  return {
+    name: p.display_name?.trim() || p.handle?.replace(/^@/, "") || "",
+    username: p.handle?.replace(/^@/, "") || "",
+    bio: p.bio ?? "",
+    socials: {
+      twitter: p.twitter_handle ?? "",
+      telegram: p.telegram_handle ?? "",
+      instagram: p.instagram_handle ?? "",
+      linkedin: p.linkedin_url ?? "",
+      website: p.website ?? "",
+    },
+    avatarUrl: p.avatar_url ?? undefined,
+    // A wallet with a DB identity has already onboarded — this is the fix for a
+    // returning user on a new browser being re-sent through onboarding (N9),
+    // and removes the redirect race that bounced onboarded users (N1).
+    onboardingComplete: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export function useProfileStore(wallet: string | null) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -99,8 +140,44 @@ export function useProfileStore(wallet: string | null) {
       setLoaded(true);
       return;
     }
-    setProfile(loadProfileFromStorage(wallet));
-    setLoaded(true);
+
+    // Local profile wins — it's the freshest (just-edited) copy.
+    const local = loadProfileFromStorage(wallet);
+    if (local) {
+      setProfile(local);
+      setLoaded(true);
+      return;
+    }
+
+    // No local profile: this could be a genuinely new wallet OR a returning user
+    // on a new browser whose profile lives in Supabase. Check the DB before
+    // deciding — and keep `loaded=false` until we know, so redirect guards don't
+    // fire prematurely and bounce an onboarded user to /onboarding (N1).
+    let cancelled = false;
+    setProfile(null);
+    setLoaded(false);
+    (async () => {
+      try {
+        const res = await fetch(`/api/users/${encodeURIComponent(wallet)}/public?self=1`);
+        const data = (res.ok ? await res.json() : null) as PublicProfileResponse | null;
+        if (cancelled) return;
+        const hydrated = data ? profileFromDb(data) : null;
+        if (hydrated) {
+          persist(wallet, hydrated); // seed localStorage so it's fast next time
+          setProfile(hydrated);
+        } else {
+          setProfile(null);
+        }
+      } catch {
+        if (!cancelled) setProfile(null);
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [wallet]);
 
   function updateProfile(updates: Partial<UserProfile>) {
