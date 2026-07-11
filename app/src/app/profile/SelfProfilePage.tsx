@@ -15,7 +15,7 @@ import {
   X402_TOP_UP_AMOUNTS,
   type LLMProvider,
 } from "@/lib/profile-store";
-import { useDealsStore } from "@/lib/deals-store";
+import { useDealsStore, purgeDealLocally } from "@/lib/deals-store";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import { FEATURE_X402, FEATURE_GET_VERIFIED } from "@/lib/env";
 import { LLM_PROVIDERS } from "@/lib/llm-providers";
@@ -254,6 +254,35 @@ export function SelfProfilePageContent() {
   const [dealSearch, setDealSearch] = useState("");
   const [dealFilter, setDealFilter] = useState<DealFilter>("all");
   const [dealSort, setDealSort] = useState<DealSort>("newest");
+  const toast = useToast();
+  // Delete flow — pre-escrow deals only, with a confirm modal (mirrors /app).
+  const [deleteTarget, setDeleteTarget] = useState<ProfileDealRowData | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget || !wallet) return;
+    setDeleting(true);
+    try {
+      await apiFetch(`/api/deals/${encodeURIComponent(deleteTarget.dealId)}`, {
+        method: "DELETE",
+        wallet,
+      });
+      // Clear every client copy so it doesn't reappear on refresh or via link.
+      purgeDealLocally(deleteTarget.dealId, wallet);
+      setMirrorDeals((prev) => prev.filter((d) => d.dealId !== deleteTarget.dealId));
+      setSessionDeals((prev) => prev.filter((d) => d.dealId !== deleteTarget.dealId));
+      toast.show({ variant: "success", title: "Deal deleted" });
+      setDeleteTarget(null);
+    } catch (e) {
+      toast.show({
+        variant: "error",
+        title: "Couldn't delete",
+        description: e instanceof ApiError ? e.message : "Please try again.",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const localDeals = useMemo(() => deals.map(fromLocalDeal), [deals]);
   const profileDeals = useMemo(
@@ -663,6 +692,7 @@ export function SelfProfilePageContent() {
                                       ]
                                     : null
                                 }
+                                onRequestDelete={setDeleteTarget}
                               />
                             ))}
                           </div>
@@ -688,6 +718,31 @@ export function SelfProfilePageContent() {
           </div>
         </div>
       </div>
+
+      {/* Delete confirmation — pre-escrow deals only, matches the board. */}
+      {deleteTarget && (
+        <div
+          onClick={() => { if (!deleting) setDeleteTarget(null); }}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16 }}
+        >
+          <div onClick={(e) => e.stopPropagation()} className="modal-card" style={{ width: "100%", maxWidth: 420, borderRadius: 14, padding: 22 }}>
+            <p style={{ fontSize: 15, fontWeight: 600, color: "var(--primary)", margin: "0 0 6px" }}>Delete this deal?</p>
+            <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 18px", lineHeight: 1.5 }}>
+              <b style={{ color: "var(--foreground)" }}>{deleteTarget.title || deleteTarget.dealId}</b> will be permanently removed. This deal has no escrow yet, so no funds are affected. This can&apos;t be undone.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn-ghost" disabled={deleting} onClick={() => setDeleteTarget(null)} style={{ height: 38, borderRadius: 8, fontSize: 13, flex: 1 }}>Cancel</button>
+              <button
+                disabled={deleting}
+                onClick={handleConfirmDelete}
+                style={{ height: 38, borderRadius: 8, fontSize: 13, flex: 1, background: "var(--danger)", color: "#fff", border: "none", fontWeight: 510, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.6 : 1 }}
+              >
+                {deleting ? "Deleting…" : "Delete deal"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Shell>
   );
 }
@@ -951,19 +1006,25 @@ function localDealHref(deal: ProfileDealRowData) {
     : `/deals/${deal.dealId}`;
 }
 
+const PRE_ESCROW_DEAL_STATUSES = ["draft", "seller-ready", "seller-agreed", "proposed", "escalated"];
+
 function DealRow({
   deal,
   profile,
   wallet,
   counterpartyProfile,
+  onRequestDelete,
 }: {
   deal: ProfileDealRowData;
   profile: { name: string; bio: string };
   wallet: string;
   counterpartyProfile?: CounterpartyProfile | null;
+  onRequestDelete?: (deal: ProfileDealRowData) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const statusKey = profileDealStatusKey(deal);
+  // Deletable only before escrow exists — mirrors the board card + server guard.
+  const canDelete = !!onRequestDelete && PRE_ESCROW_DEAL_STATUSES.includes(statusKey);
   const counterpartyWallet = getProfileDealCounterpartyWallet(deal, wallet);
   const hasCounterparty = Boolean(counterpartyWallet);
   const status =
@@ -1021,7 +1082,7 @@ function DealRow({
           ${deal.totalAmountUsdc.toLocaleString()} USDC
         </span>
       </Link>
-      <div className="flex items-center gap-3 flex-shrink-0">
+      <div className="flex items-center gap-2 flex-shrink-0">
         {needsCounterparty && (
           <button
             type="button"
@@ -1034,6 +1095,19 @@ function DealRow({
             title="Copy invite link"
           >
             {copied ? "Copied" : "Invite"}
+          </button>
+        )}
+        {canDelete && (
+          <button
+            type="button"
+            className="icon-btn-danger"
+            title="Delete deal"
+            aria-label="Delete deal"
+            onClick={() => onRequestDelete!(deal)}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
           </button>
         )}
       </div>
