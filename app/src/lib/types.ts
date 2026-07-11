@@ -76,6 +76,8 @@ export interface SupabaseMilestone {
   description: string;
   amount: number;
   status?: string;
+  /** On-chain release transaction signature (set when the milestone is released). */
+  release_tx?: string;
 }
 
 export interface SupabaseDeal {

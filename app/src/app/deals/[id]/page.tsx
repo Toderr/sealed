@@ -17,8 +17,8 @@ import {
   coSignAndSend,
   getUsdcMint,
   sendTx,
-  findDealPDA,
 } from "@/lib/escrow-client";
+import { escrowAccountUrl, txUrl } from "@/lib/explorer";
 import { useDisplayName } from "@/lib/hooks/use-display-name";
 import { MOCK_CHAIN } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
@@ -241,7 +241,9 @@ export default function ActiveDealPage() {
       const sig = await sendTx(connection, [ensureIx, releaseIx], signTransaction);
 
       const updated = milestones.map((m, i) =>
-        i === milestoneIndex ? { ...m, status: "Released" } : m
+        // Persist the release tx on the milestone (JSONB, no schema change) so it
+        // can be linked on the scanner later (N3/N8).
+        i === milestoneIndex ? { ...m, status: "Released", release_tx: sig } : m
       );
 
       if (MOCK_CHAIN) {
@@ -628,13 +630,15 @@ export default function ActiveDealPage() {
   // View-on-chain must point at the on-chain Deal PDA, not the human-readable
   // deal_id slug (bug #5) — the slug isn't a valid base58 address, so the old
   // link produced "Address ... is not valid" on the explorer.
-  const explorerUrl = (() => {
-    try {
-      const [pda] = findDealPDA(deal.deal_id);
-      return `https://explorer.solana.com/address/${pda.toBase58()}?cluster=devnet`;
-    } catch {
-      return null;
-    }
+  // Escrow account (Deal PDA) link + deploy-tx link (N3/N8). The deploy tx was
+  // persisted in the deal-creation message metadata; pull it back to link it.
+  const explorerUrl = escrowAccountUrl(deal.deal_id);
+  const deployTxUrl = (() => {
+    const createMsg = messages.find(
+      (m) => (m.metadata as { tx_signature?: string } | null)?.tx_signature
+    );
+    const sig = (createMsg?.metadata as { tx_signature?: string } | null)?.tx_signature;
+    return txUrl(sig);
   })();
 
   return (
@@ -678,22 +682,34 @@ export default function ActiveDealPage() {
             {deal.deal_id.slice(0, 20)}
           </span>
         </div>
-        {explorerUrl && (
-          <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          {deployTxUrl && (
+            <a
+              href={deployTxUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost"
+              style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none" }}
+              title="Escrow deployment transaction"
+            >
+              <ExternalLinkIcon />
+              Deploy tx
+            </a>
+          )}
+          {explorerUrl && (
             <a
               href={explorerUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="btn-ghost"
               style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none" }}
+              title="Escrow account on Solana Explorer"
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
-              </svg>
-              View on chain
+              <ExternalLinkIcon />
+              Escrow account
             </a>
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: "26px 24px", position: "relative", zIndex: 1 }}>
@@ -710,10 +726,10 @@ export default function ActiveDealPage() {
 
         {/* Stat strip */}
         <div className="surface-card" style={{ borderRadius: 12, padding: 16, marginBottom: 16, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0 }}>
-          <StatBlock label="Total value" value={`$${totalValue.toLocaleString()}`} sub="USDC" />
+          <StatBlock first label="Total value" value={`$${totalValue.toLocaleString()}`} sub="USDC" />
           <StatBlock label="Released" value={`$${releasedValue.toLocaleString()}`} sub={`${releasedCount} of ${milestones.length} milestones`} accent="success" />
           <StatBlock label="Counterparty" value={counterpartyName} sub={`You as ${role}`} />
-          <StatBlock label="Status" value={isComplete ? "Completed" : "In progress"} sub="Buyer confirms releases" accent={isComplete ? "success" : "warning"} />
+          <StatBlock last label="Status" value={isComplete ? "Completed" : "In progress"} sub="Buyer confirms releases" accent={isComplete ? "success" : "warning"} />
         </div>
 
         {/* Two-column main */}
@@ -722,8 +738,12 @@ export default function ActiveDealPage() {
           <div className="surface-card" style={{ borderRadius: 12, padding: 18 }}>
             <p style={{ fontSize: 13, color: "var(--primary)", fontWeight: 590, margin: 0 }}>Milestones</p>
             <p style={{ fontSize: 12, color: "var(--muted)", margin: "2px 0 14px" }}>Each release requires your confirmation.</p>
-            <div style={{ position: "relative", paddingLeft: 18 }}>
-              <div style={{ position: "absolute", left: 5, top: 14, bottom: 14, width: 1, background: "var(--card-border)" }} />
+            {/* Timeline. Line and dots share one axis: the wrapper's left gutter
+                is 24px; the 1px line sits at x=11.5 (left:11), and each 11px dot
+                is left:-18 from its 24px-inset row → dot left 6, center 11.5 —
+                so every dot sits centered on the line (N6). */}
+            <div style={{ position: "relative", paddingLeft: 24 }}>
+              <div style={{ position: "absolute", left: 11, top: 12, bottom: 12, width: 1, background: "var(--card-border)" }} />
               {milestones.map((m, i) => {
                 const isReleased = m.status === "Released";
                 const isInReview = m.status === "In Review";
@@ -732,22 +752,31 @@ export default function ActiveDealPage() {
                 const proofs = deliverables.filter((d) => d.milestone_index === i);
 
                 return (
-                  <div key={i} style={{ position: "relative", paddingBottom: 12, paddingLeft: 18 }}>
-                    <span style={{
+                  <div key={i} style={{ position: "relative", paddingBottom: 12 }}>
+                    {/* Marker column spans exactly the box's height (the wrapper
+                        minus its 12px bottom gap) and flex-centers the dot, so the
+                        dot stays vertically centered on the box no matter how tall
+                        it grows (N6). */}
+                    <div style={{
                       position: "absolute",
-                      left: 0,
-                      top: 6,
-                      width: 11,
-                      height: 11,
-                      borderRadius: "50%",
-                      background: isReleased ? "var(--success)" : isInReview ? "var(--warning)" : "var(--muted)",
-                      border: "2px solid var(--background)",
-                      boxShadow: isActive ? "0 0 0 4px rgba(251,191,36,0.18)" : "none",
-                    }} />
+                      left: -18,
+                      top: 0,
+                      bottom: 12,
+                      display: "flex",
+                      alignItems: "center",
+                    }}>
+                      <span style={{
+                        width: 11,
+                        height: 11,
+                        borderRadius: "50%",
+                        background: isReleased ? "var(--success)" : isInReview ? "var(--warning)" : "var(--muted)",
+                        border: "2px solid var(--background)",
+                        boxShadow: isActive ? "0 0 0 4px rgba(251,191,36,0.18)" : "none",
+                      }} />
+                    </div>
                     <div style={{
                       padding: "12px 14px",
                       borderRadius: 10,
-                      marginLeft: -4,
                       background: isActive ? "rgba(251,191,36,0.05)" : "rgba(255,255,255,0.02)",
                       border: `1px solid ${isActive ? "rgba(251,191,36,0.25)" : "var(--card-border-subtle)"}`,
                     }}>
@@ -763,6 +792,20 @@ export default function ActiveDealPage() {
                           ${m.amount.toLocaleString()}
                         </span>
                       </div>
+
+                      {/* Released milestone → link its on-chain transaction (N3/N8) */}
+                      {isReleased && txUrl(m.release_tx) && (
+                        <a
+                          href={txUrl(m.release_tx)!}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ marginTop: 8, fontSize: 11, color: "var(--muted)", display: "inline-flex", alignItems: "center", gap: 5, textDecoration: "none" }}
+                          title="Release transaction on Solana Explorer"
+                        >
+                          <ExternalLinkIcon />
+                          View release transaction
+                        </a>
+                      )}
 
                       {/* Proof files */}
                       {(isInReview || isReleased) && proofs.length > 0 && (
@@ -1249,10 +1292,20 @@ export default function ActiveDealPage() {
 
 /* ── Sub-components ── */
 
-function StatBlock({ label, value, sub, accent }: { label: string; value: string; sub: string; accent?: "success" | "warning" }) {
+function ExternalLinkIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
+  );
+}
+
+function StatBlock({ label, value, sub, accent, first, last }: { label: string; value: string; sub: string; accent?: "success" | "warning"; first?: boolean; last?: boolean }) {
   const color = accent === "success" ? "var(--success)" : accent === "warning" ? "var(--warning)" : "var(--primary)";
   return (
-    <div style={{ paddingRight: 14, borderRight: "1px solid var(--card-border-subtle)" }}>
+    // Even horizontal padding; a divider only BETWEEN cells (not after the last),
+    // so the four columns line up and there's no dangling trailing border (N2).
+    <div style={{ padding: first ? "0 16px 0 0" : "0 16px", borderRight: last ? "none" : "1px solid var(--card-border-subtle)" }}>
       <p style={{ fontSize: 11, color: "var(--muted)", margin: 0, fontWeight: 510, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</p>
       <p style={{ fontSize: 18, fontWeight: 590, color, margin: "6px 0 1px", letterSpacing: "-0.015em", fontVariantNumeric: "tabular-nums" }}>{value}</p>
       <p style={{ fontSize: 11, color: "var(--subtle)", margin: 0 }}>{sub}</p>

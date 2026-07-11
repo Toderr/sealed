@@ -545,9 +545,9 @@ export function SelfProfilePageContent() {
                   )}
                 </div>
 
-                {/* Edit button */}
+                {/* Edit button → dedicated identity-edit page, not the onboarding wizard (N10) */}
                 <Link
-                  href="/onboarding?edit=1"
+                  href="/profile/edit"
                   className="btn-ghost flex items-center justify-center gap-1.5 h-9 rounded-md text-[13px] w-full"
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

@@ -14,6 +14,7 @@ import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { useAppConnection as useConnection } from "@/lib/use-app-connection";
 import { PublicKey } from "@solana/web3.js";
 import { buildEnsureAtaIx, buildReleaseMilestoneIx, getUsdcMint, sendTx } from "@/lib/escrow-client";
+import { escrowAccountUrl } from "@/lib/explorer";
 import { MOCK_CHAIN } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
@@ -983,8 +984,26 @@ function DealDetailPanelBody({
         </div>
       </div>
 
-      {/* footer — link to the full page for the complete view */}
-      <div style={{ padding: "14px 18px", borderTop: "1px solid var(--card-border-subtle)" }}>
+      {/* footer — escrow-account link (N8) + full page */}
+      <div style={{ padding: "14px 18px", borderTop: "1px solid var(--card-border-subtle)", display: "flex", flexDirection: "column", gap: 8 }}>
+        {(() => {
+          const escrowUrl = escrowAccountUrl(deal.deal_id);
+          return escrowUrl ? (
+            <a
+              href={escrowUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, height: 34, borderRadius: 8, fontSize: 12, textDecoration: "none" }}
+              title="Escrow account on Solana Explorer"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+              View escrow on chain
+            </a>
+          ) : null;
+        })()}
         <Link
           href={dealHref(deal)}
           className="btn-ghost"

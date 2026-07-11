@@ -15,7 +15,7 @@
 
 import { MOCK_DATA } from "./env";
 
-type MirrorMilestone = { description: string; amount: number; status?: string };
+type MirrorMilestone = { description: string; amount: number; status?: string; release_tx?: string };
 type MirrorDeal = {
   deal_id: string;
   buyer_wallet: string;
@@ -580,6 +580,9 @@ async function handle(
     const w = decodeURIComponent(pubMatch[1]);
     const profiles = read<Record<string, Record<string, unknown>>>(K.profiles, {});
     const p = profiles[w] ?? {};
+    // Only report an identity (member_since) if a real profile exists — otherwise
+    // a brand-new wallet would look "onboarded" to the DB-hydration path (N9).
+    const hasProfile = Boolean(p.handle || p.display_name);
     const deals = mockData.dealsFor(w);
     return json({
       handle: p.handle ?? null,
@@ -591,8 +594,12 @@ async function handle(
       deals_total: deals.length,
       deals_successful: deals.filter(isCompleted).length,
       avg_rating: 0,
-      member_since: (p.member_since as string) ?? nowIso(),
-      socials: {},
+      member_since: hasProfile ? ((p.member_since as string) ?? nowIso()) : null,
+      website: (p.website as string) ?? null,
+      twitter_handle: (p.twitter as string) ?? null,
+      telegram_handle: (p.telegram as string) ?? null,
+      instagram_handle: (p.instagram as string) ?? null,
+      linkedin_url: (p.linkedin as string) ?? null,
     });
   }
 
