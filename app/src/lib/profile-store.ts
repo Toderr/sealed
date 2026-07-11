@@ -132,12 +132,20 @@ function profileFromDb(p: PublicProfileResponse): UserProfile | null {
 
 export function useProfileStore(wallet: string | null) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  // Track WHICH wallet we've resolved, not just a boolean. When `wallet` changes
+  // (e.g. null → connected on connect, or a switch), the effect that updates
+  // `loadedWallet` runs one render *after* the change — so a plain `loaded` flag
+  // stays true across that gap and lets redirect guards fire against the stale
+  // (not-yet-loaded) profile, bouncing a returning user to /onboarding → /profile.
+  // Deriving `loaded` from whether `loadedWallet` matches the current wallet
+  // makes the "not loaded yet" state apply synchronously on the wallet change.
+  const [loadedWallet, setLoadedWallet] = useState<string | null | undefined>(undefined);
+  const loaded = loadedWallet === wallet;
 
   useEffect(() => {
     if (!wallet) {
       setProfile(null);
-      setLoaded(true);
+      setLoadedWallet(null);
       return;
     }
 
@@ -145,7 +153,7 @@ export function useProfileStore(wallet: string | null) {
     const local = loadProfileFromStorage(wallet);
     if (local) {
       setProfile(local);
-      setLoaded(true);
+      setLoadedWallet(wallet);
       return;
     }
 
@@ -155,7 +163,6 @@ export function useProfileStore(wallet: string | null) {
     // fire prematurely and bounce an onboarded user to /onboarding (N1).
     let cancelled = false;
     setProfile(null);
-    setLoaded(false);
     (async () => {
       try {
         const res = await fetch(`/api/users/${encodeURIComponent(wallet)}/public?self=1`);
@@ -171,7 +178,7 @@ export function useProfileStore(wallet: string | null) {
       } catch {
         if (!cancelled) setProfile(null);
       } finally {
-        if (!cancelled) setLoaded(true);
+        if (!cancelled) setLoadedWallet(wallet);
       }
     })();
 

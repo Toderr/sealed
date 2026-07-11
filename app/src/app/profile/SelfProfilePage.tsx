@@ -299,12 +299,15 @@ export function SelfProfilePageContent() {
     setActiveTab(readRequestedTab(searchParams));
   }, [searchParams]);
 
+  // Depend on the boolean, not the `profile` object (a fresh reference every
+  // render), so this doesn't re-fire on every render like /app and /profile.
+  const onboardingComplete = profile?.onboardingComplete ?? false;
   useEffect(() => {
     if (!loaded || !wallet) return;
-    if (!profile?.onboardingComplete) {
+    if (!onboardingComplete) {
       router.replace("/onboarding");
     }
-  }, [loaded, wallet, profile, router]);
+  }, [loaded, wallet, onboardingComplete, router]);
 
   useEffect(() => {
     let cancelled = false;
