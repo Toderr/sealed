@@ -11,11 +11,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
-import { useSwitchWallet } from "@/lib/use-switch-wallet";
 import { useProfileStore } from "@/lib/profile-store";
 import { atDisplayHandle } from "@/lib/user-display";
 import { shortenAddress } from "@/lib/types";
+import { MOCK_CHAIN } from "@/lib/env";
 import { useToast } from "@/components/Toast";
+import SwitchWalletItem from "@/components/SwitchWalletItem";
 
 // Cluster-aware explorer URL for an account address. Mirrors the cluster logic
 // in escrow-client.getUsdcMint(): mainnet if the RPC URL says so, else devnet.
@@ -29,7 +30,6 @@ export default function WalletMenu() {
   const router = useRouter();
   const toast = useToast();
   const { publicKey, disconnect } = useWallet();
-  const { canSwitch, switchWallet } = useSwitchWallet();
   const wallet = publicKey?.toBase58() ?? null;
   const { profile } = useProfileStore(wallet);
 
@@ -82,11 +82,6 @@ export default function WalletMenu() {
     } catch {
       /* adapter surfaces its own error toast; nothing to do here */
     }
-  };
-
-  const handleSwitch = async () => {
-    setOpen(false);
-    await switchWallet();
   };
 
   return (
@@ -218,18 +213,25 @@ export default function WalletMenu() {
             </svg>
             View on explorer
           </a>
-          {canSwitch && (
-            <MenuItem
-              onClick={handleSwitch}
-              icon={
-                <>
-                  <polyline points="17 1 21 5 17 9" />
-                  <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                  <polyline points="7 23 3 19 7 15" />
-                  <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                </>
-              }
-              label="Switch wallet"
+          {/* Real mode only: mock mode has no wallet picker to switch to, and
+              WalletModalProvider isn't mounted there. */}
+          {!MOCK_CHAIN && (
+            <SwitchWalletItem
+              onDone={() => setOpen(false)}
+              render={(onClick) => (
+                <MenuItem
+                  onClick={onClick}
+                  icon={
+                    <>
+                      <polyline points="17 1 21 5 17 9" />
+                      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                      <polyline points="7 23 3 19 7 15" />
+                      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                    </>
+                  }
+                  label="Switch wallet"
+                />
+              )}
             />
           )}
           <div style={{ height: 1, background: "var(--card-border-subtle)", margin: "4px 0" }} />
