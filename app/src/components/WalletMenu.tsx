@@ -2,15 +2,16 @@
 
 // N5 — clickable wallet chip in the app header.
 //
-// The header used to render a static, non-interactive pill showing the user's
-// username + initials. This turns it into a button that opens a small menu:
-// copy address, view the account on the Solana explorer, jump to your profile,
-// and disconnect. Username is preferred over the raw wallet in the label so the
-// header reads "@alice", not a base58 blob.
+// The header used to render a static, non-interactive pill (or the default
+// wallet-adapter dropdown) showing the wallet. This is a shared menu used across
+// headers: profile link, copy address, view the account on the Solana explorer,
+// switch wallet (real mode only), and disconnect. Username is preferred over the
+// raw wallet in the label so the header reads "@alice", not a base58 blob.
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
+import { useSwitchWallet } from "@/lib/use-switch-wallet";
 import { useProfileStore } from "@/lib/profile-store";
 import { atDisplayHandle } from "@/lib/user-display";
 import { shortenAddress } from "@/lib/types";
@@ -28,6 +29,7 @@ export default function WalletMenu() {
   const router = useRouter();
   const toast = useToast();
   const { publicKey, disconnect } = useWallet();
+  const { canSwitch, switchWallet } = useSwitchWallet();
   const wallet = publicKey?.toBase58() ?? null;
   const { profile } = useProfileStore(wallet);
 
@@ -80,6 +82,11 @@ export default function WalletMenu() {
     } catch {
       /* adapter surfaces its own error toast; nothing to do here */
     }
+  };
+
+  const handleSwitch = async () => {
+    setOpen(false);
+    await switchWallet();
   };
 
   return (
@@ -211,6 +218,20 @@ export default function WalletMenu() {
             </svg>
             View on explorer
           </a>
+          {canSwitch && (
+            <MenuItem
+              onClick={handleSwitch}
+              icon={
+                <>
+                  <polyline points="17 1 21 5 17 9" />
+                  <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                  <polyline points="7 23 3 19 7 15" />
+                  <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                </>
+              }
+              label="Switch wallet"
+            />
+          )}
           <div style={{ height: 1, background: "var(--card-border-subtle)", margin: "4px 0" }} />
           <MenuItem
             onClick={handleDisconnect}
