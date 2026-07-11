@@ -22,6 +22,7 @@ import { LLM_PROVIDERS } from "@/lib/llm-providers";
 import type { Deal, AgentTemplate, NotificationPrefs, PublicProfile } from "@/lib/types";
 
 import WalletMultiButton from "@/components/AppWalletButton";
+import WalletMenu from "@/components/WalletMenu";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
 
 type ProfileMilestone = {
@@ -738,7 +739,7 @@ function ProfileHeader({ activeTab }: { activeTab: SelfProfileTab }) {
       </div>
       <div className="flex items-center gap-2">
         <NotificationMenu wallet={wallet} />
-        <WalletMultiButton />
+        {wallet ? <WalletMenu /> : <WalletMultiButton />}
       </div>
     </header>
   );
