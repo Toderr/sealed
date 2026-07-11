@@ -326,12 +326,15 @@ export default function PublicProfilePage() {
                   style={{
                     padding: "10px 4px",
                     marginBottom: -1,
-                    borderBottom: `2px solid ${tab === t.id ? "var(--accent)" : "transparent"}`,
                     color: tab === t.id ? "var(--primary)" : "var(--muted)",
                     fontSize: 13,
                     fontWeight: tab === t.id ? 590 : 510,
                     background: "none",
-                    border: "none",
+                    // All-longhand borders only — mixing the `borderBottom`
+                    // shorthand with `borderBottom*` longhands warns on rerender.
+                    borderTop: "none",
+                    borderLeft: "none",
+                    borderRight: "none",
                     borderBottomStyle: "solid",
                     borderBottomWidth: 2,
                     borderBottomColor: tab === t.id ? "var(--accent)" : "transparent",

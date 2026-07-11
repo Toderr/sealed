@@ -8,6 +8,7 @@ import SettingsModal from "@/components/SettingsModal";
 import { useToast } from "@/components/Toast";
 import { NotificationMenu } from "@/components/NotificationMenu";
 import { useProfileStore } from "@/lib/profile-store";
+import { purgeDealLocally } from "@/lib/deals-store";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import { type DealParams, type PublicProfile, type SupabaseDeal, formatUsdc, usdcToLamports } from "@/lib/types";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
@@ -435,6 +436,9 @@ function DealsBoldBoard({
         method: "DELETE",
         wallet,
       });
+      // Clear the local copies too, or the deal reappears on refresh / stays
+      // reachable by direct link (bug: delete didn't stick).
+      purgeDealLocally(deleteTarget.deal_id, wallet);
       setDeals((prev) => prev.filter((d) => d.deal_id !== deleteTarget.deal_id));
       toast.show({ variant: "success", title: "Deal deleted" });
       setDeleteTarget(null);
@@ -1128,17 +1132,10 @@ function DealCardBold({
           {canDelete && (
             <button
               type="button"
+              className="icon-btn-danger"
               title="Delete deal"
               aria-label="Delete deal"
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRequestDelete!(deal); }}
-              style={{
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                width: 24, height: 24, borderRadius: 6, flexShrink: 0,
-                background: "transparent", border: "1px solid var(--card-border)",
-                color: "var(--muted)", cursor: "pointer",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--danger)"; e.currentTarget.style.borderColor = "rgba(248,113,113,0.4)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--muted)"; e.currentTarget.style.borderColor = "var(--card-border)"; }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />

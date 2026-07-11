@@ -252,6 +252,30 @@ body {
   border-color: rgba(255, 255, 255, 0.14);
 }
 
+/* Small square icon button that turns danger-red on hover. CSS :hover (not JS
+   onMouseEnter) so a parent re-render — e.g. the deals board's poll — can't
+   clobber the hover style mid-hover and make it flicker. */
+.icon-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--card-border);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 120ms ease-out, border-color 120ms ease-out, background-color 120ms ease-out;
+}
+.icon-btn-danger:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.08);
+}
+.icon-btn-danger:disabled { opacity: 0.5; cursor: default; }
+
 /* Primary brand button, DESIGN.md §4 Primary spec. */
 .btn-primary {
   background: var(--brand);
