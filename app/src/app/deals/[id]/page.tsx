@@ -998,20 +998,28 @@ export default function ActiveDealPage() {
                       <span style={{ fontSize: 11, color: "var(--subtle)", padding: "0 8px" }}>{m.content}</span>
                     </div>
                   );
+                  // Align by sender: my own messages on the right, the agent and
+                  // the counterparty on the left. Fall back to left for messages
+                  // with no wallet (agent/legacy) so only mine sit on the right.
+                  const isMine = !isAgent && !!wallet && m.wallet === wallet;
+                  const showCounterpartyName = !isAgent && !isMine;
                   return (
-                    <div key={m.id} style={{ display: "flex", justifyContent: isAgent ? "flex-start" : "flex-end" }}>
+                    <div key={m.id} style={{ display: "flex", justifyContent: isMine ? "flex-end" : "flex-start" }}>
                       <div style={{
                         maxWidth: "88%",
                         borderRadius: 11,
                         padding: "9px 13px",
                         fontSize: 12,
                         lineHeight: 1.55,
-                        background: isAgent ? "rgba(255,255,255,0.025)" : "var(--brand)",
-                        border: isAgent ? "1px solid var(--card-border)" : "none",
-                        color: isAgent ? "var(--foreground)" : "#ffffff",
+                        background: isMine ? "var(--brand)" : "rgba(255,255,255,0.025)",
+                        border: isMine ? "none" : "1px solid var(--card-border)",
+                        color: isMine ? "#ffffff" : "var(--foreground)",
                       }}>
                         {isAgent && (
                           <p style={{ fontSize: 10, color: "var(--accent)", margin: "0 0 4px" }}>Sealed Agent</p>
+                        )}
+                        {showCounterpartyName && (
+                          <CounterpartyMsgName wallet={m.wallet} />
                         )}
                         {m.metadata?.attachment ? (
                           <ChatImageAttachment storageKey={m.metadata.attachment} name={m.content} />
@@ -1303,14 +1311,23 @@ function ExternalLinkIcon() {
 function StatBlock({ label, value, sub, accent, first, last }: { label: string; value: string; sub: string; accent?: "success" | "warning"; first?: boolean; last?: boolean }) {
   const color = accent === "success" ? "var(--success)" : accent === "warning" ? "var(--warning)" : "var(--primary)";
   return (
-    // Even horizontal padding; a divider only BETWEEN cells (not after the last),
-    // so the four columns line up and there's no dangling trailing border (N2).
-    <div style={{ padding: first ? "0 16px 0 0" : "0 16px", borderRight: last ? "none" : "1px solid var(--card-border-subtle)" }}>
+    // First cell has no left pad and last cell no right pad, so the strip's
+    // content aligns flush with the card's own padding on both edges (matching
+    // the cards below). A divider only BETWEEN cells, never after the last (N2).
+    <div style={{ padding: first ? "0 16px 0 0" : last ? "0 0 0 16px" : "0 16px", borderRight: last ? "none" : "1px solid var(--card-border-subtle)" }}>
       <p style={{ fontSize: 11, color: "var(--muted)", margin: 0, fontWeight: 510, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</p>
       <p style={{ fontSize: 18, fontWeight: 590, color, margin: "6px 0 1px", letterSpacing: "-0.015em", fontVariantNumeric: "tabular-nums" }}>{value}</p>
       <p style={{ fontSize: 11, color: "var(--subtle)", margin: 0 }}>{sub}</p>
     </div>
   );
+}
+
+// Small sender label above a counterparty chat bubble, so it's clear who wrote
+// it now that counterparty messages sit on the left.
+function CounterpartyMsgName({ wallet }: { wallet: string | null }) {
+  const name = useDisplayName(wallet || null);
+  if (!name) return null;
+  return <p style={{ fontSize: 10, color: "var(--muted)", margin: "0 0 4px" }}>{name}</p>;
 }
 
 function PartyRow({ label, wallet, isYou }: { label: string; wallet: string; isYou: boolean }) {
