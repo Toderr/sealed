@@ -8,6 +8,7 @@ type DealMilestone = {
   description: string;
   amount: number;
   status?: string;
+  release_tx?: string;
 };
 
 const DEAL_STATUSES = new Set([
@@ -62,6 +63,8 @@ function sanitizeMilestones(value: unknown): DealMilestone[] | null {
       amount: milestone.amount,
     };
     if (typeof milestone.status === "string") next.status = milestone.status;
+    // Preserve the on-chain release tx signature (N3/N8) so it survives PATCH.
+    if (typeof milestone.release_tx === "string") next.release_tx = milestone.release_tx;
     milestones.push(next);
   }
 

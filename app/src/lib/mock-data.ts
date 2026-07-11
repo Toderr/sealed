@@ -15,7 +15,7 @@
 
 import { MOCK_DATA } from "./env";
 
-type MirrorMilestone = { description: string; amount: number; status?: string };
+type MirrorMilestone = { description: string; amount: number; status?: string; release_tx?: string };
 type MirrorDeal = {
   deal_id: string;
   buyer_wallet: string;
