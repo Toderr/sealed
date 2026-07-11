@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { SealedMark } from "@/components/SealedLogo";
 import { NotificationMenu } from "@/components/NotificationMenu";
+import { useToast } from "@/components/Toast";
 import {
   useProfileStore,
   encodeInvite,
@@ -21,6 +22,7 @@ import { LLM_PROVIDERS } from "@/lib/llm-providers";
 import type { Deal, AgentTemplate, NotificationPrefs, PublicProfile } from "@/lib/types";
 
 import WalletMultiButton from "@/components/AppWalletButton";
+import WalletMenu from "@/components/WalletMenu";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
 
 type ProfileMilestone = {
@@ -221,11 +223,11 @@ async function fetchCounterpartyProfileMap(wallets: string[]) {
   return Object.fromEntries(entries.filter(Boolean) as Array<readonly [string, CounterpartyProfile]>);
 }
 
-type SelfProfileTab = "overview" | "agent" | "friends" | "settings";
+type SelfProfileTab = "overview" | "agent" | "reviews" | "friends" | "settings";
 
 function readRequestedTab(searchParams: { get(name: string): string | null }): SelfProfileTab {
   const tab = searchParams.get("tab");
-  return tab === "agent" || tab === "friends" || tab === "settings" ? tab : "overview";
+  return tab === "agent" || tab === "reviews" || tab === "friends" || tab === "settings" ? tab : "overview";
 }
 
 export function SelfProfilePage() {
@@ -566,7 +568,7 @@ export function SelfProfilePageContent() {
 
               {/* Tab bar */}
               <div className="flex gap-0.5 border-b border-card-border-subtle">
-                {(["overview", "agent", "friends", "settings"] as const).map((tab) => (
+                {(["overview", "agent", "reviews", "friends", "settings"] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -594,6 +596,7 @@ export function SelfProfilePageContent() {
                       label="Avg rating"
                       value={averageRating > 0 ? averageRating.toFixed(1) : "-"}
                       star={averageRating > 0}
+                      onClick={averageRating > 0 ? () => setActiveTab("reviews") : undefined}
                     />
                     <StatCard
                       label="Volume (USDC)"
@@ -670,6 +673,9 @@ export function SelfProfilePageContent() {
               {/* Agent Setup tab */}
               {activeTab === "agent" && <AgentSetupTab wallet={wallet} />}
 
+              {/* Reviews tab (N7) — your own reviews, reachable from your profile */}
+              {activeTab === "reviews" && <SelfReviewsTab wallet={wallet} />}
+
               {/* Friends tab */}
               {activeTab === "friends" && <FriendsTab wallet={wallet} />}
 
@@ -733,7 +739,7 @@ function ProfileHeader({ activeTab }: { activeTab: SelfProfileTab }) {
       </div>
       <div className="flex items-center gap-2">
         <NotificationMenu wallet={wallet} />
-        <WalletMultiButton />
+        {wallet ? <WalletMenu /> : <WalletMultiButton />}
       </div>
     </header>
   );
@@ -808,7 +814,7 @@ function DealListControls({
           <select
             value={filter}
             onChange={(e) => onFilterChange(e.target.value as DealFilter)}
-            className={`${controlClass} w-full cursor-pointer`}
+            className={`${controlClass} w-full cursor-pointer pr-9`}
           >
             {DEAL_FILTERS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -824,7 +830,7 @@ function DealListControls({
           <select
             value={sort}
             onChange={(e) => onSortChange(e.target.value as DealSort)}
-            className={`${controlClass} w-full cursor-pointer`}
+            className={`${controlClass} w-full cursor-pointer pr-9`}
           >
             {DEAL_SORTS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -877,14 +883,16 @@ function StatCard({
   value,
   accent,
   star,
+  onClick,
 }: {
   label: string;
   value: number | string;
   accent?: boolean;
   star?: boolean;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="surface-card rounded-xl p-4">
+  const body = (
+    <>
       <p className="text-[11px] text-muted mb-1" style={{ fontWeight: 510 }}>
         {label}
       </p>
@@ -901,8 +909,23 @@ function StatCard({
           </span>
         )}
       </div>
-    </div>
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title="View reviews"
+        className="surface-card rounded-xl p-4 text-left transition-colors hover:border-accent/60 cursor-pointer"
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return <div className="surface-card rounded-xl p-4">{body}</div>;
 }
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
@@ -1136,6 +1159,7 @@ function isLlmProvider(value: string | undefined): value is LLMProvider {
 
 function AiProviderPanel({ wallet }: { wallet: string }) {
   const { profile, updateProfile } = useProfileStore(wallet);
+  const toast = useToast();
   const [llmMode, setLlmMode] = useState<LlmMode>("own-key");
   const [llmProvider, setLlmProvider] = useState<LLMProvider>("anthropic");
   const [llmModel, setLlmModel] = useState("claude-sonnet-4-6");
@@ -1179,6 +1203,7 @@ function AiProviderPanel({ wallet }: { wallet: string }) {
     });
     setLlmSaved(true);
     setTimeout(() => setLlmSaved(false), 2000);
+    toast.show({ variant: "success", title: "Agent settings saved" });
   }
 
   async function handleX402TopUp() {
@@ -1279,7 +1304,7 @@ function AiProviderPanel({ wallet }: { wallet: string }) {
               id="agent-llm-model"
               value={llmModel}
               onChange={(e) => setLlmModel(e.target.value)}
-              className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60 transition-colors cursor-pointer"
+              className="w-full h-10 rounded-md bg-surface border border-card-border px-3 pr-9 text-[13px] text-primary outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60 transition-colors cursor-pointer"
             >
               {LLM_MODELS[llmProvider].map((model) => (
                 <option key={model} value={model}>
@@ -1364,7 +1389,7 @@ function AiProviderPanel({ wallet }: { wallet: string }) {
               id="agent-x402-model"
               value={x402Model}
               onChange={(e) => setX402Model(e.target.value)}
-              className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60 transition-colors cursor-pointer"
+              className="w-full h-10 rounded-md bg-surface border border-card-border px-3 pr-9 text-[13px] text-primary outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60 transition-colors cursor-pointer"
             >
               {X402_MODELS.map((model) => (
                 <option key={model.id} value={model.id}>
@@ -1613,7 +1638,7 @@ function AgentSetupTab({ wallet }: { wallet: string }) {
               <select
                 value={form.negotiation_style ?? "flexible"}
                 onChange={(e) => setForm({ ...form, negotiation_style: e.target.value as AgentTemplate["negotiation_style"] })}
-                className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
+                className="w-full h-10 rounded-md bg-surface border border-card-border px-3 pr-9 text-[13px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
               >
                 <option value="firm">Firm — hold your ground</option>
                 <option value="flexible">Flexible — balanced trade-offs</option>
@@ -1692,6 +1717,139 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-1.5">
       <label className="text-[12px] text-muted" style={{ fontWeight: 510 }}>{label}</label>
       {children}
+    </div>
+  );
+}
+
+/* Accessible toggle switch (N15). A real role=switch button with a focus ring;
+   the knob geometry is exact — 44px track, 18px knob, 3px inset → 20px travel. */
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={(e) => { e.preventDefault(); onChange(!checked); }}
+      className={`relative inline-flex items-center shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-panel ${
+        checked ? "bg-accent" : "bg-surface-hover border border-card-border"
+      }`}
+      style={{ width: 44, height: 24 }}
+    >
+      <span
+        className="inline-block rounded-full bg-white shadow-sm transition-transform"
+        style={{ width: 18, height: 18, transform: `translateX(${checked ? 23 : 3}px)` }}
+      />
+    </button>
+  );
+}
+
+/* ── Reviews Tab (N7) — your own reviews, the ones behind your Avg rating ──── */
+
+type SelfReviewItem = {
+  id: string;
+  stars: number;
+  review_text: string;
+  submitted_at: string;
+  deal_id: string;
+  deal_title: string;
+  reviewer: { wallet: string; handle: string | null; display_name: string | null };
+};
+
+function ReviewStars({ value }: { value: number }) {
+  const filled = Math.max(0, Math.min(5, value));
+  return (
+    <span style={{ color: "var(--accent)", fontSize: 13, letterSpacing: 1 }} aria-label={`${value} of 5 stars`}>
+      {"★".repeat(filled)}
+      <span style={{ color: "var(--card-border)" }}>{"★".repeat(5 - filled)}</span>
+    </span>
+  );
+}
+
+function SelfReviewsTab({ wallet }: { wallet: string }) {
+  const [reviews, setReviews] = useState<SelfReviewItem[] | null>(null);
+
+  useEffect(() => {
+    if (!wallet) return;
+    let cancelled = false;
+    apiFetchSafe<{ reviews?: SelfReviewItem[] }>(
+      `/api/users/${encodeURIComponent(wallet)}/reviews`,
+      {},
+      { reviews: [] },
+    ).then((data) => {
+      if (!cancelled) setReviews(data.reviews ?? []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet]);
+
+  if (reviews === null) {
+    return (
+      <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
+        Loading reviews…
+      </div>
+    );
+  }
+
+  if (reviews.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
+        No reviews yet. Counterparties can rate you once a deal completes.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {reviews.map((r) => {
+        const reviewerName =
+          r.reviewer.display_name?.trim() ||
+          atDisplayHandle(r.reviewer.handle) ||
+          `${r.reviewer.wallet.slice(0, 4)}…${r.reviewer.wallet.slice(-4)}`;
+        const date = r.submitted_at ? new Date(r.submitted_at).toLocaleDateString() : "";
+        return (
+          <div key={r.id} className="surface-card" style={{ borderRadius: 12, padding: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                marginBottom: r.review_text ? 8 : 0,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <ReviewStars value={r.stars} />
+                <span
+                  style={{
+                    fontSize: 13,
+                    color: "var(--primary)",
+                    fontWeight: 510,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {reviewerName}
+                </span>
+              </div>
+              <span style={{ fontSize: 11, color: "var(--subtle)", flexShrink: 0 }}>{date}</span>
+            </div>
+            {r.review_text && (
+              <p style={{ fontSize: 13, color: "var(--foreground)", margin: "0 0 8px", lineHeight: 1.55 }}>
+                {r.review_text}
+              </p>
+            )}
+            <Link
+              href={`/deals/${encodeURIComponent(r.deal_id)}`}
+              style={{ fontSize: 11.5, color: "var(--muted)", textDecoration: "none" }}
+            >
+              on “{r.deal_title}” →
+            </Link>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1840,24 +1998,11 @@ function SettingsTab({ wallet }: { wallet: string }) {
           {(Object.keys(NOTIFY_LABELS) as (keyof NotificationPrefs)[]).map((key) => (
             <label key={key} className="flex items-center justify-between gap-4 cursor-pointer">
               <span className="text-[13px] text-foreground">{NOTIFY_LABELS[key]}</span>
-              <div className="relative">
-                <input
-                  type="checkbox"
-                  checked={notifyPrefs[key]}
-                  onChange={(e) => setNotifyPrefs({ ...notifyPrefs, [key]: e.target.checked })}
-                  className="sr-only"
-                />
-                <div
-                  onClick={() => setNotifyPrefs({ ...notifyPrefs, [key]: !notifyPrefs[key] })}
-                  className={`w-10 h-5 rounded-full cursor-pointer transition-colors ${
-                    notifyPrefs[key] ? "bg-accent" : "bg-surface-hover"
-                  }`}
-                >
-                  <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform mt-0.5 ${
-                    notifyPrefs[key] ? "translate-x-5 ml-0.5" : "translate-x-0.5"
-                  }`} />
-                </div>
-              </div>
+              <Toggle
+                checked={notifyPrefs[key]}
+                onChange={(v) => setNotifyPrefs({ ...notifyPrefs, [key]: v })}
+                label={NOTIFY_LABELS[key]}
+              />
             </label>
           ))}
         </div>

@@ -136,14 +136,65 @@ body {
 .wallet-adapter-button:not([disabled]):focus-visible {
   box-shadow: var(--shadow-focus) !important;
 }
+.wallet-adapter-modal-overlay {
+  background: rgba(8, 10, 14, 0.72) !important;
+  backdrop-filter: blur(3px) !important;
+  -webkit-backdrop-filter: blur(3px) !important;
+}
 .wallet-adapter-modal-wrapper {
   background-color: var(--surface) !important;
   border: 1px solid var(--card-border) !important;
   border-radius: 12px !important;
   box-shadow: var(--shadow-dialog) !important;
+  font-family: inherit !important;
 }
 .wallet-adapter-modal-title {
   color: var(--primary) !important;
+  font-size: 17px !important;
+  font-weight: 590 !important;
+}
+/* Individual wallet rows (Phantom / Solflare / Backpack …) */
+.wallet-adapter-modal-list {
+  margin: 0 0 4px !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button {
+  background-color: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 8px !important;
+  height: 48px !important;
+  padding: 0 12px !important;
+  color: var(--foreground) !important;
+  font-weight: 510 !important;
+  transition: background-color 120ms ease-out, border-color 120ms ease-out !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button:hover:not([disabled]) {
+  background-color: var(--surface-hover) !important;
+  border-color: var(--card-border) !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button:not([disabled]):focus-visible {
+  box-shadow: var(--shadow-focus) !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button-end-icon {
+  color: var(--subtle) !important;
+}
+/* "More options" toggle */
+.wallet-adapter-modal-list-more {
+  color: var(--muted) !important;
+}
+.wallet-adapter-modal-list-more svg {
+  fill: var(--muted) !important;
+}
+/* Close button */
+.wallet-adapter-modal-button-close {
+  background: var(--surface-hover) !important;
+  border-radius: 8px !important;
+  transition: background-color 120ms ease-out !important;
+}
+.wallet-adapter-modal-button-close:hover {
+  background: var(--card-border) !important;
+}
+.wallet-adapter-modal-button-close svg {
+  fill: var(--muted) !important;
 }
 
 /* --- Scrollbar: subtle, Linear-style --- */

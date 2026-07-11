@@ -22,6 +22,7 @@ import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
 
 import WalletMultiButton from "@/components/AppWalletButton";
+import WalletMenu from "@/components/WalletMenu";
 
 type CounterpartyProfile = Pick<PublicProfile, "handle" | "display_name" | "avatar_url">;
 
@@ -319,12 +320,6 @@ function AppHeader({
 }) {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
-  const { profile } = useProfileStore(wallet);
-
-  const initials = profile?.name
-    ? profile.name.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase()
-    : null;
-  const profileLabel = atDisplayHandle(profile?.username) ?? profile?.name ?? "Profile";
 
   // "New Deal" is no longer a tab — it opens the inline composer on the board.
   const tabs: { id: string; label: string; href?: string }[] = [
@@ -400,39 +395,7 @@ function AppHeader({
             <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
         </button>
-        {wallet && (
-          <div style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            height: 30,
-            padding: "0 10px",
-            borderRadius: 6,
-            background: "rgba(255,255,255,0.02)",
-            border: "1px solid var(--card-border)",
-          }}>
-            <div style={{
-              width: 18,
-              height: 18,
-              borderRadius: "50%",
-              background: initials
-                ? "linear-gradient(135deg, #5e6ad2, #7170ff)"
-                : "var(--surface)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 10,
-              fontWeight: 590,
-              color: "#fff",
-            }}>
-              {initials ?? "?"}
-            </div>
-            <span style={{ fontSize: 12, color: "var(--muted)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {profileLabel}
-            </span>
-          </div>
-        )}
-        {!wallet && <WalletMultiButton />}
+        {wallet ? <WalletMenu /> : <WalletMultiButton />}
       </div>
     </header>
   );
