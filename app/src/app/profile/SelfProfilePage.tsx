@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState, useEffect } from "react";
+import { Suspense, useMemo, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
@@ -247,6 +247,17 @@ export function SelfProfilePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<SelfProfileTab>(() => readRequestedTab(searchParams));
+  // Select a tab AND persist it to ?tab=… so a refresh keeps it (clicking a tab
+  // button previously only set state, so refresh reset to Overview).
+  const selectTab = useCallback((tab: SelfProfileTab) => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (tab === "overview") url.searchParams.delete("tab");
+      else url.searchParams.set("tab", tab);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, []);
   const [mirrorDeals, setMirrorDeals] = useState<ProfileDealRowData[]>([]);
   const [sessionDeals, setSessionDeals] = useState<ProfileDealRowData[]>([]);
   const [publicProfile, setPublicProfile] = useState<PublicProfile | null>(null);
@@ -603,7 +614,7 @@ export function SelfProfilePageContent() {
                 {(["overview", "agent", "reviews", "friends", "settings"] as const).map((tab) => (
                   <button
                     key={tab}
-                    onClick={() => setActiveTab(tab)}
+                    onClick={() => selectTab(tab)}
                     className={`px-4 h-9 text-[13px] rounded-t-md transition-colors capitalize ${
                       activeTab === tab
                         ? "text-primary border-b-2 border-accent -mb-px"
@@ -628,7 +639,7 @@ export function SelfProfilePageContent() {
                       label="Avg rating"
                       value={averageRating > 0 ? averageRating.toFixed(1) : "-"}
                       star={averageRating > 0}
-                      onClick={averageRating > 0 ? () => setActiveTab("reviews") : undefined}
+                      onClick={averageRating > 0 ? () => selectTab("reviews") : undefined}
                     />
                     <StatCard
                       label="Volume (USDC)"
@@ -2145,7 +2156,13 @@ function FriendsTab({ wallet }: { wallet: string }) {
         wallet,
         body: { friendHandle },
       });
-      setAddMsg(data.status === "accepted" ? "Now friends!" : "Request sent!");
+      setAddMsg(
+        data.status === "already_friends"
+          ? "You're already friends."
+          : data.status === "accepted"
+          ? "Now friends!"
+          : "Request sent!"
+      );
       setAddUsername("");
       loadFriends();
     } catch (e) {

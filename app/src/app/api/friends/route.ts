@@ -86,6 +86,24 @@ export const POST = withRoute(async (req) => {
     return json({ ok: true, status: "accepted" });
   }
 
+  // Already have a row in OUR direction? Don't re-request — the upsert below
+  // (onConflict wallet,friend_wallet) would otherwise overwrite an accepted
+  // friendship back to "pending", so clicking a friend again re-sent a request.
+  const { data: forward } = await supabase
+    .from(table("friends"))
+    .select("id, status")
+    .eq("wallet", wallet)
+    .eq("friend_wallet", friendWalletValue)
+    .maybeSingle();
+
+  if (forward) {
+    return json({
+      ok: true,
+      status: forward.status === "accepted" ? "already_friends" : "pending",
+      id: forward.id,
+    });
+  }
+
   const { data, error } = await supabase
     .from(table("friends"))
     .upsert(
