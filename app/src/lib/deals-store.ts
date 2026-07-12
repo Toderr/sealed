@@ -118,10 +118,21 @@ function subscribe(key: string, onChange: () => void) {
 // from the local copy). Call this alongside the DELETE API request.
 export function purgeDealLocally(dealId: string, wallet: string | null) {
   if (typeof window === "undefined") return;
-  // 1) per-wallet deals-store (localStorage) — also clear the guest bucket in
-  //    case the deal was drafted before connect.
-  for (const w of [wallet, null]) {
-    const key = storageKey(w);
+  // 1) deals-store buckets. Clear the deal from EVERY sealed:deals:* bucket, not
+  //    just this wallet's — on a counterparty's device the deal lives in THEIR
+  //    wallet's bucket, and when a delete is discovered via a 404 we don't
+  //    reliably know which. The `wallet`/guest buckets are always included even
+  //    if empty. Scanning all buckets makes the purge wallet-agnostic.
+  const keys = new Set<string>([storageKey(wallet), storageKey(null)]);
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i);
+      if (k && k.startsWith(STORAGE_PREFIX)) keys.add(k);
+    }
+  } catch {
+    // localStorage enumeration unavailable — the explicit keys above still run.
+  }
+  for (const key of keys) {
     const remaining = readSnapshot(key).filter((d) => d.dealId !== dealId);
     if (remaining.length !== readSnapshot(key).length) writeDeals(key, remaining);
   }
