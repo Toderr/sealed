@@ -9,6 +9,7 @@ import { SealedMark } from "@/components/SealedLogo";
 import { NotificationMenu } from "@/components/NotificationMenu";
 import { useBusinessMemory } from "@/memory/localstorage-store";
 import { getLlmHeaders } from "@/lib/llm-headers";
+import { isAgentConfigError } from "@/lib/agent-config-error";
 import { useProfileStore, encodeInvite } from "@/lib/profile-store";
 import { useDealsStore, clearDealJoinSignals } from "@/lib/deals-store";
 import { atDisplayHandle } from "@/lib/user-display";
@@ -177,7 +178,12 @@ export default function NegotiateRoom() {
         const joined = localStorage.getItem(`sealed:seller-joined:${dealId}`);
         if (joined) {
           applyServerPatch((prev) => {
-            if (!prev || (prev.seller_wallet ?? "") === joined) return prev;
+            if (!prev) return prev;
+            // Server already filled (this or another) seller — signal done.
+            if (prev.seller_wallet) {
+              if (prev.seller_wallet !== joined) localStorage.removeItem(`sealed:seller-joined:${dealId}`);
+              return prev;
+            }
             return { ...prev, seller_wallet: joined };
           });
         }
@@ -189,21 +195,41 @@ export default function NegotiateRoom() {
             if (!prev) return prev;
             if (!prev.seller_wallet && prev.buyer_wallet !== cpJoined) return { ...prev, seller_wallet: cpJoined };
             if (!prev.buyer_wallet && prev.seller_wallet !== cpJoined) return { ...prev, buyer_wallet: cpJoined };
+            // Both slots settled — nothing left for this signal to fill.
             return prev;
           });
         }
+        // A status signal is only valid while the server is BEHIND it. Once the
+        // server reaches that status OR moves past it (e.g. reject resets to
+        // draft, or the deal advances to escalated/funded), the signal is stale
+        // and must be cleared — otherwise it replays forever and fights the
+        // authoritative status every tick (the room "oscillates"). S1/S4.
         const agreed = localStorage.getItem(`sealed:seller-agreed:${dealId}`);
         if (agreed) {
           applyServerPatch((prev) => {
-            if (!prev || prev.status === "seller-agreed") return prev;
-            return { ...prev, status: "seller-agreed" };
+            if (!prev) return prev;
+            if (prev.status === "seller-agreed") return prev; // caught up; leave until it moves past
+            // Only re-assert while still pre-agreement (draft with a seller).
+            if (prev.status === "draft" && prev.seller_wallet) {
+              return { ...prev, status: "seller-agreed" };
+            }
+            // Server moved past or reset (escalated/funded/…/reject→draft-no-seller): drop it.
+            localStorage.removeItem(`sealed:seller-agreed:${dealId}`);
+            return prev;
           });
         }
         const escalated = localStorage.getItem(`sealed:deal-escalated:${dealId}`);
         if (escalated) {
           applyServerPatch((prev) => {
-            if (!prev || prev.status === "escalated") return prev;
-            return { ...prev, status: "escalated" };
+            if (!prev) return prev;
+            if (prev.status === "escalated") return prev; // caught up
+            // Re-assert only from the pre-escalation negotiation states.
+            if (prev.status === "draft" || prev.status === "seller-agreed") {
+              return { ...prev, status: "escalated" };
+            }
+            // Advanced past negotiation (funded/in_progress/completed/…): drop it.
+            localStorage.removeItem(`sealed:deal-escalated:${dealId}`);
+            return prev;
           });
         }
       } catch {}
@@ -425,13 +451,17 @@ export default function NegotiateRoom() {
     });
   }, [deal?.status, role, negState.kind]);
 
-  // Buyer auto-starts AI negotiation when seller signals they're using their agent
+  // Buyer auto-starts AI negotiation when seller signals they're using their agent.
+  // Depend on whether memory has loaded (`!!memory`), not just status/role — if
+  // memory resolves a beat after the status flips to seller-ready, this effect
+  // must re-run so the buyer's agent actually starts instead of hanging on
+  // "Starting negotiation…" (S5). The idle-guard prevents a double-start.
   useEffect(() => {
     if (!deal || deal.status !== "seller-ready") return;
     if (role !== "buyer" || negState.kind !== "idle" || !memory) return;
     startNegotiation();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deal?.status, role, negState.kind]);
+  }, [deal?.status, role, negState.kind, !!memory]);
 
   // Generate invite link
   const inviteLink = (() => {
@@ -721,6 +751,12 @@ export default function NegotiateRoom() {
             body: { [counterpartyField]: null, status: "draft" },
           })
       );
+      // Clear THIS device's stale local state too (S2): the sessionStorage
+      // `deal:<id>` draft still holds the old counterparty, and the seller-
+      // agreed/joined signals would otherwise replay and re-add them — on any
+      // transient GET failure retryMirrorSync could re-POST the old slot and
+      // undo the reject. clearDealJoinSignals wipes the draft + all four signals.
+      clearDealJoinSignals(deal.deal_id);
       // Back to the invite/awaiting state; the stateless invite link re-derives.
       setNegState({ kind: "idle" });
       setRejectOpen(false);
@@ -1265,20 +1301,50 @@ export default function NegotiateRoom() {
                 </div>
               )}
 
-              {negState.kind === "error" && (
+              {negState.kind === "error" && (() => {
+                const isConfig = isAgentConfigError(negState.message);
+                return (
                 <div className="flex flex-col items-center justify-center py-12 gap-4 text-center px-6">
-                  <div className="text-danger">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-                    </svg>
+                  <div className={isConfig ? "text-accent" : "text-danger"}>
+                    {isConfig ? (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                      </svg>
+                    ) : (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                    )}
                   </div>
-                  <p className="text-[14px] text-primary" style={headingStyle}>Negotiation failed</p>
-                  <p className="text-[13px] text-muted">{negState.message}</p>
-                  <button onClick={() => setNegState({ kind: "idle" })} className="btn-ghost h-9 px-4 rounded-md text-[13px]">
-                    Try again
-                  </button>
+                  <p className="text-[14px] text-primary" style={headingStyle}>
+                    {isConfig ? "Set up your AI agent first" : "Negotiation failed"}
+                  </p>
+                  <p className="text-[13px] text-muted max-w-85">
+                    {isConfig
+                      ? "Your agent needs an AI provider to negotiate. Add your API key on the Agent Setup page."
+                      : negState.message}
+                  </p>
+                  {isConfig ? (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setNegState({ kind: "idle" })} className="btn-ghost h-9 px-4 rounded-md text-[13px]">
+                        Not now
+                      </button>
+                      <Link
+                        href={wallet ? `/profile/${wallet}?tab=agent` : "/profile"}
+                        className="btn-primary h-9 px-4 rounded-md text-[13px] inline-flex items-center gap-1.5"
+                        style={{ textDecoration: "none" }}
+                      >
+                        Go to Agent Setup
+                      </Link>
+                    </div>
+                  ) : (
+                    <button onClick={() => setNegState({ kind: "idle" })} className="btn-ghost h-9 px-4 rounded-md text-[13px]">
+                      Try again
+                    </button>
+                  )}
                 </div>
-              )}
+                );
+              })()}
 
               {negState.kind === "done" && (
                 <NegotiationResult
