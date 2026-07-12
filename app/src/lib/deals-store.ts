@@ -133,6 +133,29 @@ export function purgeDealLocally(dealId: string, wallet: string | null) {
   }
 }
 
+// Same-device signals the negotiate room replays to resurrect a party slot /
+// status after a poll (seller joined, counterparty joined, seller agreed, deal
+// escalated) plus the sessionStorage draft. When a party is RELEASED via
+// reject-and-recycle, the buyer clears the slot on the server, but the released
+// seller's own device keeps replaying these stale signals and re-adds itself —
+// so their side stays stuck. Their client calls this to stop resurrecting.
+export function clearDealJoinSignals(dealId: string) {
+  if (typeof window === "undefined") return;
+  try {
+    for (const k of [
+      `sealed:seller-joined:${dealId}`,
+      `sealed:counterparty-joined:${dealId}`,
+      `sealed:seller-agreed:${dealId}`,
+      `sealed:deal-escalated:${dealId}`,
+    ]) {
+      window.localStorage.removeItem(k);
+    }
+    window.sessionStorage.removeItem(`deal:${dealId}`);
+  } catch {
+    // storage unavailable — nothing to clear.
+  }
+}
+
 export function useDealsStore(wallet: PublicKey | null) {
   const walletKey = wallet ? wallet.toBase58() : null;
   const key = storageKey(walletKey);
