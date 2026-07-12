@@ -21,6 +21,23 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * A Supabase/PostgREST error meaning the table doesn't exist in this database
+ * (schema not applied) — code PGRST205, or Postgres 42P01 "relation does not
+ * exist". Lets routes return a clean message instead of leaking the raw error.
+ */
+export function isMissingTableError(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null;
+  const code = e?.code;
+  const msg = (e?.message ?? "").toLowerCase();
+  return (
+    code === "PGRST205" ||
+    code === "42P01" ||
+    msg.includes("schema cache") ||
+    msg.includes("does not exist")
+  );
+}
+
 /** Shorthand for a JSON success response (mirrors the routes' Response.json). */
 export function json(data: unknown, status = 200): Response {
   return Response.json(data, { status });

@@ -1,7 +1,7 @@
 import { supabase, table } from "@/lib/supabase";
 import { getPublicProfile, getUserByHandle } from "@/lib/sealed-users";
 import { requireWallet } from "@/lib/auth";
-import { HttpError, json, withRoute } from "@/lib/api-error";
+import { HttpError, json, withRoute, isMissingTableError } from "@/lib/api-error";
 
 type FriendRow = {
   id: string;
@@ -95,6 +95,13 @@ export const POST = withRoute(async (req) => {
     .select()
     .single();
 
-  if (error) throw new HttpError(500, error.message);
+  if (error) {
+    // The friends table missing from this database (schema not applied) surfaced
+    // the raw Postgres error in the UI. Return a clean, honest message instead.
+    if (isMissingTableError(error)) {
+      throw new HttpError(503, "Friends isn't set up on this server yet.");
+    }
+    throw new HttpError(500, error.message);
+  }
   return json({ ok: true, status: "pending", id: data.id });
 });
