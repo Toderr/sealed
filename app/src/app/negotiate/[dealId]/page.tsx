@@ -22,7 +22,7 @@ import {
 } from "@/lib/types";
 import type { Deal, SupabaseDeal } from "@/lib/types";
 import { labelStyle, headingStyle } from "@/lib/typography";
-import type { Proposal } from "@/negotiation/types";
+import type { Proposal, Revision } from "@/negotiation/types";
 import { defaultSellerBoundaries } from "@/negotiation/types";
 import { buildCreateDealIx, buildFundEscrowIx, buildEnsureAtaIx, getUsdcMint, getUsdcBalance, sendTx } from "@/lib/escrow-client";
 import { MOCK_CHAIN, MOCK_DATA } from "@/lib/env";
@@ -40,7 +40,9 @@ import WalletMultiButton from "@/components/AppWalletButton";
 
 type NegState =
   | { kind: "idle" }
-  | { kind: "running" }
+  // `rounds` accumulates each streamed revision so the room shows the
+  // back-and-forth live instead of one opaque spinner (T-2).
+  | { kind: "running"; rounds: Revision[] }
   | { kind: "done"; proposal: Proposal }
   | { kind: "error"; message: string };
 
@@ -522,7 +524,7 @@ export default function NegotiateRoom() {
   const startNegotiation = useCallback(async (renegotiationRequest?: string) => {
     if (!deal || !wallet || !memory) return;
     setDeployError(null);
-    setNegState({ kind: "running" });
+    setNegState({ kind: "running", rounds: [] });
 
     const buyerBoundaries = role === "buyer" ? memory.boundaries : defaultSellerBoundaries();
     const sellerBoundaries = role === "seller" ? memory.boundaries : defaultSellerBoundaries();
@@ -573,20 +575,72 @@ export default function NegotiateRoom() {
     }
 
     try {
-      const data = await apiFetch<{ proposal: Proposal }>("/api/negotiate", {
+      // Stream the negotiation so each round appears as it happens (T-2), instead
+      // of a single opaque wait. The route emits SSE: a "revision" per round, a
+      // terminal "done" with the proposal, or a terminal "error".
+      const res = await fetch("/api/negotiate/stream", {
         method: "POST",
-        headers: getLlmHeaders(wallet),
-        body: {
+        headers: {
+          "Content-Type": "application/json",
+          "x-wallet": wallet,
+          ...getLlmHeaders(wallet),
+        },
+        body: JSON.stringify({
           proposalId: `${deal.deal_id}-${Date.now()}`,
           buyerWallet: deal.buyer_wallet,
           initialTerms: dealParams,
           buyerBoundaries,
           sellerBoundaries,
           renegotiationRequest,
-        },
+        }),
       });
-      setNegState({ kind: "done", proposal: data.proposal });
-      if (data.proposal.status === "escalated") {
+      if (!res.ok || !res.body) {
+        throw new Error("Negotiation failed to start. Please try again.");
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let streamError: string | null = null;
+      let finalProposal: Proposal | null = null;
+
+      // Parse SSE frames ("data: {json}\n\n") as they arrive.
+      readLoop: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let sep: number;
+        while ((sep = buffer.indexOf("\n\n")) !== -1) {
+          const frame = buffer.slice(0, sep).trim();
+          buffer = buffer.slice(sep + 2);
+          if (!frame.startsWith("data:")) continue;
+          let evt: { type: string; revision?: Revision; proposal?: Proposal; message?: string };
+          try {
+            evt = JSON.parse(frame.slice(5).trim());
+          } catch {
+            continue;
+          }
+          if (evt.type === "revision" && evt.revision) {
+            const rev = evt.revision;
+            setNegState((prev) =>
+              prev.kind === "running" ? { kind: "running", rounds: [...prev.rounds, rev] } : prev,
+            );
+          } else if (evt.type === "done" && evt.proposal) {
+            finalProposal = evt.proposal;
+            break readLoop;
+          } else if (evt.type === "error") {
+            streamError = evt.message ?? "Negotiation failed";
+            break readLoop;
+          }
+        }
+      }
+
+      if (streamError) throw new Error(streamError);
+      if (!finalProposal) throw new Error("Negotiation ended unexpectedly. Please try again.");
+
+      setNegState({ kind: "done", proposal: finalProposal });
+      if (finalProposal.status === "escalated") {
         applyServerPatch((prev) => (prev ? { ...prev, status: "escalated" } : prev));
       }
     } catch (err) {
@@ -1177,19 +1231,36 @@ export default function NegotiateRoom() {
               )}
 
               {negState.kind === "running" && (
-                <div className="flex flex-col items-center justify-center py-16 gap-5 text-center px-6">
-                  <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-accent/10 text-accent">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="animate-pulse" aria-hidden="true">
-                      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                    </svg>
+                <div className="py-6 px-6 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-accent/10 text-accent shrink-0">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="animate-pulse" aria-hidden="true">
+                        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                      </svg>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[15px] text-primary" style={headingStyle}>Agents negotiating</p>
+                      <p className="text-[12px] text-muted">
+                        {negState.rounds.length > 0
+                          ? `${negState.rounds.filter((r) => r.round > 0).length} exchange${negState.rounds.filter((r) => r.round > 0).length !== 1 ? "s" : ""} so far`
+                          : "Opening the negotiation…"}
+                      </p>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-[18px] text-primary" style={headingStyle}>Agents negotiating</p>
-                    <p className="text-[13px] text-muted">Exchanging proposals — usually 15–30 seconds.</p>
-                  </div>
-                  <div className="flex items-center gap-2 text-[12px] text-subtle">
-                    <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
-                    <span>Running up to 5 rounds</span>
+
+                  {/* Live turn-by-turn feed — each round appears as it streams in. */}
+                  <div className="space-y-2">
+                    {negState.rounds.map((r, i) => (
+                      <NegotiationTurnLine key={`${r.round}-${i}`} revision={r} />
+                    ))}
+                    <div className="flex items-center gap-2 text-[12px] text-subtle pl-1 pt-1">
+                      <span className="flex gap-1">
+                        {[0, 150, 300].map((d) => (
+                          <span key={d} className="h-1.5 w-1.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                        ))}
+                      </span>
+                      <span>Waiting for the next reply…</span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1670,6 +1741,56 @@ function Stat({ label, value }: { label: string; value: string | number }) {
     <div>
       <p className="text-[10px] text-subtle uppercase tracking-[0.06em]">{label}</p>
       <p className="text-[13px] text-primary tabular-nums" style={{ fontWeight: 510 }}>{value}</p>
+    </div>
+  );
+}
+
+/* ── Streamed negotiation turn (T-2) ───────────────────────────────────────
+   One line in the live feed while agents negotiate. The round-0 seed is the
+   buyer's opening; later rounds are agent counters/accepts/rejects. */
+function NegotiationTurnLine({ revision }: { revision: Revision }) {
+  const isSeed = revision.round === 0;
+  const who = revision.onBehalfOf === "buyer" ? "Buyer agent" : "Seller agent";
+  const label = isSeed
+    ? "Opening offer"
+    : revision.action === "accept"
+    ? "Accepted"
+    : revision.action === "reject"
+    ? "Declined"
+    : "Counter";
+  const tone =
+    revision.action === "accept"
+      ? { color: "var(--success)", bg: "rgba(63,185,80,0.12)" }
+      : revision.action === "reject"
+      ? { color: "var(--danger)", bg: "rgba(248,113,113,0.12)" }
+      : { color: "var(--accent)", bg: "rgba(113,112,255,0.12)" };
+  const amount = revision.proposedTerms?.totalAmount;
+
+  return (
+    <div className="surface-card rounded-lg px-3 py-2.5 flex items-start gap-3">
+      <span
+        className="text-[10px] font-mono px-1.5 py-0.5 rounded shrink-0 mt-0.5"
+        style={{ color: "var(--subtle)", background: "rgba(255,255,255,0.04)" }}
+      >
+        {isSeed ? "start" : `R${revision.round}`}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[12.5px] text-primary" style={{ fontWeight: 560 }}>{who}</span>
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded-full"
+            style={{ color: tone.color, background: tone.bg, fontWeight: 600 }}
+          >
+            {label}
+          </span>
+          {typeof amount === "number" && (
+            <span className="text-[11px] text-muted font-mono tabular-nums">${amount.toLocaleString()} USDC</span>
+          )}
+        </div>
+        {revision.reasoning && (
+          <p className="text-[12px] text-muted mt-1 leading-snug">{revision.reasoning}</p>
+        )}
+      </div>
     </div>
   );
 }
