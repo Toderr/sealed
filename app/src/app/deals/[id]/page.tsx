@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { useAppConnection as useConnection } from "@/lib/use-app-connection";
 import { PublicKey } from "@solana/web3.js";
@@ -72,6 +72,7 @@ type RatingLookup = {
 
 export default function ActiveDealPage() {
   const params = useParams();
+  const router = useRouter();
   const dealId = Array.isArray(params.id) ? params.id[0] : (params.id as string);
   const { publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
@@ -515,6 +516,20 @@ export default function ActiveDealPage() {
   const isTerminal = isComplete || dealStatus === "completed" || dealStatus === "refunded";
   const isFunded = ["funded", "in_progress"].includes(dealStatus) || releasedCount > 0;
   const isUnfunded = !isFunded && ["draft", "seller-ready", "seller-agreed", "escalated", "proposed"].includes(dealStatus);
+
+  // If this deal is (or goes back to) a pre-escrow negotiation status — e.g. a
+  // funded deal re-opened via renegotiate/escalate — the deal page's milestone
+  // view is the wrong place for it; send the user to the negotiation room so a
+  // device sitting here doesn't get stuck while the other advances (S3). Guard
+  // on a loaded deal + a non-funded negotiation status so a genuinely funded
+  // deal is never bounced.
+  useEffect(() => {
+    if (!deal) return;
+    const NEGOTIATION_STATUSES = ["draft", "seller-ready", "seller-agreed", "proposed", "escalated"];
+    if (releasedCount === 0 && NEGOTIATION_STATUSES.includes(dealStatus)) {
+      router.replace(`/negotiate/${encodeURIComponent(dealId)}`);
+    }
+  }, [deal, dealStatus, releasedCount, dealId, router]);
 
   useEffect(() => {
     if (isComplete && !sealedModalShown) {

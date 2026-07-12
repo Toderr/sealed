@@ -125,12 +125,10 @@ export function purgeDealLocally(dealId: string, wallet: string | null) {
     const remaining = readSnapshot(key).filter((d) => d.dealId !== dealId);
     if (remaining.length !== readSnapshot(key).length) writeDeals(key, remaining);
   }
-  // 2) sessionStorage draft written at deal-composition time.
-  try {
-    window.sessionStorage.removeItem(`deal:${dealId}`);
-  } catch {
-    // sessionStorage unavailable — nothing to clear.
-  }
+  // 2) sessionStorage draft + the same-device join/agreed/escalated signals, so
+  //    a deleted deal can't be resurrected or replay a stale status on re-invite
+  //    or id reuse (S4). clearDealJoinSignals also removes the draft.
+  clearDealJoinSignals(dealId);
 }
 
 // Same-device signals the negotiate room replays to resurrect a party slot /
