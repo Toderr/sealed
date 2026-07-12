@@ -38,6 +38,7 @@ import { AgentRole } from "@/agents/types";
 import { ArrowLeft } from "lucide-react";
 
 import WalletMultiButton from "@/components/AppWalletButton";
+import WalletMenu from "@/components/WalletMenu";
 
 type NegState =
   | { kind: "idle" }
@@ -2181,15 +2182,11 @@ function ManualNegotiationPanel({
     prevManualMsgCount.current = messages.length;
   }, [messages]);
 
-  async function send(text?: string) {
-    const content = (text ?? input).trim();
-    if (!content || loading) return;
-    if (!text) setInput("");
-
-    const updated: ChatMsg[] = [...messages, { role: "user", content }];
-    setMessages(updated);
+  // Run the agent turn against a given transcript (which already ends with the
+  // seller's message). Shared by send() and retry() so "Try again" re-runs the
+  // same turn without re-appending the user message.
+  async function runAgentTurn(transcript: ChatMsg[]) {
     setLoading(true);
-
     try {
       const dealContext = {
         title: deal.title,
@@ -2200,7 +2197,7 @@ function ManualNegotiationPanel({
       const data = await apiFetch<{ response: string; agreed?: boolean; agreedTerms?: typeof agreedTerms }>("/api/negotiate/manual", {
         method: "POST",
         wallet,
-        body: { dealId: deal.deal_id, messages: updated, sellerWallet: wallet, dealContext },
+        body: { dealId: deal.deal_id, messages: transcript, sellerWallet: wallet, dealContext },
       });
       setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
       if (data.agreed) {
@@ -2208,20 +2205,48 @@ function ManualNegotiationPanel({
         if (data.agreedTerms) setAgreedTerms(data.agreedTerms);
       }
     } catch (err) {
-      // Render as a distinct system error notice (not a normal agent message) so
-      // a provider failure never masquerades as something the agent "said". The
-      // server already returns a clean message (bugs #11/#12).
+      // The buyer's AI agent (server-side LLM) is unreachable. The seller can't
+      // fix that (it's the server's key, not theirs) — but they aren't blocked:
+      // they can accept the terms as-is or reject, and Try again re-runs the
+      // turn once it's back. Render as a system notice, never as something the
+      // agent "said" (bugs #11/#12).
+      const configError = isAgentConfigError(err);
       setMessages((prev) => [
         ...prev,
         {
           role: "system",
           error: true,
-          content: err instanceof Error ? err.message : "The negotiation service is temporarily unavailable. Please try again.",
+          content: configError
+            ? "The buyer's AI agent is unavailable right now. You can still accept the terms as-is or reject the deal — you don't need the agent to proceed."
+            : err instanceof Error ? err.message : "The negotiation service is temporarily unavailable. Please try again.",
         },
       ]);
     } finally {
       setLoading(false);
     }
+  }
+
+  // Re-run the last agent turn: drop the trailing error notice and re-post the
+  // transcript up to and including the seller's last message.
+  async function retry() {
+    if (loading) return;
+    let transcript = messages;
+    if (transcript[transcript.length - 1]?.error) {
+      transcript = transcript.slice(0, -1);
+      setMessages(transcript);
+    }
+    if (transcript.length === 0) return;
+    await runAgentTurn(transcript);
+  }
+
+  async function send(text?: string) {
+    const content = (text ?? input).trim();
+    if (!content || loading) return;
+    if (!text) setInput("");
+
+    const updated: ChatMsg[] = [...messages, { role: "user", content }];
+    setMessages(updated);
+    await runAgentTurn(updated);
   }
 
   const suggestions = [
@@ -2280,6 +2305,16 @@ function ManualNegotiationPanel({
                     {m.error ? "Couldn't reach the agent" : "Renegotiation"}
                   </p>
                   <div className="whitespace-pre-wrap">{renderMarkdown(m.content)}</div>
+                  {m.error && i === messages.length - 1 && (
+                    <button
+                      type="button"
+                      onClick={retry}
+                      disabled={loading}
+                      className="mt-2 text-[11px] text-accent hover:underline disabled:opacity-50"
+                    >
+                      {loading ? "Retrying…" : "Try again"}
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -2509,7 +2544,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
         <div className="flex items-center gap-2">
           <NotificationMenu wallet={wallet} />
-          <WalletMultiButton />
+          {wallet ? <WalletMenu /> : <WalletMultiButton />}
         </div>
       </header>
       <main className="flex-1">{children}</main>
