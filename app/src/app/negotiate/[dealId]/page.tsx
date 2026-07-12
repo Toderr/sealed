@@ -10,7 +10,7 @@ import { NotificationMenu } from "@/components/NotificationMenu";
 import { useBusinessMemory } from "@/memory/localstorage-store";
 import { getLlmHeaders } from "@/lib/llm-headers";
 import { useProfileStore, encodeInvite } from "@/lib/profile-store";
-import { useDealsStore } from "@/lib/deals-store";
+import { useDealsStore, clearDealJoinSignals } from "@/lib/deals-store";
 import { atDisplayHandle } from "@/lib/user-display";
 import {
   DealParams,
@@ -331,6 +331,28 @@ export default function NegotiateRoom() {
     : deal?.seller_wallet === wallet
     ? "seller"
     : "observer";
+
+  // Reject-and-recycle sync (T-1): when the buyer rejects, they clear MY slot on
+  // the server. My own device kept replaying stale join signals to re-add me, so
+  // my side stayed stuck. Once I've been a party and then find myself no longer
+  // in either slot on a real (buyer-known) deal, I've been released: purge my
+  // local signals so they stop resurrecting me, and leave the room.
+  const wasPartyRef = useRef(false);
+  useEffect(() => {
+    if (!deal || !wallet) return;
+    const iAmParty = deal.buyer_wallet === wallet || deal.seller_wallet === wallet;
+    if (iAmParty) {
+      wasPartyRef.current = true;
+      return;
+    }
+    // Not a party now. Only a *release* if I was one before AND the deal is a
+    // real server deal that still has its owner (buyer) — not a mid-join gap.
+    if (wasPartyRef.current && deal.buyer_wallet && deal.buyer_wallet !== wallet) {
+      wasPartyRef.current = false;
+      clearDealJoinSignals(deal.deal_id);
+      router.replace("/app");
+    }
+  }, [deal, wallet, router]);
 
   // I'm a party (inviter) and the counterparty slot is still empty — show the
   // invite/share UI. Works whether I created as the buyer or the seller.
