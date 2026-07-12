@@ -25,6 +25,15 @@ type FullProfile = PublicProfile & {
 
 type FriendStatus = "none" | "friends" | "outgoing" | "incoming" | "self";
 type Tab = "timeline" | "reviews" | "agents";
+const TABS: Tab[] = ["timeline", "reviews", "agents"];
+
+// Read the tab from the URL so a refresh keeps the selected tab (read directly
+// from window rather than useSearchParams to avoid needing a Suspense boundary).
+function initialTab(): Tab {
+  if (typeof window === "undefined") return "timeline";
+  const t = new URLSearchParams(window.location.search).get("tab");
+  return (TABS as string[]).includes(t ?? "") ? (t as Tab) : "timeline";
+}
 
 export default function PublicProfilePage() {
   const params = useParams();
@@ -36,7 +45,18 @@ export default function PublicProfilePage() {
   const [loading, setLoading] = useState(true);
   const [friendStatus, setFriendStatus] = useState<FriendStatus>("none");
   const [friendLoading, setFriendLoading] = useState(false);
-  const [tab, setTab] = useState<Tab>("timeline");
+  const [tab, setTabState] = useState<Tab>(initialTab);
+
+  // Persist the selected tab to the URL (?tab=…) so it survives a refresh.
+  function setTab(next: Tab) {
+    setTabState(next);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (next === "timeline") url.searchParams.delete("tab");
+      else url.searchParams.set("tab", next);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }
 
   const wallet = profileWallet;
   const isSelf = Boolean(wallet && myWallet === wallet);
@@ -64,7 +84,12 @@ export default function PublicProfilePage() {
         wallet: myWallet,
         body: { friendWallet: wallet },
       }, {});
-      if (d.status) setFriendStatus(d.status === "accepted" ? "friends" : "outgoing");
+      // "accepted"/"already_friends" → we're friends; "pending" → request sent.
+      if (d.status) {
+        setFriendStatus(
+          d.status === "accepted" || d.status === "already_friends" ? "friends" : "outgoing"
+        );
+      }
     } else if (friendStatus === "incoming") {
       await apiFetchSafe(`/api/friends/${wallet}`, {
         method: "PATCH",

@@ -40,11 +40,25 @@ export const GET = withRoute<{ params: Promise<{ wallet: string }> }>(
     const reviewerWallets = [...new Set(reviews.map((r) => r.rater_wallet))];
     const dealIds = [...new Set(reviews.map((r) => r.deal_id))];
 
-    const [{ data: users }, { data: deals }] = await Promise.all([
-      supabase
+    // Resolve reviewer names. Select display_name defensively: on an older
+    // schema where that column is missing, the whole select errors and every
+    // reviewer would fall back to a raw wallet — so retry with just handle
+    // rather than lose all names. (Apply migration 006 for display_name.)
+    async function fetchReviewers() {
+      const full = await supabase
         .from(table("users"))
         .select("wallet, handle, display_name")
-        .in("wallet", reviewerWallets),
+        .in("wallet", reviewerWallets);
+      if (!full.error) return full.data;
+      const basic = await supabase
+        .from(table("users"))
+        .select("wallet, handle")
+        .in("wallet", reviewerWallets);
+      return (basic.data ?? []).map((u) => ({ ...u, display_name: null }));
+    }
+
+    const [users, { data: deals }] = await Promise.all([
+      fetchReviewers(),
       supabase
         .from(table("deals"))
         .select("deal_id, title")
