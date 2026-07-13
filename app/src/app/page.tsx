@@ -510,7 +510,7 @@ function FinalCTA() {
               <ArrowRight className="w-4 h-4" />
             </Link>
             <a
-              href="mailto:rednave2806@gmail.com?subject=Sealed%20Agent%20early%20access"
+              href="mailto:sealedagent@gmail.com?subject=Sealed%20Agent%20early%20access"
               className="inline-flex items-center justify-center gap-2 rounded-md border border-card-border bg-[rgba(255,255,255,0.02)] px-5 h-11 text-[14px] text-primary hover:bg-[rgba(255,255,255,0.05)] transition-colors"
               style={{ fontWeight: 510 }}
             >
@@ -546,7 +546,7 @@ function SiteFooter() {
             Program
           </a>
           <a
-            href="mailto:rednave2806@gmail.com"
+            href="mailto:sealedagent@gmail.com"
             className="hover:text-primary transition-colors"
           >
             Contact

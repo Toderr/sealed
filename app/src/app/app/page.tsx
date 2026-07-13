@@ -930,11 +930,11 @@ function DealDetailPanelBody({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: 10, border: "1px solid var(--card-border)" }}>
             <div style={{ fontSize: 11, color: "var(--muted)" }}>Total</div>
-            <div style={{ fontSize: 15, fontWeight: 590, color: "var(--primary)", fontFamily: "ui-monospace, monospace", marginTop: 2 }}>{deal.total_amount_usdc.toLocaleString()}</div>
+            <div style={{ fontSize: 15, fontWeight: 590, color: "var(--primary)", fontFamily: "ui-monospace, monospace", marginTop: 2 }}>${formatUsdc(deal.total_amount_usdc)} USDC</div>
           </div>
           <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: 10, border: "1px solid var(--card-border)" }}>
             <div style={{ fontSize: 11, color: "var(--muted)" }}>Released</div>
-            <div style={{ fontSize: 15, fontWeight: 590, color: "var(--success)", fontFamily: "ui-monospace, monospace", marginTop: 2 }}>{releasedAmount.toLocaleString()}</div>
+            <div style={{ fontSize: 15, fontWeight: 590, color: "var(--success)", fontFamily: "ui-monospace, monospace", marginTop: 2 }}>${formatUsdc(releasedAmount)} USDC</div>
           </div>
         </div>
 
