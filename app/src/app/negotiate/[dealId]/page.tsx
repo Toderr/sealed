@@ -32,6 +32,7 @@ import { PublicKey } from "@solana/web3.js";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { apiFetch, apiFetchSafe } from "@/lib/api-client";
+import { retryWrite } from "@/lib/retry-write";
 import { useApi, POLL_MS } from "@/lib/swr";
 import { useDeal } from "@/lib/hooks/use-deal";
 import { AgentRole } from "@/agents/types";
@@ -875,16 +876,19 @@ export default function NegotiateRoom() {
         }));
       } catch {}
 
+      // Escrow is funded ON-CHAIN and irreversible. The mirror write drives the
+      // UI (which page you land on, the funded status both parties see), so make
+      // it durable: retry POST, then PATCH, rather than a single best-effort try
+      // that could strand a funded deal at "seller-agreed" (F3). Warn softly if
+      // it still won't sync — the money is safe; it just hasn't mirrored.
       const mirrorWallet = publicKey.toBase58();
-      try {
-        await apiFetch("/api/deals/mirror", { method: "POST", wallet: mirrorWallet, body: mirroredDeal });
-      } catch (mirrorErr) {
-        console.error("Mirror sync failed:", mirrorErr);
-        await apiFetchSafe(`/api/deals/${finalTerms.dealId}`, {
-          method: "PATCH",
-          wallet: mirrorWallet,
-          body: mirrorPatch,
-        }, undefined);
+      const synced = await retryWrite(() =>
+        apiFetch("/api/deals/mirror", { method: "POST", wallet: mirrorWallet, body: mirroredDeal }).catch(() =>
+          apiFetch(`/api/deals/${finalTerms.dealId}`, { method: "PATCH", wallet: mirrorWallet, body: mirrorPatch }),
+        ),
+      );
+      if (!synced) {
+        console.error("Mirror sync failed after retries for funded deal", finalTerms.dealId);
       }
 
       setDealSealedId(finalTerms.dealId);
