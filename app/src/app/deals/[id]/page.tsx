@@ -23,6 +23,7 @@ import { useDisplayName } from "@/lib/hooks/use-display-name";
 import { MOCK_CHAIN } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
+import { retryWrite } from "@/lib/retry-write";
 import { useApi, POLL_MS } from "@/lib/swr";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { SealedMark } from "@/components/SealedLogo";
@@ -183,12 +184,18 @@ export default function ActiveDealPage() {
     }
   }
 
-  async function patchMilestones(updated: Milestone[]) {
-    await apiFetchSafe(`/api/deals/${dealId}`, {
-      method: "PATCH",
-      wallet: wallet ?? "",
-      body: { milestones: updated },
-    }, undefined);
+  // Returns whether the mirror write eventually succeeded. Uses apiFetch (which
+  // throws) inside retryWrite so a transient failure is retried rather than
+  // silently swallowed — otherwise a released milestone stays "Pending"/"In
+  // Review" in the mirror and the UI is stuck on "Confirm & release" (F5).
+  async function patchMilestones(updated: Milestone[]): Promise<boolean> {
+    return retryWrite(() =>
+      apiFetch(`/api/deals/${dealId}`, {
+        method: "PATCH",
+        wallet: wallet ?? "",
+        body: { milestones: updated },
+      }),
+    );
   }
 
   async function postMessage(content: string, msgRole = "user") {
@@ -256,12 +263,19 @@ export default function ActiveDealPage() {
           allReleased
         );
       }
-      await patchMilestones(updated);
+      // The on-chain release already succeeded and is irreversible. Persist to
+      // the mirror durably (retries); if it still fails, warn softly — the
+      // payment WENT THROUGH, it just hasn't synced — rather than "failed to
+      // release", which would be wrong and prompt a confusing re-click (F5).
+      const synced = await patchMilestones(updated);
       await postMessage(
         `✅ Milestone ${milestoneIndex + 1} approved. **${formatUsdc(milestones[milestoneIndex].amount)} USDC** released to seller.\n\nTx: \`${sig.slice(0, 8)}...${sig.slice(-8)}\``,
         "assistant"
       );
       await refreshAll();
+      if (!synced) {
+        alert("Payment released on-chain ✓ — but syncing the status is taking a moment. It'll update shortly; no need to release again.");
+      }
     } catch (err) {
       console.error("Release failed:", err);
       alert("Failed to release payment. Check console for details.");

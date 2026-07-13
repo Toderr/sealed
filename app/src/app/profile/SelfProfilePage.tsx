@@ -16,6 +16,7 @@ import {
   type LLMProvider,
 } from "@/lib/profile-store";
 import { useDealsStore, purgeDealLocally } from "@/lib/deals-store";
+import { POLL_MS } from "@/lib/swr";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import { FEATURE_X402, FEATURE_GET_VERIFIED } from "@/lib/env";
 import { LLM_PROVIDERS } from "@/lib/llm-providers";
@@ -360,17 +361,22 @@ export function SelfProfilePageContent() {
 
     setSessionDeals(readSessionProfileDeals(wallet));
 
-    apiFetch<{ deals?: MirrorDeal[] }>("/api/deals/mirror", { wallet })
-      .then((data) => {
-        if (cancelled) return;
-        setMirrorDeals(((data.deals ?? []) as MirrorDeal[]).map(fromMirrorDeal));
-      })
-      .catch(() => {
-        if (!cancelled) setMirrorDeals([]);
-      });
+    // Poll the mirror so a counterparty's join/agree/fund/status change shows up
+    // here without a manual refresh — matches the deal/negotiate pages' 4s sync,
+    // which the profile list previously lacked (S7). apiFetchSafe never throws,
+    // so a transient failure keeps the last-good list instead of clearing it.
+    const load = () =>
+      apiFetchSafe<{ deals?: MirrorDeal[] }>("/api/deals/mirror", { wallet }, { deals: [] }).then(
+        (data) => {
+          if (!cancelled) setMirrorDeals(((data.deals ?? []) as MirrorDeal[]).map(fromMirrorDeal));
+        },
+      );
+    load();
+    const interval = setInterval(load, POLL_MS);
 
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, [wallet]);
 
