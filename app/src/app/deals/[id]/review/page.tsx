@@ -42,6 +42,7 @@ export default function DealReviewPage() {
     { dealId: string; totalAmount: number; milestones: Array<{ description: string; amount: number; status?: string }> } | null
   >(null);
   const [dealLoading, setDealLoading] = useState(true);
+  const [dealStatus, setDealStatus] = useState<string | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -49,11 +50,12 @@ export default function DealReviewPage() {
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDealLoading(true);
-    apiFetch<{ deal?: { deal_id: string; total_amount_usdc: number; milestones?: Array<{ description: string; amount: number; status?: string }> } }>(
+    apiFetch<{ deal?: { deal_id: string; total_amount_usdc: number; status?: string; milestones?: Array<{ description: string; amount: number; status?: string }> } }>(
       `/api/deals/${encodeURIComponent(dealId)}`
     )
       .then((data) => {
         if (cancelled || !data.deal) return;
+        setDealStatus(data.deal.status ?? null);
         setFetchedDeal({
           dealId: data.deal.deal_id,
           totalAmount: (data.deal.total_amount_usdc ?? 0) * 1_000_000,
@@ -68,6 +70,24 @@ export default function DealReviewPage() {
       .finally(() => { if (!cancelled) setDealLoading(false); });
     return () => { cancelled = true; };
   }, [localDeal, dealId]);
+
+  // This standalone "review" screen was a dead end: its Approve/Decline/
+  // Renegotiate actions didn't touch the real deal (no-op approve, wrong-endpoint
+  // decline, malformed renegotiate) yet showed success. Redirect to the working
+  // flow instead — the negotiation room for pre-escrow deals, the deal page once
+  // funded — which have the real approve/fund/renegotiate/release controls.
+  // Fires once we know the status (from the mirror fetch or a local deal).
+  const localStatus = localDeal ? String(localDeal.status).toLowerCase() : null;
+  useEffect(() => {
+    const status = (dealStatus ?? localStatus ?? "").toLowerCase();
+    if (!status) return;
+    const NEGOTIATION = ["draft", "created", "seller-ready", "seller-agreed", "proposed", "escalated"];
+    router.replace(
+      NEGOTIATION.includes(status)
+        ? `/negotiate/${encodeURIComponent(dealId)}`
+        : `/deals/${encodeURIComponent(dealId)}`,
+    );
+  }, [dealStatus, localStatus, dealId, router]);
 
   // Prefer the local (live) deal; fall back to the fetched one.
   const deal = localDeal ?? fetchedDeal;
