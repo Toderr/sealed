@@ -45,6 +45,7 @@ export default function PublicProfilePage() {
   const [loading, setLoading] = useState(true);
   const [friendStatus, setFriendStatus] = useState<FriendStatus>("none");
   const [friendLoading, setFriendLoading] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [tab, setTabState] = useState<Tab>(initialTab);
 
   // Persist the selected tab to the URL (?tab=…) so it survives a refresh.
@@ -290,18 +291,23 @@ export default function PublicProfilePage() {
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                       <path d="m11 17 2 2a1 1 0 0 0 3-3" /><path d="m14 14 2.5 2.5a1 1 0 0 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 0 1-1.41 0l-2.62-2.62a1 1 0 0 0-1.41 0L3 10.5" />
                     </svg>
-                    {friendLoading ? "…" : friendStatus === "friends" ? "Friends ✓" : friendStatus === "outgoing" ? "Request sent" : friendStatus === "incoming" ? "Accept request" : "Start a deal"}
+                    {friendLoading ? "…" : friendStatus === "friends" ? "Friends ✓" : friendStatus === "outgoing" ? "Request sent" : friendStatus === "incoming" ? "Accept request" : "Add friend"}
                   </button>
                 )}
                 <button
                   onClick={() => {
                     const url = `${window.location.origin}/profile/${wallet}`;
-                    navigator.clipboard.writeText(url).catch(() => {});
+                    navigator.clipboard.writeText(url)
+                      .then(() => {
+                        setLinkCopied(true);
+                        setTimeout(() => setLinkCopied(false), 2000);
+                      })
+                      .catch(() => {});
                   }}
                   className="btn-ghost"
-                  style={{ marginTop: 8, width: "100%", height: 36, borderRadius: 9, fontSize: 12, position: "relative", cursor: "pointer" }}
+                  style={{ marginTop: 8, width: "100%", height: 36, borderRadius: 9, fontSize: 12, position: "relative", cursor: "pointer", color: linkCopied ? "var(--success)" : undefined }}
                 >
-                  Copy profile link
+                  {linkCopied ? "Copied ✓" : "Copy profile link"}
                 </button>
               </div>
 

@@ -1948,6 +1948,7 @@ function SettingsTab({ wallet }: { wallet: string }) {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
   const [emailVerified, setEmailVerified] = useState(false);
   const [notifyPrefs, setNotifyPrefs] = useState<NotificationPrefs>({
     deal_review_needed: true,
@@ -1973,18 +1974,24 @@ function SettingsTab({ wallet }: { wallet: string }) {
   }, [wallet]);
 
   async function sendOtp() {
+    setOtpError(null);
     try {
       await apiFetch("/api/users/email", { method: "POST", body: { wallet, email } });
-      setOtpSent(true);
-    } catch { /* ignore */ }
+      setOtpSent(true); // only advance on success — else the user waits for an email that never comes
+    } catch (e) {
+      setOtpError(e instanceof ApiError ? e.message : "Couldn't send the code. Check the email and try again.");
+    }
   }
 
   async function verifyOtp() {
+    setOtpError(null);
     try {
       await apiFetch("/api/users/email/verify", { method: "POST", body: { wallet, otp } });
       setEmailVerified(true);
       setOtpSent(false);
-    } catch { /* ignore */ }
+    } catch (e) {
+      setOtpError(e instanceof ApiError ? e.message : "That code didn't match. Please try again.");
+    }
   }
 
   async function savePrefs() {
@@ -2062,6 +2069,9 @@ function SettingsTab({ wallet }: { wallet: string }) {
                 Verify
               </button>
             </div>
+          )}
+          {otpError && (
+            <p className="text-[12px] text-danger mt-2">{otpError}</p>
           )}
         </div>
       </div>

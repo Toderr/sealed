@@ -337,16 +337,16 @@ function WalletPanel() {
       <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 28 }}>
         Sealed never holds funds. The wallet you connect signs every deal you authorize — and only when you say so.
       </p>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        {[
-          { name: "Phantom",  g: "linear-gradient(135deg, #ab9ff2, #534bb1)" },
-          { name: "Solflare", g: "linear-gradient(135deg, #fc8d3a, #b53d12)" },
-          { name: "Backpack", g: "linear-gradient(135deg, #ff3939, #ad0c0c)" },
-          { name: "Ledger",   g: "#1c1c1c" },
-        ].map((w) => (
-          <WalletMultiButton key={w.name} />
-        ))}
+      {/* One wallet button — its adapter opens a picker listing every detected
+          wallet (Phantom, Solflare, Backpack, Ledger…). Previously this mapped
+          four wallet names to four identical generic buttons that ignored the
+          names entirely. */}
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <WalletMultiButton />
       </div>
+      <p style={{ fontSize: 12, color: "var(--subtle)", textAlign: "center", marginTop: 12 }}>
+        Works with Phantom, Solflare, Backpack, and Ledger.
+      </p>
       <p style={{ fontSize: 12, color: "var(--subtle)", textAlign: "center", marginTop: 24 }}>
         By continuing you agree to Sealed&apos;s terms. Your wallet stays in your custody.
       </p>
