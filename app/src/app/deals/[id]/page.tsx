@@ -754,7 +754,7 @@ export default function ActiveDealPage() {
         </div>
 
         {/* Stat strip */}
-        <div className="surface-card" style={{ borderRadius: 12, padding: 16, marginBottom: 16, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0 }}>
+        <div className="surface-card grid grid-cols-2 gap-y-4 gap-x-0 sm:grid-cols-4" style={{ borderRadius: 12, padding: 16, marginBottom: 16 }}>
           <StatBlock first label="Total value" value={`$${totalValue.toLocaleString()}`} sub="USDC" />
           <StatBlock label="Released" value={`$${releasedValue.toLocaleString()}`} sub={`${releasedCount} of ${milestones.length} milestones`} accent="success" />
           <StatBlock label="Counterparty" value={counterpartyName} sub={`You as ${role}`} />
@@ -765,7 +765,7 @@ export default function ActiveDealPage() {
             string in a column — e.g. the on-chain tx signature in the chat —
             can't force the column past its share and overflow the container,
             which made this row wider than the stat strip above it. */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 2fr)", gap: 16 }}>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
           {/* Milestones */}
           <div className="surface-card" style={{ minWidth: 0, borderRadius: 12, padding: 18 }}>
             <p style={{ fontSize: 13, color: "var(--primary)", fontWeight: 590, margin: 0 }}>Milestones</p>
@@ -1009,8 +1009,7 @@ export default function ActiveDealPage() {
 
             {/* Activity / chat */}
             <div
-              className="surface-card"
-              style={{ borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column", height: "calc(100vh - 480px)", minHeight: 280 }}
+              className="surface-card flex flex-col overflow-hidden rounded-xl h-[65vh] min-h-70 lg:h-[calc(100vh-480px)]"
             >
               <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--card-border-subtle)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                 <div style={{ width: 22, height: 22, borderRadius: 6, background: "rgba(113,112,255,0.1)", color: "var(--accent)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
@@ -1358,11 +1357,18 @@ function ExternalLinkIcon() {
 
 function StatBlock({ label, value, sub, accent, first, last }: { label: string; value: string; sub: string; accent?: "success" | "warning"; first?: boolean; last?: boolean }) {
   const color = accent === "success" ? "var(--success)" : accent === "warning" ? "var(--warning)" : "var(--primary)";
+  // On mobile the strip wraps to 2×2, so the single-row divider + asymmetric
+  // first/last padding would land mid-grid — use plain per-cell padding there.
+  // At ≥sm it's one 4-wide row again: first cell flush-left, last flush-right,
+  // a divider only BETWEEN cells (N2). The `sm:` overrides carry that layout.
   return (
-    // First cell has no left pad and last cell no right pad, so the strip's
-    // content aligns flush with the card's own padding on both edges (matching
-    // the cards below). A divider only BETWEEN cells, never after the last (N2).
-    <div style={{ padding: first ? "0 16px 0 0" : last ? "0 0 0 16px" : "0 16px", borderRight: last ? "none" : "1px solid var(--card-border-subtle)" }}>
+    <div
+      className={[
+        "px-0",
+        !last && "sm:border-r sm:border-card-border-subtle",
+        first ? "sm:pl-0 sm:pr-4" : last ? "sm:pl-4 sm:pr-0" : "sm:px-4",
+      ].filter(Boolean).join(" ")}
+    >
       <p style={{ fontSize: 11, color: "var(--muted)", margin: 0, fontWeight: 510, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</p>
       <p style={{ fontSize: 18, fontWeight: 590, color, margin: "6px 0 1px", letterSpacing: "-0.015em", fontVariantNumeric: "tabular-nums" }}>{value}</p>
       <p style={{ fontSize: 11, color: "var(--subtle)", margin: 0 }}>{sub}</p>
