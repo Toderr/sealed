@@ -15,7 +15,8 @@ import { type DealParams, type PublicProfile, type SupabaseDeal, formatUsdc, usd
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { useAppConnection as useConnection } from "@/lib/use-app-connection";
 import { PublicKey } from "@solana/web3.js";
-import { buildEnsureAtaIx, buildReleaseMilestoneIx, getUsdcMint, sendTx } from "@/lib/escrow-client";
+import { buildEnsureAtaIx, buildReleaseMilestoneIx, getUsdcMint, sendTx, fetchFeeConfig } from "@/lib/escrow-client";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { escrowAccountUrl } from "@/lib/explorer";
 import { MOCK_CHAIN } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
@@ -875,7 +876,14 @@ function DealDetailPanelBody({
       const sellerPubkey = new PublicKey(deal.seller_wallet);
       const mint = getUsdcMint();
       const ensureIx = await buildEnsureAtaIx(publicKey, sellerPubkey, mint);
-      const releaseIx = await buildReleaseMilestoneIx(publicKey, deal.deal_id, index, sellerPubkey);
+      // Fee-bearing deals send the seller's fee half to the treasury on release,
+      // so the treasury token account must be passed or the program reverts
+      // (TreasuryAccountRequired). Mirrors funding + the deal-detail release.
+      const fee = await fetchFeeConfig(connection);
+      const treasuryTa = fee.active
+        ? await getAssociatedTokenAddress(mint, new PublicKey(fee.treasury))
+        : undefined;
+      const releaseIx = await buildReleaseMilestoneIx(publicKey, deal.deal_id, index, sellerPubkey, treasuryTa);
       const sig = await sendTx(connection, [ensureIx, releaseIx], signTransaction);
       const updated = milestones.map((m, i) => (i === index ? { ...m, status: "Released" } : m));
       if (MOCK_CHAIN) {
