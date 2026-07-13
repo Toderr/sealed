@@ -136,14 +136,65 @@ body {
 .wallet-adapter-button:not([disabled]):focus-visible {
   box-shadow: var(--shadow-focus) !important;
 }
+.wallet-adapter-modal-overlay {
+  background: rgba(8, 10, 14, 0.72) !important;
+  backdrop-filter: blur(3px) !important;
+  -webkit-backdrop-filter: blur(3px) !important;
+}
 .wallet-adapter-modal-wrapper {
   background-color: var(--surface) !important;
   border: 1px solid var(--card-border) !important;
   border-radius: 12px !important;
   box-shadow: var(--shadow-dialog) !important;
+  font-family: inherit !important;
 }
 .wallet-adapter-modal-title {
   color: var(--primary) !important;
+  font-size: 17px !important;
+  font-weight: 590 !important;
+}
+/* Individual wallet rows (Phantom / Solflare / Backpack …) */
+.wallet-adapter-modal-list {
+  margin: 0 0 4px !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button {
+  background-color: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 8px !important;
+  height: 48px !important;
+  padding: 0 12px !important;
+  color: var(--foreground) !important;
+  font-weight: 510 !important;
+  transition: background-color 120ms ease-out, border-color 120ms ease-out !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button:hover:not([disabled]) {
+  background-color: var(--surface-hover) !important;
+  border-color: var(--card-border) !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button:not([disabled]):focus-visible {
+  box-shadow: var(--shadow-focus) !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button-end-icon {
+  color: var(--subtle) !important;
+}
+/* "More options" toggle */
+.wallet-adapter-modal-list-more {
+  color: var(--muted) !important;
+}
+.wallet-adapter-modal-list-more svg {
+  fill: var(--muted) !important;
+}
+/* Close button */
+.wallet-adapter-modal-button-close {
+  background: var(--surface-hover) !important;
+  border-radius: 8px !important;
+  transition: background-color 120ms ease-out !important;
+}
+.wallet-adapter-modal-button-close:hover {
+  background: var(--card-border) !important;
+}
+.wallet-adapter-modal-button-close svg {
+  fill: var(--muted) !important;
 }
 
 /* --- Scrollbar: subtle, Linear-style --- */
@@ -179,6 +230,15 @@ body {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.09);
 }
+/* Modal card: OPAQUE surface (not the translucent .surface-card glass) so
+   content behind a dialog doesn't bleed through and hurt readability (#2). */
+.modal-card {
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    0 18px 40px -12px rgba(0, 0, 0, 0.7);
+}
 
 /* Ghost button, DESIGN.md §4 Ghost Button spec. */
 .btn-ghost {
@@ -191,6 +251,30 @@ body {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.14);
 }
+
+/* Small square icon button that turns danger-red on hover. CSS :hover (not JS
+   onMouseEnter) so a parent re-render — e.g. the deals board's poll — can't
+   clobber the hover style mid-hover and make it flicker. */
+.icon-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--card-border);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 120ms ease-out, border-color 120ms ease-out, background-color 120ms ease-out;
+}
+.icon-btn-danger:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.08);
+}
+.icon-btn-danger:disabled { opacity: 0.5; cursor: default; }
 
 /* Primary brand button, DESIGN.md §4 Primary spec. */
 .btn-primary {

@@ -13,7 +13,8 @@
 // writes (optimistic + sync patches) always apply, bypassing the guard.
 import { useCallback } from "react";
 import useSWR from "swr";
-import { apiFetch, apiFetchSafe } from "@/lib/api-client";
+import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
+import { purgeDealLocally } from "@/lib/deals-store";
 import type { SupabaseDeal } from "@/lib/types";
 import { POLL_MS } from "@/lib/swr";
 
@@ -59,16 +60,22 @@ async function fetchDeal([, dealId]: readonly [string, string]): Promise<DealRes
     const data = await apiFetch<{ deal?: SupabaseDeal; error?: string }>(
       `/api/deals/${dealId}`
     );
-    if (data.error || !data.deal) {
-      const local = readSessionDeal(dealId);
-      if (local) {
-        retryMirrorSync(local);
-        return { deal: local };
-      }
-      return { deal: null, error: data.error ?? "Deal not found" };
+    if (data.deal) return { deal: data.deal };
+    // 200 with no deal (unusual) — treat like a soft not-found without resurrecting.
+    return { deal: null, error: data.error ?? "Deal not found" };
+  } catch (err) {
+    // A definitive 404 means the server has NO such deal — it was never synced,
+    // or (the bug) the counterparty deleted it. Either way, do NOT re-POST a
+    // stale sessionStorage copy back to Supabase (that recreated deleted deals
+    // on the other party's device). Purge our local copy so it can't resurrect
+    // and stops showing here.
+    if (err instanceof ApiError && err.status === 404) {
+      purgeDealLocally(dealId, readSessionDeal(dealId)?.buyer_wallet ?? null);
+      return { deal: null, error: "Deal not found" };
     }
-    return { deal: data.deal };
-  } catch {
+    // Transient/network error (couldn't reach the server): fall back to the
+    // local copy and best-effort re-sync, so a freshly-created deal still loads
+    // on a flaky connection. This path never fires for a real 404.
     const local = readSessionDeal(dealId);
     if (local) {
       retryMirrorSync(local);

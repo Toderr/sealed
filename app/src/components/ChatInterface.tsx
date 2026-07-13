@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
-import { Paperclip, Send, Sparkles } from "lucide-react";
+import { Paperclip, Send, Sparkles, Settings } from "lucide-react";
 import { ChatMessage, DealParams, formatUsdc } from "@/lib/types";
 import { SealedMark } from "@/components/SealedLogo";
 import { loadProfileFromStorage } from "@/lib/profile-store";
+import { isAgentConfigError } from "@/lib/agent-config-error";
 import { dispatchLlm, type LlmMessage } from "@/lib/llm-dispatch";
 import { apiFetch } from "@/lib/api-client";
 import { ContractWizard } from "@/components/ContractWizard";
@@ -129,6 +131,9 @@ export default function ChatInterface({
   const [showWizard, setShowWizard] = useState(false);
   const [wizardPrefill, setWizardPrefill] = useState<WizardPrefill | undefined>();
   const [wizardStartStep, setWizardStartStep] = useState<string | undefined>();
+  // When the agent isn't configured (no key / rejected key), we surface a modal
+  // pointing to Agent Setup instead of a cryptic "Error: …" chat bubble.
+  const [agentConfigError, setAgentConfigError] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { connected, publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? undefined;
@@ -242,13 +247,19 @@ export default function ChatInterface({
         setShowWizard(true);
       }
     } catch (err) {
-      const errorMsg: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: `Error: ${err instanceof Error ? err.message : "Something went wrong"}. Please try again.`,
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
+      // Agent-not-configured → a modal pointing to Agent Setup, not a cryptic
+      // "Error: No LLM provider configured" bubble the user can't act on.
+      if (isAgentConfigError(err)) {
+        setAgentConfigError(true);
+      } else {
+        const errorMsg: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `Error: ${err instanceof Error ? err.message : "Something went wrong"}. Please try again.`,
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, errorMsg]);
+      }
     } finally {
       setLoading(false);
     }
@@ -533,6 +544,36 @@ export default function ChatInterface({
           </button>
         </div>
       </div>
+      )}
+
+      {agentConfigError && (
+        <div
+          onClick={() => setAgentConfigError(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16 }}
+        >
+          <div onClick={(e) => e.stopPropagation()} className="modal-card" style={{ width: "100%", maxWidth: 440, borderRadius: 14, padding: 24 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: 10, background: "rgba(113,112,255,0.12)", color: "var(--accent)", marginBottom: 14 }}>
+              <Settings size={20} aria-hidden="true" />
+            </div>
+            <p style={{ fontSize: 16, fontWeight: 600, color: "var(--primary)", margin: "0 0 6px" }}>Set up your AI agent first</p>
+            <p style={{ fontSize: 13.5, color: "var(--muted)", margin: "0 0 20px", lineHeight: 1.55 }}>
+              Your agent needs an AI provider before it can draft deals. Add your own API key (OpenAI, Anthropic, Groq, and more) on the Agent Setup page — it takes a minute.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn-ghost" onClick={() => setAgentConfigError(false)} style={{ height: 40, borderRadius: 9, fontSize: 13, flex: "0 0 auto", padding: "0 16px" }}>
+                Not now
+              </button>
+              <Link
+                href={wallet ? `/profile/${wallet}?tab=agent` : "/profile"}
+                className="btn-primary"
+                style={{ height: 40, borderRadius: 9, fontSize: 13, flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontWeight: 510, textDecoration: "none" }}
+              >
+                <Settings size={14} aria-hidden="true" />
+                Go to Agent Setup
+              </Link>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

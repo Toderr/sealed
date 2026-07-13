@@ -1,11 +1,12 @@
 "use client";
 
-import { Suspense, useMemo, useState, useEffect } from "react";
+import { Suspense, useMemo, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { SealedMark } from "@/components/SealedLogo";
 import { NotificationMenu } from "@/components/NotificationMenu";
+import { useToast } from "@/components/Toast";
 import {
   useProfileStore,
   encodeInvite,
@@ -14,11 +15,15 @@ import {
   X402_TOP_UP_AMOUNTS,
   type LLMProvider,
 } from "@/lib/profile-store";
-import { useDealsStore } from "@/lib/deals-store";
+import { useDealsStore, purgeDealLocally } from "@/lib/deals-store";
+import { POLL_MS } from "@/lib/swr";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
+import { FEATURE_X402, FEATURE_GET_VERIFIED } from "@/lib/env";
+import { LLM_PROVIDERS } from "@/lib/llm-providers";
 import type { Deal, AgentTemplate, NotificationPrefs, PublicProfile } from "@/lib/types";
 
 import WalletMultiButton from "@/components/AppWalletButton";
+import WalletMenu from "@/components/WalletMenu";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
 
 type ProfileMilestone = {
@@ -219,11 +224,11 @@ async function fetchCounterpartyProfileMap(wallets: string[]) {
   return Object.fromEntries(entries.filter(Boolean) as Array<readonly [string, CounterpartyProfile]>);
 }
 
-type SelfProfileTab = "overview" | "agent" | "friends" | "settings";
+type SelfProfileTab = "overview" | "agent" | "reviews" | "friends" | "settings";
 
 function readRequestedTab(searchParams: { get(name: string): string | null }): SelfProfileTab {
   const tab = searchParams.get("tab");
-  return tab === "agent" || tab === "friends" || tab === "settings" ? tab : "overview";
+  return tab === "agent" || tab === "reviews" || tab === "friends" || tab === "settings" ? tab : "overview";
 }
 
 export function SelfProfilePage() {
@@ -243,6 +248,17 @@ export function SelfProfilePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<SelfProfileTab>(() => readRequestedTab(searchParams));
+  // Select a tab AND persist it to ?tab=… so a refresh keeps it (clicking a tab
+  // button previously only set state, so refresh reset to Overview).
+  const selectTab = useCallback((tab: SelfProfileTab) => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (tab === "overview") url.searchParams.delete("tab");
+      else url.searchParams.set("tab", tab);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, []);
   const [mirrorDeals, setMirrorDeals] = useState<ProfileDealRowData[]>([]);
   const [sessionDeals, setSessionDeals] = useState<ProfileDealRowData[]>([]);
   const [publicProfile, setPublicProfile] = useState<PublicProfile | null>(null);
@@ -250,6 +266,35 @@ export function SelfProfilePageContent() {
   const [dealSearch, setDealSearch] = useState("");
   const [dealFilter, setDealFilter] = useState<DealFilter>("all");
   const [dealSort, setDealSort] = useState<DealSort>("newest");
+  const toast = useToast();
+  // Delete flow — pre-escrow deals only, with a confirm modal (mirrors /app).
+  const [deleteTarget, setDeleteTarget] = useState<ProfileDealRowData | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget || !wallet) return;
+    setDeleting(true);
+    try {
+      await apiFetch(`/api/deals/${encodeURIComponent(deleteTarget.dealId)}`, {
+        method: "DELETE",
+        wallet,
+      });
+      // Clear every client copy so it doesn't reappear on refresh or via link.
+      purgeDealLocally(deleteTarget.dealId, wallet);
+      setMirrorDeals((prev) => prev.filter((d) => d.dealId !== deleteTarget.dealId));
+      setSessionDeals((prev) => prev.filter((d) => d.dealId !== deleteTarget.dealId));
+      toast.show({ variant: "success", title: "Deal deleted" });
+      setDeleteTarget(null);
+    } catch (e) {
+      toast.show({
+        variant: "error",
+        title: "Couldn't delete",
+        description: e instanceof ApiError ? e.message : "Please try again.",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const localDeals = useMemo(() => deals.map(fromLocalDeal), [deals]);
   const profileDeals = useMemo(
@@ -295,12 +340,15 @@ export function SelfProfilePageContent() {
     setActiveTab(readRequestedTab(searchParams));
   }, [searchParams]);
 
+  // Depend on the boolean, not the `profile` object (a fresh reference every
+  // render), so this doesn't re-fire on every render like /app and /profile.
+  const onboardingComplete = profile?.onboardingComplete ?? false;
   useEffect(() => {
     if (!loaded || !wallet) return;
-    if (!profile?.onboardingComplete) {
+    if (!onboardingComplete) {
       router.replace("/onboarding");
     }
-  }, [loaded, wallet, profile, router]);
+  }, [loaded, wallet, onboardingComplete, router]);
 
   useEffect(() => {
     let cancelled = false;
@@ -313,17 +361,22 @@ export function SelfProfilePageContent() {
 
     setSessionDeals(readSessionProfileDeals(wallet));
 
-    apiFetch<{ deals?: MirrorDeal[] }>("/api/deals/mirror", { wallet })
-      .then((data) => {
-        if (cancelled) return;
-        setMirrorDeals(((data.deals ?? []) as MirrorDeal[]).map(fromMirrorDeal));
-      })
-      .catch(() => {
-        if (!cancelled) setMirrorDeals([]);
-      });
+    // Poll the mirror so a counterparty's join/agree/fund/status change shows up
+    // here without a manual refresh — matches the deal/negotiate pages' 4s sync,
+    // which the profile list previously lacked (S7). apiFetchSafe never throws,
+    // so a transient failure keeps the last-good list instead of clearing it.
+    const load = () =>
+      apiFetchSafe<{ deals?: MirrorDeal[] }>("/api/deals/mirror", { wallet }, { deals: [] }).then(
+        (data) => {
+          if (!cancelled) setMirrorDeals(((data.deals ?? []) as MirrorDeal[]).map(fromMirrorDeal));
+        },
+      );
+    load();
+    const interval = setInterval(load, POLL_MS);
 
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, [wallet]);
 
@@ -391,10 +444,11 @@ export function SelfProfilePageContent() {
 
   const activeDealCount = profileDeals.filter(isProfileDealActive).length;
   const sealedDealCount = profileDeals.filter(isProfileDealSealed).length;
-  const totalVolumeUsdc = profileDeals.reduce(
-    (sum, d) => sum + d.totalAmountUsdc,
-    0
-  );
+  // Volume counts only SEALED (completed) deals — an awaiting/in-progress deal
+  // isn't realized value and shouldn't inflate the headline number (bug #9).
+  const totalVolumeUsdc = profileDeals
+    .filter(isProfileDealSealed)
+    .reduce((sum, d) => sum + d.totalAmountUsdc, 0);
   const averageRating = publicProfile?.avg_rating ?? 0;
 
   const initials = profile.name
@@ -541,9 +595,9 @@ export function SelfProfilePageContent() {
                   )}
                 </div>
 
-                {/* Edit button */}
+                {/* Edit button → dedicated identity-edit page, not the onboarding wizard (N10) */}
                 <Link
-                  href="/onboarding?edit=1"
+                  href="/profile/edit"
                   className="btn-ghost flex items-center justify-center gap-1.5 h-9 rounded-md text-[13px] w-full"
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -563,10 +617,10 @@ export function SelfProfilePageContent() {
 
               {/* Tab bar */}
               <div className="flex gap-0.5 border-b border-card-border-subtle">
-                {(["overview", "agent", "friends", "settings"] as const).map((tab) => (
+                {(["overview", "agent", "reviews", "friends", "settings"] as const).map((tab) => (
                   <button
                     key={tab}
-                    onClick={() => setActiveTab(tab)}
+                    onClick={() => selectTab(tab)}
                     className={`px-4 h-9 text-[13px] rounded-t-md transition-colors capitalize ${
                       activeTab === tab
                         ? "text-primary border-b-2 border-accent -mb-px"
@@ -591,6 +645,7 @@ export function SelfProfilePageContent() {
                       label="Avg rating"
                       value={averageRating > 0 ? averageRating.toFixed(1) : "-"}
                       star={averageRating > 0}
+                      onClick={averageRating > 0 ? () => selectTab("reviews") : undefined}
                     />
                     <StatCard
                       label="Volume (USDC)"
@@ -654,6 +709,7 @@ export function SelfProfilePageContent() {
                                       ]
                                     : null
                                 }
+                                onRequestDelete={setDeleteTarget}
                               />
                             ))}
                           </div>
@@ -667,6 +723,9 @@ export function SelfProfilePageContent() {
               {/* Agent Setup tab */}
               {activeTab === "agent" && <AgentSetupTab wallet={wallet} />}
 
+              {/* Reviews tab (N7) — your own reviews, reachable from your profile */}
+              {activeTab === "reviews" && <SelfReviewsTab wallet={wallet} />}
+
               {/* Friends tab */}
               {activeTab === "friends" && <FriendsTab wallet={wallet} />}
 
@@ -676,6 +735,31 @@ export function SelfProfilePageContent() {
           </div>
         </div>
       </div>
+
+      {/* Delete confirmation — pre-escrow deals only, matches the board. */}
+      {deleteTarget && (
+        <div
+          onClick={() => { if (!deleting) setDeleteTarget(null); }}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16 }}
+        >
+          <div onClick={(e) => e.stopPropagation()} className="modal-card" style={{ width: "100%", maxWidth: 420, borderRadius: 14, padding: 22 }}>
+            <p style={{ fontSize: 15, fontWeight: 600, color: "var(--primary)", margin: "0 0 6px" }}>Delete this deal?</p>
+            <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 18px", lineHeight: 1.5 }}>
+              <b style={{ color: "var(--foreground)" }}>{deleteTarget.title || deleteTarget.dealId}</b> will be permanently removed. This deal has no escrow yet, so no funds are affected. This can&apos;t be undone.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn-ghost" disabled={deleting} onClick={() => setDeleteTarget(null)} style={{ height: 38, borderRadius: 8, fontSize: 13, flex: 1 }}>Cancel</button>
+              <button
+                disabled={deleting}
+                onClick={handleConfirmDelete}
+                style={{ height: 38, borderRadius: 8, fontSize: 13, flex: 1, background: "var(--danger)", color: "#fff", border: "none", fontWeight: 510, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.6 : 1 }}
+              >
+                {deleting ? "Deleting…" : "Delete deal"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Shell>
   );
 }
@@ -718,9 +802,8 @@ function ProfileHeader({ activeTab }: { activeTab: SelfProfileTab }) {
           <NavLink href="/app">
             Deals
           </NavLink>
-          <NavLink href="/app?compose=1">
-            New Deal
-          </NavLink>
+          {/* "New Deal" removed from the nav here — the profile deals section
+              already has a "+ New deal" button, so this was redundant (#7). */}
           <NavLink href={agentHref} active={activeTab === "agent"}>
             Agent
           </NavLink>
@@ -731,7 +814,7 @@ function ProfileHeader({ activeTab }: { activeTab: SelfProfileTab }) {
       </div>
       <div className="flex items-center gap-2">
         <NotificationMenu wallet={wallet} />
-        <WalletMultiButton />
+        {wallet ? <WalletMenu /> : <WalletMultiButton />}
       </div>
     </header>
   );
@@ -806,7 +889,7 @@ function DealListControls({
           <select
             value={filter}
             onChange={(e) => onFilterChange(e.target.value as DealFilter)}
-            className={`${controlClass} w-full cursor-pointer`}
+            className={`${controlClass} w-full cursor-pointer pr-9`}
           >
             {DEAL_FILTERS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -822,7 +905,7 @@ function DealListControls({
           <select
             value={sort}
             onChange={(e) => onSortChange(e.target.value as DealSort)}
-            className={`${controlClass} w-full cursor-pointer`}
+            className={`${controlClass} w-full cursor-pointer pr-9`}
           >
             {DEAL_SORTS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -847,12 +930,25 @@ function VerifiedAccountBanner() {
           Add account verification to raise trust signals on your profile and unlock more agent templates.
         </p>
       </div>
-      <Link
-        href="/profile/verify"
-        className="btn-primary h-10 px-4 rounded-md text-[13px] flex items-center justify-center flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
-      >
-        Get verified
-      </Link>
+      {/* "Get verified" is gated behind a "coming soon" flag (#18) — it will
+          become a paid feature. Disabled state until enabled. */}
+      {FEATURE_GET_VERIFIED ? (
+        <Link
+          href="/profile/verify"
+          className="btn-primary h-10 px-4 rounded-md text-[13px] flex items-center justify-center flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+        >
+          Get verified
+        </Link>
+      ) : (
+        <button
+          type="button"
+          disabled
+          title="Coming soon"
+          className="btn-primary h-10 px-4 rounded-md text-[13px] flex items-center justify-center flex-shrink-0 opacity-50 cursor-not-allowed"
+        >
+          Verification · Coming soon
+        </button>
+      )}
     </div>
   );
 }
@@ -862,14 +958,16 @@ function StatCard({
   value,
   accent,
   star,
+  onClick,
 }: {
   label: string;
   value: number | string;
   accent?: boolean;
   star?: boolean;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="surface-card rounded-xl p-4">
+  const body = (
+    <>
       <p className="text-[11px] text-muted mb-1" style={{ fontWeight: 510 }}>
         {label}
       </p>
@@ -886,8 +984,23 @@ function StatCard({
           </span>
         )}
       </div>
-    </div>
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title="View reviews"
+        className="surface-card rounded-xl p-4 text-left transition-colors hover:border-accent/60 cursor-pointer"
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return <div className="surface-card rounded-xl p-4">{body}</div>;
 }
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
@@ -910,19 +1023,25 @@ function localDealHref(deal: ProfileDealRowData) {
     : `/deals/${deal.dealId}`;
 }
 
+const PRE_ESCROW_DEAL_STATUSES = ["draft", "seller-ready", "seller-agreed", "proposed", "escalated"];
+
 function DealRow({
   deal,
   profile,
   wallet,
   counterpartyProfile,
+  onRequestDelete,
 }: {
   deal: ProfileDealRowData;
   profile: { name: string; bio: string };
   wallet: string;
   counterpartyProfile?: CounterpartyProfile | null;
+  onRequestDelete?: (deal: ProfileDealRowData) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const statusKey = profileDealStatusKey(deal);
+  // Deletable only before escrow exists — mirrors the board card + server guard.
+  const canDelete = !!onRequestDelete && PRE_ESCROW_DEAL_STATUSES.includes(statusKey);
   const counterpartyWallet = getProfileDealCounterpartyWallet(deal, wallet);
   const hasCounterparty = Boolean(counterpartyWallet);
   const status =
@@ -980,7 +1099,7 @@ function DealRow({
           ${deal.totalAmountUsdc.toLocaleString()} USDC
         </span>
       </Link>
-      <div className="flex items-center gap-3 flex-shrink-0">
+      <div className="flex items-center gap-2 flex-shrink-0">
         {needsCounterparty && (
           <button
             type="button"
@@ -993,6 +1112,19 @@ function DealRow({
             title="Copy invite link"
           >
             {copied ? "Copied" : "Invite"}
+          </button>
+        )}
+        {canDelete && (
+          <button
+            type="button"
+            className="icon-btn-danger"
+            title="Delete deal"
+            aria-label="Delete deal"
+            onClick={() => onRequestDelete!(deal)}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
           </button>
         )}
       </div>
@@ -1084,7 +1216,8 @@ function SocialRow({
   if (links.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2">
+    // Centered to match the centered profile card layout (#17).
+    <div className="flex flex-wrap gap-2 justify-center">
       {links.map((l) => (
         <a
           key={l.key}
@@ -1114,21 +1247,13 @@ const STYLE_LABELS: Record<string, string> = {
 
 type LlmMode = "own-key" | "x402";
 
-const LLM_PROVIDERS: { id: LLMProvider; label: string; hint: string }[] = [
-  { id: "anthropic", label: "Anthropic", hint: "sk-ant-..." },
-  { id: "openai", label: "OpenAI", hint: "sk-..." },
-  { id: "groq", label: "Groq", hint: "gsk_..." },
-  { id: "gemini", label: "Gemini", hint: "AIza..." },
-  { id: "openrouter", label: "OpenRouter", hint: "sk-or-..." },
-  { id: "deepseek", label: "DeepSeek", hint: "sk-..." },
-];
-
 function isLlmProvider(value: string | undefined): value is LLMProvider {
   return Boolean(value && value in LLM_MODELS);
 }
 
 function AiProviderPanel({ wallet }: { wallet: string }) {
   const { profile, updateProfile } = useProfileStore(wallet);
+  const toast = useToast();
   const [llmMode, setLlmMode] = useState<LlmMode>("own-key");
   const [llmProvider, setLlmProvider] = useState<LLMProvider>("anthropic");
   const [llmModel, setLlmModel] = useState("claude-sonnet-4-6");
@@ -1149,7 +1274,9 @@ function AiProviderPanel({ wallet }: { wallet: string }) {
       setLlmModel(profile.llmConfig.model || LLM_MODELS[provider][0]);
       setLlmKey(profile.llmConfig.apiKey);
     } else if (profile?.llmConfig?.mode === "x402") {
-      setLlmMode("x402");
+      // x402 is gated (#10) — fall back to own-key when the feature is off so a
+      // previously-saved x402 config doesn't select a disabled tab.
+      setLlmMode(FEATURE_X402 ? "x402" : "own-key");
       setX402Model(profile.llmConfig.model);
     }
   }, [profile]);
@@ -1170,6 +1297,7 @@ function AiProviderPanel({ wallet }: { wallet: string }) {
     });
     setLlmSaved(true);
     setTimeout(() => setLlmSaved(false), 2000);
+    toast.show({ variant: "success", title: "Agent settings saved" });
   }
 
   async function handleX402TopUp() {
@@ -1206,21 +1334,29 @@ function AiProviderPanel({ wallet }: { wallet: string }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2" role="group" aria-label="AI provider mode">
-        {(["own-key", "x402"] as const).map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => setLlmMode(mode)}
-            className={`h-9 rounded-md text-[12px] border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
-              llmMode === mode
-                ? "border-accent bg-accent/10 text-accent"
-                : "border-card-border bg-surface text-muted hover:text-primary"
-            }`}
-            style={{ fontWeight: 510 }}
-          >
-            {mode === "own-key" ? "Own API Key" : "Buy via x402"}
-          </button>
-        ))}
+        {(["own-key", "x402"] as const).map((mode) => {
+          // x402 is gated behind a "coming soon" flag (#10). When off, the tab is
+          // disabled and labeled Soon, and can't be selected.
+          const disabled = mode === "x402" && !FEATURE_X402;
+          const active = llmMode === mode && !disabled;
+          return (
+            <button
+              key={mode}
+              type="button"
+              disabled={disabled}
+              onClick={() => !disabled && setLlmMode(mode)}
+              className={`h-9 rounded-md text-[12px] border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
+                active
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-card-border bg-surface text-muted hover:text-primary"
+              } ${disabled ? "opacity-50 cursor-not-allowed hover:text-muted" : ""}`}
+              style={{ fontWeight: 510 }}
+              title={disabled ? "Coming soon" : undefined}
+            >
+              {mode === "own-key" ? "Own API Key" : disabled ? "Buy via x402 · Soon" : "Buy via x402"}
+            </button>
+          );
+        })}
       </div>
 
       {llmMode === "own-key" ? (
@@ -1262,7 +1398,7 @@ function AiProviderPanel({ wallet }: { wallet: string }) {
               id="agent-llm-model"
               value={llmModel}
               onChange={(e) => setLlmModel(e.target.value)}
-              className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60 transition-colors cursor-pointer"
+              className="w-full h-10 rounded-md bg-surface border border-card-border px-3 pr-9 text-[13px] text-primary outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60 transition-colors cursor-pointer"
             >
               {LLM_MODELS[llmProvider].map((model) => (
                 <option key={model} value={model}>
@@ -1347,7 +1483,7 @@ function AiProviderPanel({ wallet }: { wallet: string }) {
               id="agent-x402-model"
               value={x402Model}
               onChange={(e) => setX402Model(e.target.value)}
-              className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60 transition-colors cursor-pointer"
+              className="w-full h-10 rounded-md bg-surface border border-card-border px-3 pr-9 text-[13px] text-primary outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/60 transition-colors cursor-pointer"
             >
               {X402_MODELS.map((model) => (
                 <option key={model.id} value={model.id}>
@@ -1508,7 +1644,7 @@ function AgentSetupTab({ wallet }: { wallet: string }) {
               : `Using ${templates.length} of 1 template. Get verified to unlock 10.`}
           </p>
         </div>
-        {limit < 10 && (
+        {limit < 10 && FEATURE_GET_VERIFIED && (
           <Link
             href="/profile/verify"
             className="btn-ghost h-8 px-3 rounded-md text-[12px] flex-shrink-0"
@@ -1596,7 +1732,7 @@ function AgentSetupTab({ wallet }: { wallet: string }) {
               <select
                 value={form.negotiation_style ?? "flexible"}
                 onChange={(e) => setForm({ ...form, negotiation_style: e.target.value as AgentTemplate["negotiation_style"] })}
-                className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
+                className="w-full h-10 rounded-md bg-surface border border-card-border px-3 pr-9 text-[13px] text-primary outline-none focus:border-accent transition-colors cursor-pointer"
               >
                 <option value="firm">Firm — hold your ground</option>
                 <option value="flexible">Flexible — balanced trade-offs</option>
@@ -1679,12 +1815,146 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+/* Accessible toggle switch (N15). A real role=switch button with a focus ring;
+   the knob geometry is exact — 44px track, 18px knob, 3px inset → 20px travel. */
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={(e) => { e.preventDefault(); onChange(!checked); }}
+      className={`relative inline-flex items-center shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-panel ${
+        checked ? "bg-accent" : "bg-surface-hover border border-card-border"
+      }`}
+      style={{ width: 44, height: 24 }}
+    >
+      <span
+        className="inline-block rounded-full bg-white shadow-sm transition-transform"
+        style={{ width: 18, height: 18, transform: `translateX(${checked ? 23 : 3}px)` }}
+      />
+    </button>
+  );
+}
+
+/* ── Reviews Tab (N7) — your own reviews, the ones behind your Avg rating ──── */
+
+type SelfReviewItem = {
+  id: string;
+  stars: number;
+  review_text: string;
+  submitted_at: string;
+  deal_id: string;
+  deal_title: string;
+  reviewer: { wallet: string; handle: string | null; display_name: string | null };
+};
+
+function ReviewStars({ value }: { value: number }) {
+  const filled = Math.max(0, Math.min(5, value));
+  return (
+    <span style={{ color: "var(--accent)", fontSize: 13, letterSpacing: 1 }} aria-label={`${value} of 5 stars`}>
+      {"★".repeat(filled)}
+      <span style={{ color: "var(--card-border)" }}>{"★".repeat(5 - filled)}</span>
+    </span>
+  );
+}
+
+function SelfReviewsTab({ wallet }: { wallet: string }) {
+  const [reviews, setReviews] = useState<SelfReviewItem[] | null>(null);
+
+  useEffect(() => {
+    if (!wallet) return;
+    let cancelled = false;
+    apiFetchSafe<{ reviews?: SelfReviewItem[] }>(
+      `/api/users/${encodeURIComponent(wallet)}/reviews`,
+      {},
+      { reviews: [] },
+    ).then((data) => {
+      if (!cancelled) setReviews(data.reviews ?? []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet]);
+
+  if (reviews === null) {
+    return (
+      <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
+        Loading reviews…
+      </div>
+    );
+  }
+
+  if (reviews.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
+        No reviews yet. Counterparties can rate you once a deal completes.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {reviews.map((r) => {
+        const reviewerName =
+          r.reviewer.display_name?.trim() ||
+          atDisplayHandle(r.reviewer.handle) ||
+          `${r.reviewer.wallet.slice(0, 4)}…${r.reviewer.wallet.slice(-4)}`;
+        const date = r.submitted_at ? new Date(r.submitted_at).toLocaleDateString() : "";
+        return (
+          <div key={r.id} className="surface-card" style={{ borderRadius: 12, padding: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                marginBottom: r.review_text ? 8 : 0,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <ReviewStars value={r.stars} />
+                <span
+                  style={{
+                    fontSize: 13,
+                    color: "var(--primary)",
+                    fontWeight: 510,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {reviewerName}
+                </span>
+              </div>
+              <span style={{ fontSize: 11, color: "var(--subtle)", flexShrink: 0 }}>{date}</span>
+            </div>
+            {r.review_text && (
+              <p style={{ fontSize: 13, color: "var(--foreground)", margin: "0 0 8px", lineHeight: 1.55 }}>
+                {r.review_text}
+              </p>
+            )}
+            <Link
+              href={`/deals/${encodeURIComponent(r.deal_id)}`}
+              style={{ fontSize: 11.5, color: "var(--muted)", textDecoration: "none" }}
+            >
+              on “{r.deal_title}” →
+            </Link>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── Settings Tab ─────────────────────────────────────────────────────────── */
 
 function SettingsTab({ wallet }: { wallet: string }) {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
   const [emailVerified, setEmailVerified] = useState(false);
   const [notifyPrefs, setNotifyPrefs] = useState<NotificationPrefs>({
     deal_review_needed: true,
@@ -1710,18 +1980,24 @@ function SettingsTab({ wallet }: { wallet: string }) {
   }, [wallet]);
 
   async function sendOtp() {
+    setOtpError(null);
     try {
       await apiFetch("/api/users/email", { method: "POST", body: { wallet, email } });
-      setOtpSent(true);
-    } catch { /* ignore */ }
+      setOtpSent(true); // only advance on success — else the user waits for an email that never comes
+    } catch (e) {
+      setOtpError(e instanceof ApiError ? e.message : "Couldn't send the code. Check the email and try again.");
+    }
   }
 
   async function verifyOtp() {
+    setOtpError(null);
     try {
       await apiFetch("/api/users/email/verify", { method: "POST", body: { wallet, otp } });
       setEmailVerified(true);
       setOtpSent(false);
-    } catch { /* ignore */ }
+    } catch (e) {
+      setOtpError(e instanceof ApiError ? e.message : "That code didn't match. Please try again.");
+    }
   }
 
   async function savePrefs() {
@@ -1800,6 +2076,9 @@ function SettingsTab({ wallet }: { wallet: string }) {
               </button>
             </div>
           )}
+          {otpError && (
+            <p className="text-[12px] text-danger mt-2">{otpError}</p>
+          )}
         </div>
       </div>
 
@@ -1823,24 +2102,11 @@ function SettingsTab({ wallet }: { wallet: string }) {
           {(Object.keys(NOTIFY_LABELS) as (keyof NotificationPrefs)[]).map((key) => (
             <label key={key} className="flex items-center justify-between gap-4 cursor-pointer">
               <span className="text-[13px] text-foreground">{NOTIFY_LABELS[key]}</span>
-              <div className="relative">
-                <input
-                  type="checkbox"
-                  checked={notifyPrefs[key]}
-                  onChange={(e) => setNotifyPrefs({ ...notifyPrefs, [key]: e.target.checked })}
-                  className="sr-only"
-                />
-                <div
-                  onClick={() => setNotifyPrefs({ ...notifyPrefs, [key]: !notifyPrefs[key] })}
-                  className={`w-10 h-5 rounded-full cursor-pointer transition-colors ${
-                    notifyPrefs[key] ? "bg-accent" : "bg-surface-hover"
-                  }`}
-                >
-                  <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform mt-0.5 ${
-                    notifyPrefs[key] ? "translate-x-5 ml-0.5" : "translate-x-0.5"
-                  }`} />
-                </div>
-              </div>
+              <Toggle
+                checked={notifyPrefs[key]}
+                onChange={(v) => setNotifyPrefs({ ...notifyPrefs, [key]: v })}
+                label={NOTIFY_LABELS[key]}
+              />
             </label>
           ))}
         </div>
@@ -1906,7 +2172,13 @@ function FriendsTab({ wallet }: { wallet: string }) {
         wallet,
         body: { friendHandle },
       });
-      setAddMsg(data.status === "accepted" ? "Now friends!" : "Request sent!");
+      setAddMsg(
+        data.status === "already_friends"
+          ? "You're already friends."
+          : data.status === "accepted"
+          ? "Now friends!"
+          : "Request sent!"
+      );
       setAddUsername("");
       loadFriends();
     } catch (e) {

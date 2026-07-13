@@ -27,3 +27,17 @@ if (
     "NEXT_PUBLIC_MOCK_CHAIN / NEXT_PUBLIC_MOCK_DATA must not be enabled in production builds."
   );
 }
+
+// ── "Coming soon" feature flags ───────────────────────────────────────────────
+// Features that are built but not ready for general availability. Default OFF
+// (rendered as a disabled "Coming soon" state); flip the env var to "true" to
+// enable — e.g. on in staging, off in production. See tickets #10 (x402) / #18
+// (Get Verified).
+
+// x402 pay-as-you-go LLM billing. Off by default → users default to own API key.
+export const FEATURE_X402 = process.env.NEXT_PUBLIC_FEATURE_X402 === "true";
+
+// Paid identity verification ("Get verified"). Off by default until the paid
+// flow is built — don't accept live verification submissions in prod meanwhile.
+export const FEATURE_GET_VERIFIED =
+  process.env.NEXT_PUBLIC_FEATURE_GET_VERIFIED === "true";

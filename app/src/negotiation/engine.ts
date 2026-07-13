@@ -16,7 +16,7 @@ import type {
 } from "./types";
 import { extractJson } from "@/lib/extract-json";
 
-type LlmCaller = (system: string, userMessage: string) => Promise<string>;
+export type LlmCaller = (system: string, userMessage: string) => Promise<string>;
 
 interface AgentTurnOutput {
   action: RevisionAction;
@@ -81,7 +81,10 @@ export async function runNegotiation(
     renegotiationRequest?: string;
   },
   buyerCallLlm: LlmCaller,
-  sellerCallLlm?: LlmCaller  // falls back to buyerCallLlm if not provided
+  sellerCallLlm?: LlmCaller,  // falls back to buyerCallLlm if not provided
+  // Fired after each revision is recorded (incl. the round-0 seed), so callers
+  // can stream the negotiation turn-by-turn instead of waiting for the whole run.
+  onRevision?: (revision: Revision) => void,
 ): Promise<Proposal> {
   const now = () => Math.floor(Date.now() / 1000);
   const maxRounds = Math.min(
@@ -92,7 +95,7 @@ export async function runNegotiation(
   const revisions: Revision[] = [];
 
   // Seed: buyer's initial offer. Not an LLM turn, but recorded for transcript.
-  revisions.push({
+  const seed: Revision = {
     round: 0,
     by: AgentRole.Structurer,
     onBehalfOf: "buyer",
@@ -102,7 +105,9 @@ export async function runNegotiation(
     concessions: [],
     asks: ["full deal as described"],
     timestamp: now(),
-  });
+  };
+  revisions.push(seed);
+  onRevision?.(seed);
 
   let latestProposal = params.initialTerms;
   let finalAction: RevisionAction | null = null;
@@ -147,7 +152,7 @@ export async function runNegotiation(
       );
     }
 
-    revisions.push({
+    const revision: Revision = {
       round,
       by: AgentRole.Negotiator,
       onBehalfOf: currentSide,
@@ -157,7 +162,9 @@ export async function runNegotiation(
       concessions: turn.concessions ?? [],
       asks: turn.asks ?? [],
       timestamp: now(),
-    });
+    };
+    revisions.push(revision);
+    onRevision?.(revision);
 
     latestProposal = turn.proposedTerms;
 
@@ -227,6 +234,18 @@ Produce the summary JSON now.`;
   try {
     return extractJson<NegotiationSummary>(raw, "agent response");
   } catch {
+    // Retry once, nudging the model to emit ONLY valid JSON, before giving up.
+    // A single format hiccup shouldn't force a "renegotiate" recommendation on
+    // a negotiation that actually concluded (bug #11).
+    try {
+      const retry = await callLlm(
+        `${SUMMARIZER_PROMPT}\n\nIMPORTANT: Respond with ONLY the raw JSON object — no prose, no markdown code fences.`,
+        userMessage
+      );
+      return extractJson<NegotiationSummary>(retry, "agent response");
+    } catch {
+      // ignore and fall through to the minimal summary
+    }
     // Fall back to a minimal summary if the model misbehaves. Better UX than
     // crashing the whole negotiation on a summarizer format error.
     return {

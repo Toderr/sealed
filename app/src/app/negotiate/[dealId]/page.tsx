@@ -9,8 +9,9 @@ import { SealedMark } from "@/components/SealedLogo";
 import { NotificationMenu } from "@/components/NotificationMenu";
 import { useBusinessMemory } from "@/memory/localstorage-store";
 import { getLlmHeaders } from "@/lib/llm-headers";
+import { isAgentConfigError } from "@/lib/agent-config-error";
 import { useProfileStore, encodeInvite } from "@/lib/profile-store";
-import { useDealsStore } from "@/lib/deals-store";
+import { useDealsStore, clearDealJoinSignals } from "@/lib/deals-store";
 import { atDisplayHandle } from "@/lib/user-display";
 import {
   DealParams,
@@ -22,7 +23,7 @@ import {
 } from "@/lib/types";
 import type { Deal, SupabaseDeal } from "@/lib/types";
 import { labelStyle, headingStyle } from "@/lib/typography";
-import type { Proposal } from "@/negotiation/types";
+import type { Proposal, Revision } from "@/negotiation/types";
 import { defaultSellerBoundaries } from "@/negotiation/types";
 import { buildCreateDealIx, buildFundEscrowIx, buildEnsureAtaIx, getUsdcMint, getUsdcBalance, sendTx, fetchFeeConfig, halfFeeLamports } from "@/lib/escrow-client";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
@@ -32,29 +33,22 @@ import { PublicKey } from "@solana/web3.js";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { apiFetch, apiFetchSafe } from "@/lib/api-client";
+import { retryWrite } from "@/lib/retry-write";
 import { useApi, POLL_MS } from "@/lib/swr";
 import { useDeal } from "@/lib/hooks/use-deal";
-import type { NegotiationBoundaries } from "@/memory/types";
 import { AgentRole } from "@/agents/types";
 import { ArrowLeft } from "lucide-react";
 
 import WalletMultiButton from "@/components/AppWalletButton";
+import WalletMenu from "@/components/WalletMenu";
 
 type NegState =
   | { kind: "idle" }
-  | { kind: "running" }
+  // `rounds` accumulates each streamed revision so the room shows the
+  // back-and-forth live instead of one opaque spinner (T-2).
+  | { kind: "running"; rounds: Revision[] }
   | { kind: "done"; proposal: Proposal }
   | { kind: "error"; message: string };
-
-type EscalatedProposalArgs = {
-  deal: SupabaseDeal;
-  dealParams: DealParams;
-  role: "buyer" | "seller" | "observer";
-  buyerBoundaries: NegotiationBoundaries;
-  sellerBoundaries: NegotiationBoundaries;
-  renegotiationRequest: string;
-  reason: string;
-};
 
 type RenegotiationNotice = {
   content: string;
@@ -71,10 +65,6 @@ type DbMsg = {
   created_at: string;
 };
 
-function isRateLimitedNegotiationError(message: string) {
-  return /429|rate.?limit|temporarily rate-limited|quota/i.test(message);
-}
-
 function dealStatusLabel(status: string) {
   const labels: Record<string, string> = {
     draft: "Draft",
@@ -89,52 +79,6 @@ function dealStatusLabel(status: string) {
     disputed: "Disputed",
   };
   return labels[status] ?? status;
-}
-
-function buildEscalatedProposal({
-  deal,
-  dealParams,
-  role,
-  buyerBoundaries,
-  sellerBoundaries,
-  renegotiationRequest,
-  reason,
-}: EscalatedProposalArgs): Proposal {
-  const now = Date.now();
-  return {
-    id: `${deal.deal_id}-escalated-${now}`,
-    origin: "manual",
-    buyerWallet: deal.buyer_wallet,
-    sellerWallet: dealParams.sellerWallet ?? "",
-    initialTerms: dealParams,
-    revisions: [
-      {
-        round: 1,
-        by: AgentRole.Negotiator,
-        onBehalfOf: role === "seller" ? "seller" : "buyer",
-        action: "counter",
-        proposedTerms: dealParams,
-        reasoning: renegotiationRequest,
-        concessions: [],
-        asks: [renegotiationRequest],
-        timestamp: now,
-      },
-    ],
-    status: "escalated",
-    summary: {
-      pros: ["Renegotiation request captured for both parties"],
-      cons: ["The automated negotiation needs manual review before it can continue"],
-      keyConcessions: [],
-      riskFlags: [reason],
-      confidenceScore: 0.35,
-      recommendation: "renegotiate",
-      recommendationReasoning: reason,
-    },
-    buyerBoundaries,
-    sellerBoundaries,
-    createdAt: now,
-    updatedAt: now,
-  };
 }
 
 function renegotiationNoticeFromMessages(messages: DbMsg[]): RenegotiationNotice | null {
@@ -190,6 +134,9 @@ export default function NegotiateRoom() {
   const [renegotiateOpen, setRenegotiateOpen] = useState(false);
   const [renegotiateRequest, setRenegotiateRequest] = useState("");
   const [renegotiateError, setRenegotiateError] = useState<string | null>(null);
+  // Reject-and-recycle (#19) confirm modal.
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectError, setRejectError] = useState<string | null>(null);
   const [renegotiationNotice, setRenegotiationNotice] = useState<RenegotiationNotice | null>(null);
   // Seller's chosen negotiation mode ("choice" = not decided yet)
   const [sellerView, setSellerView] = useState<"choice" | "manual" | "agent-waiting">("choice");
@@ -234,7 +181,12 @@ export default function NegotiateRoom() {
         const joined = localStorage.getItem(`sealed:seller-joined:${dealId}`);
         if (joined) {
           applyServerPatch((prev) => {
-            if (!prev || (prev.seller_wallet ?? "") === joined) return prev;
+            if (!prev) return prev;
+            // Server already filled (this or another) seller — signal done.
+            if (prev.seller_wallet) {
+              if (prev.seller_wallet !== joined) localStorage.removeItem(`sealed:seller-joined:${dealId}`);
+              return prev;
+            }
             return { ...prev, seller_wallet: joined };
           });
         }
@@ -246,21 +198,41 @@ export default function NegotiateRoom() {
             if (!prev) return prev;
             if (!prev.seller_wallet && prev.buyer_wallet !== cpJoined) return { ...prev, seller_wallet: cpJoined };
             if (!prev.buyer_wallet && prev.seller_wallet !== cpJoined) return { ...prev, buyer_wallet: cpJoined };
+            // Both slots settled — nothing left for this signal to fill.
             return prev;
           });
         }
+        // A status signal is only valid while the server is BEHIND it. Once the
+        // server reaches that status OR moves past it (e.g. reject resets to
+        // draft, or the deal advances to escalated/funded), the signal is stale
+        // and must be cleared — otherwise it replays forever and fights the
+        // authoritative status every tick (the room "oscillates"). S1/S4.
         const agreed = localStorage.getItem(`sealed:seller-agreed:${dealId}`);
         if (agreed) {
           applyServerPatch((prev) => {
-            if (!prev || prev.status === "seller-agreed") return prev;
-            return { ...prev, status: "seller-agreed" };
+            if (!prev) return prev;
+            if (prev.status === "seller-agreed") return prev; // caught up; leave until it moves past
+            // Only re-assert while still pre-agreement (draft with a seller).
+            if (prev.status === "draft" && prev.seller_wallet) {
+              return { ...prev, status: "seller-agreed" };
+            }
+            // Server moved past or reset (escalated/funded/…/reject→draft-no-seller): drop it.
+            localStorage.removeItem(`sealed:seller-agreed:${dealId}`);
+            return prev;
           });
         }
         const escalated = localStorage.getItem(`sealed:deal-escalated:${dealId}`);
         if (escalated) {
           applyServerPatch((prev) => {
-            if (!prev || prev.status === "escalated") return prev;
-            return { ...prev, status: "escalated" };
+            if (!prev) return prev;
+            if (prev.status === "escalated") return prev; // caught up
+            // Re-assert only from the pre-escalation negotiation states.
+            if (prev.status === "draft" || prev.status === "seller-agreed") {
+              return { ...prev, status: "escalated" };
+            }
+            // Advanced past negotiation (funded/in_progress/completed/…): drop it.
+            localStorage.removeItem(`sealed:deal-escalated:${dealId}`);
+            return prev;
           });
         }
       } catch {}
@@ -391,6 +363,28 @@ export default function NegotiateRoom() {
     ? "seller"
     : "observer";
 
+  // Reject-and-recycle sync (T-1): when the buyer rejects, they clear MY slot on
+  // the server. My own device kept replaying stale join signals to re-add me, so
+  // my side stayed stuck. Once I've been a party and then find myself no longer
+  // in either slot on a real (buyer-known) deal, I've been released: purge my
+  // local signals so they stop resurrecting me, and leave the room.
+  const wasPartyRef = useRef(false);
+  useEffect(() => {
+    if (!deal || !wallet) return;
+    const iAmParty = deal.buyer_wallet === wallet || deal.seller_wallet === wallet;
+    if (iAmParty) {
+      wasPartyRef.current = true;
+      return;
+    }
+    // Not a party now. Only a *release* if I was one before AND the deal is a
+    // real server deal that still has its owner (buyer) — not a mid-join gap.
+    if (wasPartyRef.current && deal.buyer_wallet && deal.buyer_wallet !== wallet) {
+      wasPartyRef.current = false;
+      clearDealJoinSignals(deal.deal_id);
+      router.replace("/app");
+    }
+  }, [deal, wallet, router]);
+
   // I'm a party (inviter) and the counterparty slot is still empty — show the
   // invite/share UI. Works whether I created as the buyer or the seller.
   const awaitingCounterparty =
@@ -460,13 +454,17 @@ export default function NegotiateRoom() {
     });
   }, [deal?.status, role, negState.kind]);
 
-  // Buyer auto-starts AI negotiation when seller signals they're using their agent
+  // Buyer auto-starts AI negotiation when seller signals they're using their agent.
+  // Depend on whether memory has loaded (`!!memory`), not just status/role — if
+  // memory resolves a beat after the status flips to seller-ready, this effect
+  // must re-run so the buyer's agent actually starts instead of hanging on
+  // "Starting negotiation…" (S5). The idle-guard prevents a double-start.
   useEffect(() => {
     if (!deal || deal.status !== "seller-ready") return;
     if (role !== "buyer" || negState.kind !== "idle" || !memory) return;
     startNegotiation();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deal?.status, role, negState.kind]);
+  }, [deal?.status, role, negState.kind, !!memory]);
 
   // Generate invite link
   const inviteLink = (() => {
@@ -559,7 +557,7 @@ export default function NegotiateRoom() {
   const startNegotiation = useCallback(async (renegotiationRequest?: string) => {
     if (!deal || !wallet || !memory) return;
     setDeployError(null);
-    setNegState({ kind: "running" });
+    setNegState({ kind: "running", rounds: [] });
 
     const buyerBoundaries = role === "buyer" ? memory.boundaries : defaultSellerBoundaries();
     const sellerBoundaries = role === "seller" ? memory.boundaries : defaultSellerBoundaries();
@@ -610,43 +608,81 @@ export default function NegotiateRoom() {
     }
 
     try {
-      const data = await apiFetch<{ proposal: Proposal }>("/api/negotiate", {
+      // Stream the negotiation so each round appears as it happens (T-2), instead
+      // of a single opaque wait. The route emits SSE: a "revision" per round, a
+      // terminal "done" with the proposal, or a terminal "error".
+      const res = await fetch("/api/negotiate/stream", {
         method: "POST",
-        headers: getLlmHeaders(wallet),
-        body: {
+        headers: {
+          "Content-Type": "application/json",
+          "x-wallet": wallet,
+          ...getLlmHeaders(wallet),
+        },
+        body: JSON.stringify({
           proposalId: `${deal.deal_id}-${Date.now()}`,
           buyerWallet: deal.buyer_wallet,
           initialTerms: dealParams,
           buyerBoundaries,
           sellerBoundaries,
           renegotiationRequest,
-        },
+        }),
       });
-      setNegState({ kind: "done", proposal: data.proposal });
-      if (data.proposal.status === "escalated") {
+      if (!res.ok || !res.body) {
+        throw new Error("Negotiation failed to start. Please try again.");
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let streamError: string | null = null;
+      let finalProposal: Proposal | null = null;
+
+      // Parse SSE frames ("data: {json}\n\n") as they arrive.
+      readLoop: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let sep: number;
+        while ((sep = buffer.indexOf("\n\n")) !== -1) {
+          const frame = buffer.slice(0, sep).trim();
+          buffer = buffer.slice(sep + 2);
+          if (!frame.startsWith("data:")) continue;
+          let evt: { type: string; revision?: Revision; proposal?: Proposal; message?: string };
+          try {
+            evt = JSON.parse(frame.slice(5).trim());
+          } catch {
+            continue;
+          }
+          if (evt.type === "revision" && evt.revision) {
+            const rev = evt.revision;
+            setNegState((prev) =>
+              prev.kind === "running" ? { kind: "running", rounds: [...prev.rounds, rev] } : prev,
+            );
+          } else if (evt.type === "done" && evt.proposal) {
+            finalProposal = evt.proposal;
+            break readLoop;
+          } else if (evt.type === "error") {
+            streamError = evt.message ?? "Negotiation failed";
+            break readLoop;
+          }
+        }
+      }
+
+      if (streamError) throw new Error(streamError);
+      if (!finalProposal) throw new Error("Negotiation ended unexpectedly. Please try again.");
+
+      setNegState({ kind: "done", proposal: finalProposal });
+      if (finalProposal.status === "escalated") {
         applyServerPatch((prev) => (prev ? { ...prev, status: "escalated" } : prev));
       }
     } catch (err) {
+      // A failed run (rate limit, out of credits, provider error) is an error to
+      // retry — not a "renegotiate" recommendation, which reads as a dispute
+      // even though no negotiation happened (bug #11). The server already returns
+      // a clean, user-facing message (bug #12); surface it in the retry state.
       const message = err instanceof Error ? err.message : "Negotiation failed";
-      if (renegotiationRequest && isRateLimitedNegotiationError(message)) {
-        setNegState({
-          kind: "done",
-          proposal: buildEscalatedProposal({
-            deal,
-            dealParams,
-            role,
-            buyerBoundaries,
-            sellerBoundaries,
-            renegotiationRequest,
-            reason: "The automated negotiation paused before reaching a clear agreement. Both parties should review the requested changes before signing.",
-          }),
-        });
-        return;
-      }
-      setNegState({
-        kind: "error",
-        message,
-      });
+      setNegState({ kind: "error", message });
     }
   }, [deal, wallet, memory, role, dealParams, applyServerPatch]);
 
@@ -698,6 +734,37 @@ export default function NegotiateRoom() {
       startNegotiation(nextRequest);
     } catch (error) {
       setRenegotiateError(error instanceof Error ? error.message : "Could not escalate the deal.");
+    }
+  }
+
+  // Reject-and-recycle (#19): release the current counterparty and reopen the
+  // deal so the SAME invite link can be reused for someone else — no new deal
+  // needed. Clears the counterparty's slot and resets the deal to "draft".
+  async function handleReject() {
+    if (!deal || !wallet) return;
+    const iAmBuyer = deal.buyer_wallet === wallet;
+    const counterpartyField = iAmBuyer ? "seller_wallet" : "buyer_wallet";
+    try {
+      await patchDeal(
+        { [counterpartyField]: null, status: "draft" } as Partial<SupabaseDeal>,
+        () =>
+          apiFetch(`/api/deals/${encodeURIComponent(deal.deal_id)}`, {
+            method: "PATCH",
+            wallet,
+            body: { [counterpartyField]: null, status: "draft" },
+          })
+      );
+      // Clear THIS device's stale local state too (S2): the sessionStorage
+      // `deal:<id>` draft still holds the old counterparty, and the seller-
+      // agreed/joined signals would otherwise replay and re-add them — on any
+      // transient GET failure retryMirrorSync could re-POST the old slot and
+      // undo the reject. clearDealJoinSignals wipes the draft + all four signals.
+      clearDealJoinSignals(deal.deal_id);
+      // Back to the invite/awaiting state; the stateless invite link re-derives.
+      setNegState({ kind: "idle" });
+      setRejectOpen(false);
+    } catch (error) {
+      setRejectError(error instanceof Error ? error.message : "Could not reject the deal.");
     }
   }
 
@@ -822,16 +889,19 @@ export default function NegotiateRoom() {
         }));
       } catch {}
 
+      // Escrow is funded ON-CHAIN and irreversible. The mirror write drives the
+      // UI (which page you land on, the funded status both parties see), so make
+      // it durable: retry POST, then PATCH, rather than a single best-effort try
+      // that could strand a funded deal at "seller-agreed" (F3). Warn softly if
+      // it still won't sync — the money is safe; it just hasn't mirrored.
       const mirrorWallet = publicKey.toBase58();
-      try {
-        await apiFetch("/api/deals/mirror", { method: "POST", wallet: mirrorWallet, body: mirroredDeal });
-      } catch (mirrorErr) {
-        console.error("Mirror sync failed:", mirrorErr);
-        await apiFetchSafe(`/api/deals/${finalTerms.dealId}`, {
-          method: "PATCH",
-          wallet: mirrorWallet,
-          body: mirrorPatch,
-        }, undefined);
+      const synced = await retryWrite(() =>
+        apiFetch("/api/deals/mirror", { method: "POST", wallet: mirrorWallet, body: mirroredDeal }).catch(() =>
+          apiFetch(`/api/deals/${finalTerms.dealId}`, { method: "PATCH", wallet: mirrorWallet, body: mirrorPatch }),
+        ),
+      );
+      if (!synced) {
+        console.error("Mirror sync failed after retries for funded deal", finalTerms.dealId);
       }
 
       setDealSealedId(finalTerms.dealId);
@@ -924,49 +994,14 @@ export default function NegotiateRoom() {
           </div>
         )}
 
+        {/* Chat takes the primary (wider) column; deal terms + parties sit in the
+            right sidebar so the negotiation conversation has room (bug #16). */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: deal terms + invite */}
+          {/* Left: conversation + negotiation */}
           <div className="lg:col-span-2 space-y-4">
-            {/* Deal terms */}
-            <div className="surface-card rounded-xl p-5 space-y-4">
-              <p className="text-[13px] text-primary" style={labelStyle}>Deal terms</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>Total value</p>
-                  <p className="text-[20px] text-primary tabular-nums mt-0.5" style={headingStyle}>
-                    ${formatUsdc(deal.total_amount_usdc)}
-                  </p>
-                  <p className="text-[11px] text-subtle">USDC</p>
-                </div>
-                <div>
-                  <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>Milestones</p>
-                  <p className="text-[20px] text-primary tabular-nums mt-0.5" style={headingStyle}>
-                    {(deal.milestones ?? []).length}
-                  </p>
-                  <p className="text-[11px] text-subtle">payment stages</p>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>
-                  Milestones
-                </p>
-                <div className="space-y-1">
-                  {(deal.milestones ?? []).map((m, i) => (
-                    <div key={i} className="flex items-center justify-between text-[12px] bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded-md px-3 py-2">
-                      <span className="truncate mr-2 text-foreground">
-                        <span className="text-subtle mr-1.5">{i + 1}.</span>
-                        {m.description}
-                      </span>
-                      <span className="shrink-0 font-mono text-muted">${formatUsdc(m.amount ?? 0)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
             {/* Shared conversation view — buyer always, seller only in non-manual mode */}
             {!!deal.seller_wallet && !(role === "seller" && sellerView === "manual") && (
-              <ConversationView dealId={deal.deal_id} buyerView={role === "buyer"} />
+              <ConversationView dealId={deal.deal_id} buyerView={role === "buyer"} myWallet={wallet} />
             )}
 
             {/* Invite counterparty (buyer only, no seller yet) */}
@@ -1205,6 +1240,7 @@ export default function NegotiateRoom() {
                       deployError={deployError}
                       onAccept={handleAcceptAndDeploy}
                       onRenegotiate={() => setRenegotiateOpen(true)}
+                      onReject={deal.seller_wallet ? () => { setRejectError(null); setRejectOpen(true); } : undefined}
                     />
                   )}
 
@@ -1249,37 +1285,84 @@ export default function NegotiateRoom() {
               )}
 
               {negState.kind === "running" && (
-                <div className="flex flex-col items-center justify-center py-16 gap-5 text-center px-6">
-                  <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-accent/10 text-accent">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="animate-pulse" aria-hidden="true">
-                      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                    </svg>
+                <div className="py-6 px-6 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-accent/10 text-accent shrink-0">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="animate-pulse" aria-hidden="true">
+                        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                      </svg>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[15px] text-primary" style={headingStyle}>Agents negotiating</p>
+                      <p className="text-[12px] text-muted">
+                        {negState.rounds.length > 0
+                          ? `${negState.rounds.filter((r) => r.round > 0).length} exchange${negState.rounds.filter((r) => r.round > 0).length !== 1 ? "s" : ""} so far`
+                          : "Opening the negotiation…"}
+                      </p>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-[18px] text-primary" style={headingStyle}>Agents negotiating</p>
-                    <p className="text-[13px] text-muted">Exchanging proposals — usually 15–30 seconds.</p>
-                  </div>
-                  <div className="flex items-center gap-2 text-[12px] text-subtle">
-                    <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
-                    <span>Running up to 5 rounds</span>
+
+                  {/* Live turn-by-turn feed — each round appears as it streams in. */}
+                  <div className="space-y-2">
+                    {negState.rounds.map((r, i) => (
+                      <NegotiationTurnLine key={`${r.round}-${i}`} revision={r} />
+                    ))}
+                    <div className="flex items-center gap-2 text-[12px] text-subtle pl-1 pt-1">
+                      <span className="flex gap-1">
+                        {[0, 150, 300].map((d) => (
+                          <span key={d} className="h-1.5 w-1.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                        ))}
+                      </span>
+                      <span>Waiting for the next reply…</span>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {negState.kind === "error" && (
+              {negState.kind === "error" && (() => {
+                const isConfig = isAgentConfigError(negState.message);
+                return (
                 <div className="flex flex-col items-center justify-center py-12 gap-4 text-center px-6">
-                  <div className="text-danger">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-                    </svg>
+                  <div className={isConfig ? "text-accent" : "text-danger"}>
+                    {isConfig ? (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                      </svg>
+                    ) : (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                    )}
                   </div>
-                  <p className="text-[14px] text-primary" style={headingStyle}>Negotiation failed</p>
-                  <p className="text-[13px] text-muted">{negState.message}</p>
-                  <button onClick={() => setNegState({ kind: "idle" })} className="btn-ghost h-9 px-4 rounded-md text-[13px]">
-                    Try again
-                  </button>
+                  <p className="text-[14px] text-primary" style={headingStyle}>
+                    {isConfig ? "Set up your AI agent first" : "Negotiation failed"}
+                  </p>
+                  <p className="text-[13px] text-muted max-w-85">
+                    {isConfig
+                      ? "Your agent needs an AI provider to negotiate. Add your API key on the Agent Setup page."
+                      : negState.message}
+                  </p>
+                  {isConfig ? (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setNegState({ kind: "idle" })} className="btn-ghost h-9 px-4 rounded-md text-[13px]">
+                        Not now
+                      </button>
+                      <Link
+                        href={wallet ? `/profile/${wallet}?tab=agent` : "/profile"}
+                        className="btn-primary h-9 px-4 rounded-md text-[13px] inline-flex items-center gap-1.5"
+                        style={{ textDecoration: "none" }}
+                      >
+                        Go to Agent Setup
+                      </Link>
+                    </div>
+                  ) : (
+                    <button onClick={() => setNegState({ kind: "idle" })} className="btn-ghost h-9 px-4 rounded-md text-[13px]">
+                      Try again
+                    </button>
+                  )}
                 </div>
-              )}
+                );
+              })()}
 
               {negState.kind === "done" && (
                 <NegotiationResult
@@ -1289,13 +1372,55 @@ export default function NegotiateRoom() {
                   deployError={deployError}
                   onAccept={handleAcceptAndDeploy}
                   onRenegotiate={() => setRenegotiateOpen(true)}
+                  onReject={
+                    (role === "buyer" ? deal.seller_wallet : deal.buyer_wallet)
+                      ? () => { setRejectError(null); setRejectOpen(true); }
+                      : undefined
+                  }
                 />
               )}
             </div>
           </div>
 
-          {/* Right: parties */}
+          {/* Right: deal terms + parties */}
           <div className="space-y-4">
+            {/* Deal terms */}
+            <div className="surface-card rounded-xl p-5 space-y-4">
+              <p className="text-[13px] text-primary" style={labelStyle}>Deal terms</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>Total value</p>
+                  <p className="text-[20px] text-primary tabular-nums mt-0.5" style={headingStyle}>
+                    ${formatUsdc(deal.total_amount_usdc)}
+                  </p>
+                  <p className="text-[11px] text-subtle">USDC</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>Milestones</p>
+                  <p className="text-[20px] text-primary tabular-nums mt-0.5" style={headingStyle}>
+                    {(deal.milestones ?? []).length}
+                  </p>
+                  <p className="text-[11px] text-subtle">payment stages</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>
+                  Milestones
+                </p>
+                <div className="space-y-1">
+                  {(deal.milestones ?? []).map((m, i) => (
+                    <div key={i} className="flex items-center justify-between text-[12px] bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded-md px-3 py-2">
+                      <span className="truncate mr-2 text-foreground">
+                        <span className="text-subtle mr-1.5">{i + 1}.</span>
+                        {m.description}
+                      </span>
+                      <span className="shrink-0 font-mono text-muted">${formatUsdc(m.amount ?? 0)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <PartyCard
               label="Buyer"
               wallet={deal.buyer_wallet}
@@ -1331,6 +1456,31 @@ export default function NegotiateRoom() {
           }}
           onSubmit={submitRenegotiation}
         />
+      )}
+
+      {/* Reject-and-recycle confirmation (#19) */}
+      {rejectOpen && (
+        <div
+          onClick={() => setRejectOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16 }}
+        >
+          <div onClick={(e) => e.stopPropagation()} className="modal-card" style={{ width: "100%", maxWidth: 420, borderRadius: 14, padding: 22 }}>
+            <p style={{ fontSize: 15, fontWeight: 600, color: "var(--primary)", margin: "0 0 6px" }}>Reject this counterparty?</p>
+            <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 16px", lineHeight: 1.5 }}>
+              This removes the current counterparty and reopens the deal. Your <b style={{ color: "var(--foreground)" }}>same invite link</b> will work again for someone else — no need to recreate the deal. No funds are involved (nothing is in escrow yet).
+            </p>
+            {rejectError && <p style={{ fontSize: 12, color: "var(--danger)", margin: "0 0 12px" }}>{rejectError}</p>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn-ghost" onClick={() => setRejectOpen(false)} style={{ height: 38, borderRadius: 8, fontSize: 13, flex: 1 }}>Cancel</button>
+              <button
+                onClick={handleReject}
+                style={{ height: 38, borderRadius: 8, fontSize: 13, flex: 1, background: "var(--danger)", color: "#fff", border: "none", fontWeight: 510, cursor: "pointer" }}
+              >
+                Reject &amp; reopen
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </Shell>
   );
@@ -1679,6 +1829,56 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+/* ── Streamed negotiation turn (T-2) ───────────────────────────────────────
+   One line in the live feed while agents negotiate. The round-0 seed is the
+   buyer's opening; later rounds are agent counters/accepts/rejects. */
+function NegotiationTurnLine({ revision }: { revision: Revision }) {
+  const isSeed = revision.round === 0;
+  const who = revision.onBehalfOf === "buyer" ? "Buyer agent" : "Seller agent";
+  const label = isSeed
+    ? "Opening offer"
+    : revision.action === "accept"
+    ? "Accepted"
+    : revision.action === "reject"
+    ? "Declined"
+    : "Counter";
+  const tone =
+    revision.action === "accept"
+      ? { color: "var(--success)", bg: "rgba(63,185,80,0.12)" }
+      : revision.action === "reject"
+      ? { color: "var(--danger)", bg: "rgba(248,113,113,0.12)" }
+      : { color: "var(--accent)", bg: "rgba(113,112,255,0.12)" };
+  const amount = revision.proposedTerms?.totalAmount;
+
+  return (
+    <div className="surface-card rounded-lg px-3 py-2.5 flex items-start gap-3">
+      <span
+        className="text-[10px] font-mono px-1.5 py-0.5 rounded shrink-0 mt-0.5"
+        style={{ color: "var(--subtle)", background: "rgba(255,255,255,0.04)" }}
+      >
+        {isSeed ? "start" : `R${revision.round}`}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[12.5px] text-primary" style={{ fontWeight: 560 }}>{who}</span>
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded-full"
+            style={{ color: tone.color, background: tone.bg, fontWeight: 600 }}
+          >
+            {label}
+          </span>
+          {typeof amount === "number" && (
+            <span className="text-[11px] text-muted font-mono tabular-nums">${amount.toLocaleString()} USDC</span>
+          )}
+        </div>
+        {revision.reasoning && (
+          <p className="text-[12px] text-muted mt-1 leading-snug">{revision.reasoning}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── Negotiation result ─────────────────────────────────────────────────── */
 
 // Deposit breakdown shown to the buyer before funding: contract + their 0.5%
@@ -1714,6 +1914,7 @@ function NegotiationResult({
   deployError,
   onAccept,
   onRenegotiate,
+  onReject,
 }: {
   proposal: Proposal;
   role: "buyer" | "seller" | "observer";
@@ -1721,6 +1922,7 @@ function NegotiationResult({
   deployError?: string | null;
   onAccept: (terms: DealParams) => void;
   onRenegotiate: () => void;
+  onReject?: () => void;
 }) {
   const summary = proposal.summary;
   const finalTerms = proposal.finalTerms;
@@ -1826,6 +2028,18 @@ function NegotiationResult({
           </button>
         </div>
       )}
+      {/* Reject-and-recycle (#19): drop this counterparty and reuse the invite
+          link for someone else. Only before escrow (the whole result view is
+          pre-deploy), and only when a counterparty is present to reject. */}
+      {onReject && (
+        <button
+          onClick={onReject}
+          disabled={deploying}
+          className="btn-ghost h-9 px-4 rounded-md text-[12px] text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/50"
+        >
+          Reject &amp; find another counterparty
+        </button>
+      )}
       {isBuyer && agreed && finalTerms && deployError && (
         <p className="text-[12px] text-danger" role="alert">
           {deployError}
@@ -1849,7 +2063,7 @@ function NegotiationResult({
 
 /* ── Shared conversation view ───────────────────────────────────────────── */
 
-function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: boolean }) {
+function ConversationView({ dealId, buyerView, myWallet }: { dealId: string; buyerView: boolean; myWallet: string | null }) {
   // SWR refreshInterval replaces the 4s poll (errors → empty list, same as the
   // old apiFetchSafe fallback). Memoized so the scroll effect's dep is stable.
   const { data } = useApi<{ messages?: DbMsg[] }>(
@@ -1905,21 +2119,30 @@ function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: bo
             );
           }
           const isAgent = m.role === "assistant";
+          // Align by SENDER identity, not just role: my own messages go right,
+          // the counterparty's (and the agent's) go left — otherwise both human
+          // parties render on the same side (bug #13). Fall back to the old
+          // role-based split only when the message has no wallet to compare.
+          const isMine = isAgent
+            ? false
+            : myWallet != null && m.wallet != null
+            ? m.wallet === myWallet
+            : !buyerView;
+          const label = isAgent
+            ? buyerView
+              ? "Your agent"
+              : "Buyer's agent"
+            : isMine
+            ? "You"
+            : "Counterparty";
           return (
-            <div key={m.id} className={`flex ${isAgent ? "justify-start" : "justify-end"}`}>
+            <div key={m.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[82%] rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
-                isAgent ? "surface-card text-foreground" : "bg-brand text-white"
+                isMine ? "bg-brand text-white" : "surface-card text-foreground"
               }`}>
-                {!isAgent && (
-                  <p className="text-[10px] opacity-70 mb-1">
-                    {buyerView ? "Counterparty" : "You"}
-                  </p>
-                )}
-                {isAgent && (
-                  <p className="text-[10px] text-accent mb-1">
-                    {buyerView ? "Your agent" : "Buyer's agent"}
-                  </p>
-                )}
+                <p className={`text-[10px] mb-1 ${isAgent ? "text-accent" : "opacity-70"}`}>
+                  {label}
+                </p>
                 <div className="whitespace-pre-wrap">{renderMarkdown(m.content)}</div>
               </div>
             </div>
@@ -1933,7 +2156,7 @@ function ConversationView({ dealId, buyerView }: { dealId: string; buyerView: bo
 
 /* ── Manual negotiation panel (seller without agent) ───────────────────── */
 
-type ChatMsg = { role: "user" | "assistant" | "system"; content: string };
+type ChatMsg = { role: "user" | "assistant" | "system"; content: string; error?: boolean };
 
 type NegotiatedTerms = { totalAmount: number; milestones: Array<{ description: string; amount: number }> };
 
@@ -2004,15 +2227,11 @@ function ManualNegotiationPanel({
     prevManualMsgCount.current = messages.length;
   }, [messages]);
 
-  async function send(text?: string) {
-    const content = (text ?? input).trim();
-    if (!content || loading) return;
-    if (!text) setInput("");
-
-    const updated: ChatMsg[] = [...messages, { role: "user", content }];
-    setMessages(updated);
+  // Run the agent turn against a given transcript (which already ends with the
+  // seller's message). Shared by send() and retry() so "Try again" re-runs the
+  // same turn without re-appending the user message.
+  async function runAgentTurn(transcript: ChatMsg[]) {
     setLoading(true);
-
     try {
       const dealContext = {
         title: deal.title,
@@ -2023,7 +2242,7 @@ function ManualNegotiationPanel({
       const data = await apiFetch<{ response: string; agreed?: boolean; agreedTerms?: typeof agreedTerms }>("/api/negotiate/manual", {
         method: "POST",
         wallet,
-        body: { dealId: deal.deal_id, messages: updated, sellerWallet: wallet, dealContext },
+        body: { dealId: deal.deal_id, messages: transcript, sellerWallet: wallet, dealContext },
       });
       setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
       if (data.agreed) {
@@ -2031,13 +2250,48 @@ function ManualNegotiationPanel({
         if (data.agreedTerms) setAgreedTerms(data.agreedTerms);
       }
     } catch (err) {
+      // The buyer's AI agent (server-side LLM) is unreachable. The seller can't
+      // fix that (it's the server's key, not theirs) — but they aren't blocked:
+      // they can accept the terms as-is or reject, and Try again re-runs the
+      // turn once it's back. Render as a system notice, never as something the
+      // agent "said" (bugs #11/#12).
+      const configError = isAgentConfigError(err);
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: err instanceof Error ? err.message : "Failed to respond. Try again." },
+        {
+          role: "system",
+          error: true,
+          content: configError
+            ? "The buyer's AI agent is unavailable right now. You can still accept the terms as-is or reject the deal — you don't need the agent to proceed."
+            : err instanceof Error ? err.message : "The negotiation service is temporarily unavailable. Please try again.",
+        },
       ]);
     } finally {
       setLoading(false);
     }
+  }
+
+  // Re-run the last agent turn: drop the trailing error notice and re-post the
+  // transcript up to and including the seller's last message.
+  async function retry() {
+    if (loading) return;
+    let transcript = messages;
+    if (transcript[transcript.length - 1]?.error) {
+      transcript = transcript.slice(0, -1);
+      setMessages(transcript);
+    }
+    if (transcript.length === 0) return;
+    await runAgentTurn(transcript);
+  }
+
+  async function send(text?: string) {
+    const content = (text ?? input).trim();
+    if (!content || loading) return;
+    if (!text) setInput("");
+
+    const updated: ChatMsg[] = [...messages, { role: "user", content }];
+    setMessages(updated);
+    await runAgentTurn(updated);
   }
 
   const suggestions = [
@@ -2083,9 +2337,29 @@ function ManualNegotiationPanel({
           {messages.map((m, i) => (
             m.role === "system" ? (
               <div key={i} className="flex justify-center">
-                <div className="max-w-[88%] rounded-xl border border-warning/25 bg-warning/5 px-3.5 py-2.5 text-[12px] text-foreground leading-relaxed">
-                  <p className="text-[10px] text-warning uppercase tracking-[0.06em] mb-1">Renegotiation</p>
+                <div
+                  className={`max-w-[88%] rounded-xl border px-3.5 py-2.5 text-[12px] text-foreground leading-relaxed ${
+                    m.error ? "border-danger/30 bg-danger/5" : "border-warning/25 bg-warning/5"
+                  }`}
+                >
+                  <p
+                    className={`text-[10px] uppercase tracking-[0.06em] mb-1 ${
+                      m.error ? "text-danger" : "text-warning"
+                    }`}
+                  >
+                    {m.error ? "Couldn't reach the agent" : "Renegotiation"}
+                  </p>
                   <div className="whitespace-pre-wrap">{renderMarkdown(m.content)}</div>
+                  {m.error && i === messages.length - 1 && (
+                    <button
+                      type="button"
+                      onClick={retry}
+                      disabled={loading}
+                      className="mt-2 text-[11px] text-accent hover:underline disabled:opacity-50"
+                    >
+                      {loading ? "Retrying…" : "Try again"}
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -2139,14 +2413,68 @@ function ManualNegotiationPanel({
       )}
 
       {/* Accept button */}
-      {(agreedByAgent || messages.length > 0) && (
-        <button
-          onClick={() => onAgree(agreedTerms ?? undefined)}
-          className="btn-primary h-10 px-6 rounded-md text-[13px] w-full"
-        >
-          {agreedByAgent ? "Confirm agreement ✓" : "Accept current terms as-is"}
-        </button>
-      )}
+      {(agreedByAgent || messages.length > 0) && (() => {
+        // Guard: if the agent proposed terms whose milestone amounts don't add up
+        // to the total, don't let them slide silently into escrow. Surface an
+        // explicit Confirm (auto-balances to the total) / Back-to-editing choice
+        // instead of a dead-end message (bug #14).
+        const milestones = agreedTerms?.milestones ?? [];
+        const allocated = milestones.reduce((s, m) => s + (Number(m.amount) || 0), 0);
+        const total = agreedTerms?.totalAmount ?? 0;
+        const mismatch =
+          agreedTerms != null && milestones.length > 0 && Math.abs(allocated - total) > 0.005;
+
+        if (mismatch) {
+          return (
+            <div className="rounded-lg border border-warning/30 bg-warning/5 p-3.5 space-y-3">
+              <div className="space-y-1">
+                <p className="text-[12px] text-warning uppercase tracking-[0.06em]" style={{ fontWeight: 510 }}>
+                  Milestone amounts don&apos;t add up
+                </p>
+                <p className="text-[12.5px] text-foreground leading-relaxed">
+                  The milestones total <b>${allocated.toLocaleString()}</b>, but the deal total is{" "}
+                  <b>${total.toLocaleString()}</b>. Confirm to scale the milestones to match the total, or go back to adjust them.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    // Rescale milestone amounts proportionally to sum to the total.
+                    const factor = allocated > 0 ? total / allocated : 0;
+                    const balanced = milestones.map((m) => ({
+                      ...m,
+                      amount: Math.round((Number(m.amount) || 0) * factor * 100) / 100,
+                    }));
+                    onAgree({ totalAmount: total, milestones: balanced });
+                  }}
+                  className="btn-primary h-9 px-4 rounded-md text-[13px] flex-1"
+                >
+                  Confirm corrected allocation
+                </button>
+                <button
+                  onClick={() => {
+                    // Return to editing: clear the agreed state so the input re-opens.
+                    setAgreedByAgent(false);
+                    setAgreedTerms(null);
+                  }}
+                  className="btn-ghost h-9 px-4 rounded-md text-[13px]"
+                >
+                  Back to editing
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <button
+            onClick={() => onAgree(agreedTerms ?? undefined)}
+            className="btn-primary h-10 px-6 rounded-md text-[13px] w-full"
+          >
+            {agreedByAgent ? "Confirm agreement ✓" : "Accept current terms as-is"}
+          </button>
+        );
+      })()}
     </div>
   );
 }
@@ -2261,7 +2589,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
         <div className="flex items-center gap-2">
           <NotificationMenu wallet={wallet} />
-          <WalletMultiButton />
+          {wallet ? <WalletMenu /> : <WalletMultiButton />}
         </div>
       </header>
       <main className="flex-1">{children}</main>

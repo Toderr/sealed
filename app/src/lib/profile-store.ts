@@ -89,18 +89,139 @@ function persist(wallet: string, profile: UserProfile) {
   localStorage.setItem(storageKey(wallet), JSON.stringify(profile));
 }
 
+// Shape of the public profile API (only the identity fields we hydrate).
+type PublicProfileResponse = {
+  handle?: string | null;
+  display_name?: string | null;
+  bio?: string | null;
+  avatar_url?: string | null;
+  website?: string | null;
+  twitter_handle?: string | null;
+  telegram_handle?: string | null;
+  instagram_handle?: string | null;
+  linkedin_url?: string | null;
+  member_since?: string | null;
+};
+
+// True if the visible identity fields differ — used to decide whether a
+// background DB revalidation should adopt the server copy over the local one
+// (S6). Ignores llmConfig/timestamps, which aren't server-authoritative.
+function identityDiffers(a: UserProfile, b: UserProfile): boolean {
+  return (
+    a.name !== b.name ||
+    a.username !== b.username ||
+    a.bio !== b.bio ||
+    (a.avatarUrl ?? "") !== (b.avatarUrl ?? "") ||
+    JSON.stringify(a.socials) !== JSON.stringify(b.socials)
+  );
+}
+
+// Map a DB profile into the local UserProfile shape. Returns null if the DB has
+// no real identity yet (so we don't mark a brand-new wallet as onboarded).
+function profileFromDb(p: PublicProfileResponse): UserProfile | null {
+  const hasIdentity = Boolean(p.member_since || p.handle || p.display_name);
+  if (!hasIdentity) return null;
+  const now = Date.now();
+  return {
+    name: p.display_name?.trim() || p.handle?.replace(/^@/, "") || "",
+    username: p.handle?.replace(/^@/, "") || "",
+    bio: p.bio ?? "",
+    socials: {
+      twitter: p.twitter_handle ?? "",
+      telegram: p.telegram_handle ?? "",
+      instagram: p.instagram_handle ?? "",
+      linkedin: p.linkedin_url ?? "",
+      website: p.website ?? "",
+    },
+    avatarUrl: p.avatar_url ?? undefined,
+    // A wallet with a DB identity has already onboarded — this is the fix for a
+    // returning user on a new browser being re-sent through onboarding (N9),
+    // and removes the redirect race that bounced onboarded users (N1).
+    onboardingComplete: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export function useProfileStore(wallet: string | null) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  // Track WHICH wallet we've resolved, not just a boolean. When `wallet` changes
+  // (e.g. null → connected on connect, or a switch), the effect that updates
+  // `loadedWallet` runs one render *after* the change — so a plain `loaded` flag
+  // stays true across that gap and lets redirect guards fire against the stale
+  // (not-yet-loaded) profile, bouncing a returning user to /onboarding → /profile.
+  // Deriving `loaded` from whether `loadedWallet` matches the current wallet
+  // makes the "not loaded yet" state apply synchronously on the wallet change.
+  const [loadedWallet, setLoadedWallet] = useState<string | null | undefined>(undefined);
+  const loaded = loadedWallet === wallet;
 
   useEffect(() => {
     if (!wallet) {
       setProfile(null);
-      setLoaded(true);
+      setLoadedWallet(null);
       return;
     }
-    setProfile(loadProfileFromStorage(wallet));
-    setLoaded(true);
+
+    // Local profile wins for the initial paint — it's fast and usually freshest.
+    // But it used to win FOREVER, so an edit made on another device never showed
+    // here (stale name/avatar, and stale name embedded in invite links) — S6. So
+    // also revalidate against the DB in the background and adopt the server copy
+    // if its identity fields differ (a cross-device edit). A local updateProfile
+    // re-persists and re-hydrates, so an in-flight local edit still wins.
+    const local = loadProfileFromStorage(wallet);
+    if (local) {
+      setProfile(local);
+      setLoadedWallet(wallet);
+      let cancelledLocal = false;
+      (async () => {
+        try {
+          const res = await fetch(`/api/users/${encodeURIComponent(wallet)}/public?self=1`);
+          const data = (res.ok ? await res.json() : null) as PublicProfileResponse | null;
+          if (cancelledLocal || !data) return;
+          const fromServer = profileFromDb(data);
+          if (fromServer && identityDiffers(local, fromServer)) {
+            // Preserve the locally-held LLM config (not stored server-side).
+            const merged: UserProfile = { ...fromServer, llmConfig: local.llmConfig, onboardingComplete: true };
+            persist(wallet, merged);
+            setProfile(merged);
+          }
+        } catch {
+          // offline / transient — keep the local copy.
+        }
+      })();
+      return () => {
+        cancelledLocal = true;
+      };
+    }
+
+    // No local profile: this could be a genuinely new wallet OR a returning user
+    // on a new browser whose profile lives in Supabase. Check the DB before
+    // deciding — and keep `loaded=false` until we know, so redirect guards don't
+    // fire prematurely and bounce an onboarded user to /onboarding (N1).
+    let cancelled = false;
+    setProfile(null);
+    (async () => {
+      try {
+        const res = await fetch(`/api/users/${encodeURIComponent(wallet)}/public?self=1`);
+        const data = (res.ok ? await res.json() : null) as PublicProfileResponse | null;
+        if (cancelled) return;
+        const hydrated = data ? profileFromDb(data) : null;
+        if (hydrated) {
+          persist(wallet, hydrated); // seed localStorage so it's fast next time
+          setProfile(hydrated);
+        } else {
+          setProfile(null);
+        }
+      } catch {
+        if (!cancelled) setProfile(null);
+      } finally {
+        if (!cancelled) setLoadedWallet(wallet);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [wallet]);
 
   function updateProfile(updates: Partial<UserProfile>) {

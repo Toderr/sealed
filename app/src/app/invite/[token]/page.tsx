@@ -46,7 +46,7 @@ export default function InvitePage() {
   const [resolvedInviterWallet, setResolvedInviterWallet] = useState<string | null>(null);
   const [accountCheck, setAccountCheck] = useState<AccountCheck | null>(null);
   const sellerWallet = publicKey?.toBase58() ?? null;
-  const { updateProfile } = useProfileStore(sellerWallet);
+  const { profile: localProfile, updateProfile } = useProfileStore(sellerWallet);
 
   const payload = useMemo(() => {
     if (!token) return null;
@@ -91,6 +91,11 @@ export default function InvitePage() {
 
     let cancelled = false;
 
+    // Treat an existing LOCAL profile as "has account" too — a user who
+    // onboarded but whose DB row hasn't synced shouldn't be re-asked for a name
+    // (and having their profile overwritten) on invite-accept (bug #8).
+    const hasLocalAccount = Boolean(localProfile?.onboardingComplete && localProfile?.name?.trim());
+
     apiFetch<{ member_since?: string; handle?: string; display_name?: string }>(
       `/api/users/${encodeURIComponent(sellerWallet)}/public?self=1`
     )
@@ -98,17 +103,17 @@ export default function InvitePage() {
         if (cancelled) return;
         setAccountCheck({
           wallet: sellerWallet,
-          hasAccount: Boolean(data?.member_since || data?.handle || data?.display_name),
+          hasAccount: hasLocalAccount || Boolean(data?.member_since || data?.handle || data?.display_name),
         });
       })
       .catch(() => {
-        if (!cancelled) setAccountCheck({ wallet: sellerWallet, hasAccount: false });
+        if (!cancelled) setAccountCheck({ wallet: sellerWallet, hasAccount: hasLocalAccount });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [sellerWallet]);
+  }, [sellerWallet, localProfile?.onboardingComplete, localProfile?.name]);
 
   if (!payload) {
     return (
@@ -252,6 +257,15 @@ export default function InvitePage() {
 
   async function handleNameContinue() {
     if (!sellerWallet) return;
+
+    // Never overwrite an existing profile from the invite flow (bug #8). If the
+    // connected wallet already has a name, skip the name write entirely and just
+    // accept the invite as that existing identity.
+    if (localProfile?.onboardingComplete && localProfile?.name?.trim()) {
+      setAccountCheck({ wallet: sellerWallet, hasAccount: true });
+      await handleAccept();
+      return;
+    }
 
     const displayName = nameDraft.trim();
     if (displayName.length < 2) {

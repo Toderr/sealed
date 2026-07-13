@@ -25,6 +25,15 @@ type FullProfile = PublicProfile & {
 
 type FriendStatus = "none" | "friends" | "outgoing" | "incoming" | "self";
 type Tab = "timeline" | "reviews" | "agents";
+const TABS: Tab[] = ["timeline", "reviews", "agents"];
+
+// Read the tab from the URL so a refresh keeps the selected tab (read directly
+// from window rather than useSearchParams to avoid needing a Suspense boundary).
+function initialTab(): Tab {
+  if (typeof window === "undefined") return "timeline";
+  const t = new URLSearchParams(window.location.search).get("tab");
+  return (TABS as string[]).includes(t ?? "") ? (t as Tab) : "timeline";
+}
 
 export default function PublicProfilePage() {
   const params = useParams();
@@ -36,7 +45,19 @@ export default function PublicProfilePage() {
   const [loading, setLoading] = useState(true);
   const [friendStatus, setFriendStatus] = useState<FriendStatus>("none");
   const [friendLoading, setFriendLoading] = useState(false);
-  const [tab, setTab] = useState<Tab>("timeline");
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [tab, setTabState] = useState<Tab>(initialTab);
+
+  // Persist the selected tab to the URL (?tab=…) so it survives a refresh.
+  function setTab(next: Tab) {
+    setTabState(next);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (next === "timeline") url.searchParams.delete("tab");
+      else url.searchParams.set("tab", next);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }
 
   const wallet = profileWallet;
   const isSelf = Boolean(wallet && myWallet === wallet);
@@ -64,7 +85,12 @@ export default function PublicProfilePage() {
         wallet: myWallet,
         body: { friendWallet: wallet },
       }, {});
-      if (d.status) setFriendStatus(d.status === "accepted" ? "friends" : "outgoing");
+      // "accepted"/"already_friends" → we're friends; "pending" → request sent.
+      if (d.status) {
+        setFriendStatus(
+          d.status === "accepted" || d.status === "already_friends" ? "friends" : "outgoing"
+        );
+      }
     } else if (friendStatus === "incoming") {
       await apiFetchSafe(`/api/friends/${wallet}`, {
         method: "PATCH",
@@ -224,6 +250,7 @@ export default function PublicProfilePage() {
                     value={profile.avg_rating > 0 ? profile.avg_rating.toFixed(1) : "—"}
                     label="Avg rating"
                     star={profile.avg_rating > 0}
+                    onClick={profile.avg_rating > 0 ? () => setTab("reviews") : undefined}
                   />
                 </div>
 
@@ -264,18 +291,23 @@ export default function PublicProfilePage() {
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                       <path d="m11 17 2 2a1 1 0 0 0 3-3" /><path d="m14 14 2.5 2.5a1 1 0 0 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 0 1-1.41 0l-2.62-2.62a1 1 0 0 0-1.41 0L3 10.5" />
                     </svg>
-                    {friendLoading ? "…" : friendStatus === "friends" ? "Friends ✓" : friendStatus === "outgoing" ? "Request sent" : friendStatus === "incoming" ? "Accept request" : "Start a deal"}
+                    {friendLoading ? "…" : friendStatus === "friends" ? "Friends ✓" : friendStatus === "outgoing" ? "Request sent" : friendStatus === "incoming" ? "Accept request" : "Add friend"}
                   </button>
                 )}
                 <button
                   onClick={() => {
                     const url = `${window.location.origin}/profile/${wallet}`;
-                    navigator.clipboard.writeText(url).catch(() => {});
+                    navigator.clipboard.writeText(url)
+                      .then(() => {
+                        setLinkCopied(true);
+                        setTimeout(() => setLinkCopied(false), 2000);
+                      })
+                      .catch(() => {});
                   }}
                   className="btn-ghost"
-                  style={{ marginTop: 8, width: "100%", height: 36, borderRadius: 9, fontSize: 12, position: "relative", cursor: "pointer" }}
+                  style={{ marginTop: 8, width: "100%", height: 36, borderRadius: 9, fontSize: 12, position: "relative", cursor: "pointer", color: linkCopied ? "var(--success)" : undefined }}
                 >
-                  Copy profile link
+                  {linkCopied ? "Copied ✓" : "Copy profile link"}
                 </button>
               </div>
 
@@ -325,12 +357,15 @@ export default function PublicProfilePage() {
                   style={{
                     padding: "10px 4px",
                     marginBottom: -1,
-                    borderBottom: `2px solid ${tab === t.id ? "var(--accent)" : "transparent"}`,
                     color: tab === t.id ? "var(--primary)" : "var(--muted)",
                     fontSize: 13,
                     fontWeight: tab === t.id ? 590 : 510,
                     background: "none",
-                    border: "none",
+                    // All-longhand borders only — mixing the `borderBottom`
+                    // shorthand with `borderBottom*` longhands warns on rerender.
+                    borderTop: "none",
+                    borderLeft: "none",
+                    borderRight: "none",
                     borderBottomStyle: "solid",
                     borderBottomWidth: 2,
                     borderBottomColor: tab === t.id ? "var(--accent)" : "transparent",
@@ -355,11 +390,7 @@ export default function PublicProfilePage() {
               )
             )}
 
-            {tab === "reviews" && (
-              <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
-                {profile.avg_rating > 0 ? "Reviews will load here." : "No reviews yet."}
-              </div>
-            )}
+            {tab === "reviews" && <ReviewsList wallet={wallet ?? ""} />}
 
             {tab === "agents" && (
               <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
@@ -378,15 +409,22 @@ function TrustStat({
   label,
   accent,
   star,
+  onClick,
 }: {
   value: string | number;
   label: string;
   accent?: "success";
   star?: boolean;
+  onClick?: () => void;
 }) {
   const color = accent === "success" ? "var(--success)" : "var(--primary)";
   return (
-    <div>
+    <div
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      style={onClick ? { cursor: "pointer" } : undefined}
+      title={onClick ? "View reviews" : undefined}
+    >
       <div style={{
         fontSize: 28,
         fontWeight: 590,
@@ -424,5 +462,94 @@ function SocialBtn({ href, label }: { href: string; label: string }) {
       </svg>
       {label}
     </a>
+  );
+}
+
+/* ── Reviews list (bug #6) — the individual reviews behind "Avg rating" ────── */
+
+type ReviewItem = {
+  id: string;
+  stars: number;
+  review_text: string;
+  submitted_at: string;
+  deal_id: string;
+  deal_title: string;
+  reviewer: { wallet: string; handle: string | null; display_name: string | null };
+};
+
+function Stars({ value }: { value: number }) {
+  return (
+    <span style={{ color: "var(--accent)", fontSize: 13, letterSpacing: 1 }} aria-label={`${value} of 5 stars`}>
+      {"★".repeat(Math.max(0, Math.min(5, value)))}
+      <span style={{ color: "var(--card-border)" }}>{"★".repeat(5 - Math.max(0, Math.min(5, value)))}</span>
+    </span>
+  );
+}
+
+function ReviewsList({ wallet }: { wallet: string }) {
+  const [reviews, setReviews] = useState<ReviewItem[] | null>(null);
+
+  useEffect(() => {
+    if (!wallet) return;
+    let cancelled = false;
+    apiFetchSafe<{ reviews?: ReviewItem[] }>(`/api/users/${wallet}/reviews`, {}, { reviews: [] })
+      .then((data) => {
+        if (!cancelled) setReviews(data.reviews ?? []);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet]);
+
+  if (reviews === null) {
+    return (
+      <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
+        Loading reviews…
+      </div>
+    );
+  }
+
+  if (reviews.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
+        No reviews yet.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {reviews.map((r) => {
+        const reviewerName =
+          r.reviewer.display_name?.trim() ||
+          atDisplayHandle(r.reviewer.handle) ||
+          `${r.reviewer.wallet.slice(0, 4)}…${r.reviewer.wallet.slice(-4)}`;
+        const date = r.submitted_at ? new Date(r.submitted_at).toLocaleDateString() : "";
+        return (
+          <div key={r.id} className="surface-card" style={{ borderRadius: 12, padding: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: r.review_text ? 8 : 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <Stars value={r.stars} />
+                <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {reviewerName}
+                </span>
+              </div>
+              <span style={{ fontSize: 11, color: "var(--subtle)", flexShrink: 0 }}>{date}</span>
+            </div>
+            {r.review_text && (
+              <p style={{ fontSize: 13, color: "var(--foreground)", margin: "0 0 8px", lineHeight: 1.55 }}>
+                {r.review_text}
+              </p>
+            )}
+            <Link
+              href={`/deals/${encodeURIComponent(r.deal_id)}`}
+              style={{ fontSize: 11.5, color: "var(--muted)", textDecoration: "none" }}
+            >
+              on “{r.deal_title}” →
+            </Link>
+          </div>
+        );
+      })}
+    </div>
   );
 }

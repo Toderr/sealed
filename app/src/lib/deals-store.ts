@@ -111,6 +111,60 @@ function subscribe(key: string, onChange: () => void) {
   };
 }
 
+// Remove a deal from ALL client-side stores so a delete actually sticks:
+// the per-wallet localStorage deals-store AND the sessionStorage draft. Without
+// this, deleting only the server mirror leaves the deal in localStorage, so it
+// reappears on the next refresh (and the direct /deals/<id> link still resolves
+// from the local copy). Call this alongside the DELETE API request.
+export function purgeDealLocally(dealId: string, wallet: string | null) {
+  if (typeof window === "undefined") return;
+  // 1) deals-store buckets. Clear the deal from EVERY sealed:deals:* bucket, not
+  //    just this wallet's — on a counterparty's device the deal lives in THEIR
+  //    wallet's bucket, and when a delete is discovered via a 404 we don't
+  //    reliably know which. The `wallet`/guest buckets are always included even
+  //    if empty. Scanning all buckets makes the purge wallet-agnostic.
+  const keys = new Set<string>([storageKey(wallet), storageKey(null)]);
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i);
+      if (k && k.startsWith(STORAGE_PREFIX)) keys.add(k);
+    }
+  } catch {
+    // localStorage enumeration unavailable — the explicit keys above still run.
+  }
+  for (const key of keys) {
+    const remaining = readSnapshot(key).filter((d) => d.dealId !== dealId);
+    if (remaining.length !== readSnapshot(key).length) writeDeals(key, remaining);
+  }
+  // 2) sessionStorage draft + the same-device join/agreed/escalated signals, so
+  //    a deleted deal can't be resurrected or replay a stale status on re-invite
+  //    or id reuse (S4). clearDealJoinSignals also removes the draft.
+  clearDealJoinSignals(dealId);
+}
+
+// Same-device signals the negotiate room replays to resurrect a party slot /
+// status after a poll (seller joined, counterparty joined, seller agreed, deal
+// escalated) plus the sessionStorage draft. When a party is RELEASED via
+// reject-and-recycle, the buyer clears the slot on the server, but the released
+// seller's own device keeps replaying these stale signals and re-adds itself —
+// so their side stays stuck. Their client calls this to stop resurrecting.
+export function clearDealJoinSignals(dealId: string) {
+  if (typeof window === "undefined") return;
+  try {
+    for (const k of [
+      `sealed:seller-joined:${dealId}`,
+      `sealed:counterparty-joined:${dealId}`,
+      `sealed:seller-agreed:${dealId}`,
+      `sealed:deal-escalated:${dealId}`,
+    ]) {
+      window.localStorage.removeItem(k);
+    }
+    window.sessionStorage.removeItem(`deal:${dealId}`);
+  } catch {
+    // storage unavailable — nothing to clear.
+  }
+}
+
 export function useDealsStore(wallet: PublicKey | null) {
   const walletKey = wallet ? wallet.toBase58() : null;
   const key = storageKey(walletKey);

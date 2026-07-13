@@ -15,7 +15,7 @@
 
 import { MOCK_DATA } from "./env";
 
-type MirrorMilestone = { description: string; amount: number; status?: string };
+type MirrorMilestone = { description: string; amount: number; status?: string; release_tx?: string };
 type MirrorDeal = {
   deal_id: string;
   buyer_wallet: string;
@@ -114,6 +114,11 @@ export const mockData = {
   putDeal(deal: MirrorDeal): void {
     const all = read<Record<string, MirrorDeal>>(K.deals, {});
     all[deal.deal_id] = deal;
+    write(K.deals, all);
+  },
+  deleteDeal(dealId: string): void {
+    const all = read<Record<string, MirrorDeal>>(K.deals, {});
+    delete all[dealId];
     write(K.deals, all);
   },
   dealsFor(wallet: string): MirrorDeal[] {
@@ -444,6 +449,19 @@ async function handle(
       mockData.putDeal(next);
       return json({ deal: next });
     }
+    if (method === "DELETE") {
+      if (!deal) return json({ error: "Deal not found" }, 404);
+      if (deal.buyer_wallet !== wallet && deal.seller_wallet !== wallet) {
+        return json({ error: "Forbidden" }, 403);
+      }
+      // Pre-escrow only — mirrors the real route's guard (bug #15).
+      const preEscrow = ["draft", "seller-ready", "seller-agreed", "proposed", "escalated"];
+      if (!preEscrow.includes(deal.status)) {
+        return json({ error: "This deal has funds in escrow and can't be deleted" }, 409);
+      }
+      mockData.deleteDeal(dealId);
+      return json({ ok: true, deleted: dealId });
+    }
   }
 
   // GET/POST /api/messages
@@ -523,8 +541,11 @@ async function handle(
   if (path === "/api/upload" && method === "POST") {
     const dealId = headers.get("x-deal-id");
     const milestoneIndex = Number(headers.get("x-milestone-index") ?? "0");
+    const isChatAttachment = headers.get("x-chat-attachment") === "1";
     const storage_key = `offline/${uuid()}`;
-    if (dealId) {
+    // Chat attachments (#3) are images shared in chat, not milestone proof — don't
+    // record a deliverable (mirrors the real route).
+    if (dealId && !isChatAttachment) {
       mockData.addDeliverable({
         deal_id: dealId,
         filename: "offline-proof",
@@ -537,8 +558,8 @@ async function handle(
     }
     return json({
       id: uuid(),
-      original_name: "offline-proof",
-      file_type: "application/octet-stream",
+      original_name: isChatAttachment ? "offline-image" : "offline-proof",
+      file_type: isChatAttachment ? "image/png" : "application/octet-stream",
       size_bytes: 0,
       storage_key,
     });
@@ -559,6 +580,9 @@ async function handle(
     const w = decodeURIComponent(pubMatch[1]);
     const profiles = read<Record<string, Record<string, unknown>>>(K.profiles, {});
     const p = profiles[w] ?? {};
+    // Only report an identity (member_since) if a real profile exists — otherwise
+    // a brand-new wallet would look "onboarded" to the DB-hydration path (N9).
+    const hasProfile = Boolean(p.handle || p.display_name);
     const deals = mockData.dealsFor(w);
     return json({
       handle: p.handle ?? null,
@@ -570,9 +594,46 @@ async function handle(
       deals_total: deals.length,
       deals_successful: deals.filter(isCompleted).length,
       avg_rating: 0,
-      member_since: (p.member_since as string) ?? nowIso(),
-      socials: {},
+      member_since: hasProfile ? ((p.member_since as string) ?? nowIso()) : null,
+      website: (p.website as string) ?? null,
+      twitter_handle: (p.twitter as string) ?? null,
+      telegram_handle: (p.telegram as string) ?? null,
+      instagram_handle: (p.instagram as string) ?? null,
+      linkedin_url: (p.linkedin as string) ?? null,
     });
+  }
+
+  // GET /api/users/:wallet/reviews — the individual revealed reviews received by
+  // a wallet (bug #6), synthesized from the ratings store.
+  const reviewsMatch = path.match(/^\/api\/users\/([^/]+)\/reviews$/);
+  if (reviewsMatch && method === "GET") {
+    const w = decodeURIComponent(reviewsMatch[1]);
+    const allRatings = Object.values(read<Record<string, Rating>>(K.ratings, {}));
+    const profiles = read<Record<string, Record<string, unknown>>>(K.profiles, {});
+    const mine = allRatings
+      .filter((r) => r.ratee_wallet === w && r.revealed)
+      .sort((a, b) => (b.submitted_at ?? "").localeCompare(a.submitted_at ?? ""));
+    const reviews = mine.map((r) => {
+      const p = profiles[r.rater_wallet] ?? {};
+      const deal = mockData.getDeal(r.deal_id);
+      return {
+        id: r.id,
+        stars: r.stars,
+        review_text: r.review_text ?? "",
+        submitted_at: r.submitted_at,
+        deal_id: r.deal_id,
+        deal_title: deal?.title ?? r.deal_id,
+        reviewer: {
+          wallet: r.rater_wallet,
+          handle: (p.handle as string) ?? null,
+          display_name: (p.display_name as string) ?? null,
+        },
+      };
+    });
+    const average = reviews.length
+      ? Math.round((reviews.reduce((s, r) => s + r.stars, 0) / reviews.length) * 10) / 10
+      : 0;
+    return json({ reviews, count: reviews.length, average });
   }
 
   // POST /api/negotiate/manual — offline manual chat with the buyer's "agent".
@@ -611,22 +672,44 @@ async function handle(
   }
 
   // POST /api/negotiate — offline AI negotiation: return an immediately-agreed
-  // proposal using the requested terms (no LLM rounds offline).
+  // proposal using the requested terms (no real LLM rounds offline).
   if (path === "/api/negotiate" && method === "POST") {
     const b = (body ?? {}) as {
       proposalId?: string;
       buyerWallet?: string;
-      initialTerms?: unknown;
+      initialTerms?: { dealId?: string } & Record<string, unknown>;
     };
     const terms = b.initialTerms ?? {};
     const now = Date.now();
+    const proposalId = b.proposalId ?? "offline";
+    // Synthesize a short two-turn exchange so the offline demo also shows the
+    // agent-to-agent conversation in the chat box (bug #11).
+    const revisions = [
+      { round: 1, by: "negotiator", onBehalfOf: "seller", action: "counter", proposedTerms: terms, reasoning: "Reviewed the terms and they look fair — happy to proceed.", concessions: [], asks: [], timestamp: Math.floor(now / 1000) },
+      { round: 2, by: "negotiator", onBehalfOf: "buyer", action: "accept", proposedTerms: terms, reasoning: "Great — accepting the terms as proposed.", concessions: [], asks: [], timestamp: Math.floor(now / 1000) },
+    ];
+    // Persist the turns to the chat, mirroring the real route (#11).
+    const dealId = b.initialTerms?.dealId;
+    if (dealId && !mockData.messagesFor(dealId).some((m) => (m.metadata as { proposalId?: string } | null)?.proposalId === proposalId)) {
+      for (const r of revisions) {
+        const who = r.onBehalfOf === "buyer" ? "Buyer's agent" : "Seller's agent";
+        const verb = r.action === "accept" ? "accepted" : r.action === "reject" ? "declined" : "proposed";
+        mockData.addMessage({
+          deal_id: dealId,
+          role: "assistant",
+          content: `**${who}** ${verb}: ${r.reasoning}`,
+          wallet: b.buyerWallet ?? null,
+          metadata: { proposalId, agentTurn: true, onBehalfOf: r.onBehalfOf, round: r.round },
+        });
+      }
+    }
     return json({
       proposal: {
-        id: `${b.proposalId ?? "offline"}-agreed`,
+        id: `${proposalId}-agreed`,
         origin: "agent",
         buyerWallet: b.buyerWallet ?? "",
         initialTerms: terms,
-        revisions: [],
+        revisions,
         status: "agreed",
         finalTerms: terms,
         summary: {

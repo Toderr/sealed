@@ -8,12 +8,15 @@ import SettingsModal from "@/components/SettingsModal";
 import { useToast } from "@/components/Toast";
 import { NotificationMenu } from "@/components/NotificationMenu";
 import { useProfileStore } from "@/lib/profile-store";
+import { purgeDealLocally } from "@/lib/deals-store";
+import { POLL_MS } from "@/lib/swr";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import { type DealParams, type PublicProfile, type SupabaseDeal, formatUsdc, usdcToLamports } from "@/lib/types";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { useAppConnection as useConnection } from "@/lib/use-app-connection";
 import { PublicKey } from "@solana/web3.js";
 import { buildEnsureAtaIx, buildReleaseMilestoneIx, getUsdcMint, sendTx } from "@/lib/escrow-client";
+import { escrowAccountUrl } from "@/lib/explorer";
 import { MOCK_CHAIN } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
@@ -21,6 +24,7 @@ import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
 
 import WalletMultiButton from "@/components/AppWalletButton";
+import WalletMenu from "@/components/WalletMenu";
 
 type CounterpartyProfile = Pick<PublicProfile, "handle" | "display_name" | "avatar_url">;
 
@@ -126,12 +130,17 @@ function HomeContent() {
     searchParams.get("compose") === "1" || searchParams.get("view") === "chat";
   const [composerOpen, setComposerOpen] = useState(composeIntent);
 
-  // Redirect to onboarding if wallet connected but profile not set up
+  // Redirect to onboarding if wallet connected but profile not set up.
+  // Depend on the boolean, not the `profile` object: useProfileStore returns a
+  // fresh object (JSON.parse) every render, so depending on it re-fired this
+  // effect endlessly and looped /app ↔ /onboarding ↔ /profile.
+  const onboardingComplete = profile?.onboardingComplete ?? false;
+  const walletKey = publicKey?.toBase58() ?? null;
   useEffect(() => {
-    if (profileLoaded && publicKey && !profile?.onboardingComplete) {
+    if (profileLoaded && walletKey && !onboardingComplete) {
       router.replace("/onboarding");
     }
-  }, [profileLoaded, publicKey, profile, router]);
+  }, [profileLoaded, walletKey, onboardingComplete, router]);
 
   // Strip the compose intent param once consumed, so a refresh/back doesn't
   // force the composer open again.
@@ -313,12 +322,6 @@ function AppHeader({
 }) {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
-  const { profile } = useProfileStore(wallet);
-
-  const initials = profile?.name
-    ? profile.name.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase()
-    : null;
-  const profileLabel = atDisplayHandle(profile?.username) ?? profile?.name ?? "Profile";
 
   // "New Deal" is no longer a tab — it opens the inline composer on the board.
   const tabs: { id: string; label: string; href?: string }[] = [
@@ -394,39 +397,7 @@ function AppHeader({
             <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
         </button>
-        {wallet && (
-          <div style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            height: 30,
-            padding: "0 10px",
-            borderRadius: 6,
-            background: "rgba(255,255,255,0.02)",
-            border: "1px solid var(--card-border)",
-          }}>
-            <div style={{
-              width: 18,
-              height: 18,
-              borderRadius: "50%",
-              background: initials
-                ? "linear-gradient(135deg, #5e6ad2, #7170ff)"
-                : "var(--surface)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 10,
-              fontWeight: 590,
-              color: "#fff",
-            }}>
-              {initials ?? "?"}
-            </div>
-            <span style={{ fontSize: 12, color: "var(--muted)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {profileLabel}
-            </span>
-          </div>
-        )}
-        {!wallet && <WalletMultiButton />}
+        {wallet ? <WalletMenu /> : <WalletMultiButton />}
       </div>
     </header>
   );
@@ -446,6 +417,7 @@ function DealsBoldBoard({
 }) {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
+  const toast = useToast();
 
   const [deals, setDeals] = useState<SupabaseDeal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -453,6 +425,34 @@ function DealsBoldBoard({
   const [counterpartyProfiles, setCounterpartyProfiles] = useState<Record<string, CounterpartyProfile>>({});
   // Clicking a deal card opens this in the right-side detail panel.
   const [panelDeal, setPanelDeal] = useState<SupabaseDeal | null>(null);
+  // Delete flow (#15): the deal pending a confirm-modal decision, + in-flight state.
+  const [deleteTarget, setDeleteTarget] = useState<SupabaseDeal | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget || !wallet) return;
+    setDeleting(true);
+    try {
+      await apiFetch(`/api/deals/${encodeURIComponent(deleteTarget.deal_id)}`, {
+        method: "DELETE",
+        wallet,
+      });
+      // Clear the local copies too, or the deal reappears on refresh / stays
+      // reachable by direct link (bug: delete didn't stick).
+      purgeDealLocally(deleteTarget.deal_id, wallet);
+      setDeals((prev) => prev.filter((d) => d.deal_id !== deleteTarget.deal_id));
+      toast.show({ variant: "success", title: "Deal deleted" });
+      setDeleteTarget(null);
+    } catch (e) {
+      toast.show({
+        variant: "error",
+        title: "Couldn't delete",
+        description: e instanceof ApiError ? e.message : "Please try again.",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const counterpartyWallets = useMemo(() => {
     return Array.from(
@@ -469,13 +469,26 @@ function DealsBoldBoard({
       setLoading(false); // eslint-disable-line react-hooks/set-state-in-effect
       return;
     }
-    apiFetchSafe<{ deals?: SupabaseDeal[] }>("/api/deals/mirror", { wallet }, { deals: [] })
-      .then((data) => {
-        const supabaseDeals: SupabaseDeal[] = data.deals ?? [];
-        const sessionDeals = readSessionDeals(wallet);
-        setDeals(mergeDedupe(supabaseDeals, sessionDeals));
-      })
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    // Poll the mirror so the board reflects a counterparty's join/agree/fund/
+    // status change without a manual refresh, matching the 4s sync the deal and
+    // negotiate pages have (S7). apiFetchSafe never throws → a transient failure
+    // keeps the last-good lanes instead of emptying the board.
+    const load = () =>
+      apiFetchSafe<{ deals?: SupabaseDeal[] }>("/api/deals/mirror", { wallet }, { deals: [] })
+        .then((data) => {
+          if (cancelled) return;
+          const supabaseDeals: SupabaseDeal[] = data.deals ?? [];
+          const sessionDeals = readSessionDeals(wallet);
+          setDeals(mergeDedupe(supabaseDeals, sessionDeals));
+        })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    load();
+    const interval = setInterval(load, POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [wallet]);
 
   useEffect(() => {
@@ -603,6 +616,7 @@ function DealsBoldBoard({
                       myWallet={wallet}
                       href={dealHref(d)}
                       onOpen={setPanelDeal}
+                      onRequestDelete={setDeleteTarget}
                       counterpartyProfile={
                         getCounterpartyWallet(d, wallet)
                           ? counterpartyProfiles[getCounterpartyWallet(d, wallet) as string]
@@ -632,6 +646,31 @@ function DealsBoldBoard({
 
       {/* Right-side detail panel — opens on deal-card click, links to full page. */}
       <DealDetailPanel deal={panelDeal} myWallet={wallet} onClose={() => setPanelDeal(null)} />
+
+      {/* Delete confirmation (#15) — only reachable for pre-escrow deals. */}
+      {deleteTarget && (
+        <div
+          onClick={() => { if (!deleting) setDeleteTarget(null); }}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16 }}
+        >
+          <div onClick={(e) => e.stopPropagation()} className="modal-card" style={{ width: "100%", maxWidth: 420, borderRadius: 14, padding: 22 }}>
+            <p style={{ fontSize: 15, fontWeight: 600, color: "var(--primary)", margin: "0 0 6px" }}>Delete this deal?</p>
+            <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 18px", lineHeight: 1.5 }}>
+              <b style={{ color: "var(--foreground)" }}>{deleteTarget.title || deleteTarget.deal_id}</b> will be permanently removed. This deal has no escrow yet, so no funds are affected. This can&apos;t be undone.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn-ghost" disabled={deleting} onClick={() => setDeleteTarget(null)} style={{ height: 38, borderRadius: 8, fontSize: 13, flex: 1 }}>Cancel</button>
+              <button
+                disabled={deleting}
+                onClick={handleConfirmDelete}
+                style={{ height: 38, borderRadius: 8, fontSize: 13, flex: 1, background: "var(--danger)", color: "#fff", border: "none", fontWeight: 510, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.6 : 1 }}
+              >
+                {deleting ? "Deleting…" : "Delete deal"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -891,11 +930,11 @@ function DealDetailPanelBody({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: 10, border: "1px solid var(--card-border)" }}>
             <div style={{ fontSize: 11, color: "var(--muted)" }}>Total</div>
-            <div style={{ fontSize: 15, fontWeight: 590, color: "var(--primary)", fontFamily: "ui-monospace, monospace", marginTop: 2 }}>{deal.total_amount_usdc.toLocaleString()}</div>
+            <div style={{ fontSize: 15, fontWeight: 590, color: "var(--primary)", fontFamily: "ui-monospace, monospace", marginTop: 2 }}>${formatUsdc(deal.total_amount_usdc)} USDC</div>
           </div>
           <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: 10, border: "1px solid var(--card-border)" }}>
             <div style={{ fontSize: 11, color: "var(--muted)" }}>Released</div>
-            <div style={{ fontSize: 15, fontWeight: 590, color: "var(--success)", fontFamily: "ui-monospace, monospace", marginTop: 2 }}>{releasedAmount.toLocaleString()}</div>
+            <div style={{ fontSize: 15, fontWeight: 590, color: "var(--success)", fontFamily: "ui-monospace, monospace", marginTop: 2 }}>${formatUsdc(releasedAmount)} USDC</div>
           </div>
         </div>
 
@@ -963,8 +1002,26 @@ function DealDetailPanelBody({
         </div>
       </div>
 
-      {/* footer — link to the full page for the complete view */}
-      <div style={{ padding: "14px 18px", borderTop: "1px solid var(--card-border-subtle)" }}>
+      {/* footer — escrow-account link (N8) + full page */}
+      <div style={{ padding: "14px 18px", borderTop: "1px solid var(--card-border-subtle)", display: "flex", flexDirection: "column", gap: 8 }}>
+        {(() => {
+          const escrowUrl = escrowAccountUrl(deal.deal_id);
+          return escrowUrl ? (
+            <a
+              href={escrowUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, height: 34, borderRadius: 8, fontSize: 12, textDecoration: "none" }}
+              title="Escrow account on Solana Explorer"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+              View escrow on chain
+            </a>
+          ) : null;
+        })()}
         <Link
           href={dealHref(deal)}
           className="btn-ghost"
@@ -984,6 +1041,7 @@ function DealCardBold({
   myWallet,
   href,
   onOpen,
+  onRequestDelete,
   counterpartyProfile,
 }: {
   deal: SupabaseDeal;
@@ -992,6 +1050,7 @@ function DealCardBold({
   myWallet: string | null;
   href: string;
   onOpen?: (deal: SupabaseDeal) => void;
+  onRequestDelete?: (deal: SupabaseDeal) => void;
   counterpartyProfile?: CounterpartyProfile | null;
 }) {
   const isBuyer = deal.buyer_wallet === myWallet;
@@ -1006,6 +1065,11 @@ function DealCardBold({
 
   const inReview = (deal.milestones ?? []).some((m) => m.status === "In Review");
   const displayStatus = inferDealStatus(deal);
+  // Deletable only before escrow exists (#15) — funded/in-progress/completed
+  // deals hold on-chain state and must not be removed.
+  const canDelete =
+    !!onRequestDelete &&
+    ["draft", "seller-ready", "seller-agreed", "proposed", "escalated"].includes(displayStatus);
 
   const statusLabel: Record<string, string> = {
     draft:          counterparty ? "Counterparty joined" : "Awaiting counterparty",
@@ -1077,7 +1141,22 @@ function DealCardBold({
             {deal.deal_id.slice(0, 18)}
           </p>
         </div>
-        <StatusPill tone={tone}>{statusLabel[displayStatus] ?? deal.status}</StatusPill>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <StatusPill tone={tone}>{statusLabel[displayStatus] ?? deal.status}</StatusPill>
+          {canDelete && (
+            <button
+              type="button"
+              className="icon-btn-danger"
+              title="Delete deal"
+              aria-label="Delete deal"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRequestDelete!(deal); }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Counterparty + role */}

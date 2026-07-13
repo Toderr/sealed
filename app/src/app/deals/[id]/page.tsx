@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { useAppConnection as useConnection } from "@/lib/use-app-connection";
 import { PublicKey } from "@solana/web3.js";
@@ -18,9 +18,12 @@ import {
   getUsdcMint,
   sendTx,
 } from "@/lib/escrow-client";
+import { escrowAccountUrl, txUrl } from "@/lib/explorer";
+import { useDisplayName } from "@/lib/hooks/use-display-name";
 import { MOCK_CHAIN } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
+import { retryWrite } from "@/lib/retry-write";
 import { useApi, POLL_MS } from "@/lib/swr";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { SealedMark } from "@/components/SealedLogo";
@@ -38,7 +41,14 @@ type RefundRequest = {
   status: string;
   created_at: string;
 };
-type DbMsg = { id: string; role: string; content: string; wallet: string | null; created_at: string };
+type DbMsg = {
+  id: string;
+  role: string;
+  content: string;
+  wallet: string | null;
+  created_at: string;
+  metadata?: { attachment?: string; kind?: string } | null;
+};
 type Deliverable = {
   id: string;
   filename: string;
@@ -63,6 +73,7 @@ type RatingLookup = {
 
 export default function ActiveDealPage() {
   const params = useParams();
+  const router = useRouter();
   const dealId = Array.isArray(params.id) ? params.id[0] : (params.id as string);
   const { publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
@@ -133,12 +144,19 @@ export default function ActiveDealPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMsgCount = useRef(0);
   const fileInputRefs = useRef<{ [k: number]: HTMLInputElement | null }>({});
+  const chatFileRef = useRef<HTMLInputElement>(null);
 
   const role: "buyer" | "seller" | "observer" = !wallet
     ? "observer"
     : deal?.buyer_wallet === wallet ? "buyer"
     : deal?.seller_wallet === wallet ? "seller"
     : "observer";
+
+  // Counterparty display name (bug #4): resolve the other party's wallet to a
+  // profile name. Called unconditionally (before any early return) to satisfy
+  // the rules of hooks; safe when deal is still null.
+  const counterpartyWallet = role === "buyer" ? deal?.seller_wallet : deal?.buyer_wallet;
+  const counterpartyName = useDisplayName(counterpartyWallet || null);
 
   const milestones = deal?.milestones ?? [];
   const releasedCount = milestones.filter((m) => m.status === "Released").length;
@@ -166,12 +184,18 @@ export default function ActiveDealPage() {
     }
   }
 
-  async function patchMilestones(updated: Milestone[]) {
-    await apiFetchSafe(`/api/deals/${dealId}`, {
-      method: "PATCH",
-      wallet: wallet ?? "",
-      body: { milestones: updated },
-    }, undefined);
+  // Returns whether the mirror write eventually succeeded. Uses apiFetch (which
+  // throws) inside retryWrite so a transient failure is retried rather than
+  // silently swallowed — otherwise a released milestone stays "Pending"/"In
+  // Review" in the mirror and the UI is stuck on "Confirm & release" (F5).
+  async function patchMilestones(updated: Milestone[]): Promise<boolean> {
+    return retryWrite(() =>
+      apiFetch(`/api/deals/${dealId}`, {
+        method: "PATCH",
+        wallet: wallet ?? "",
+        body: { milestones: updated },
+      }),
+    );
   }
 
   async function postMessage(content: string, msgRole = "user") {
@@ -225,7 +249,9 @@ export default function ActiveDealPage() {
       const sig = await sendTx(connection, [ensureIx, releaseIx], signTransaction);
 
       const updated = milestones.map((m, i) =>
-        i === milestoneIndex ? { ...m, status: "Released" } : m
+        // Persist the release tx on the milestone (JSONB, no schema change) so it
+        // can be linked on the scanner later (N3/N8).
+        i === milestoneIndex ? { ...m, status: "Released", release_tx: sig } : m
       );
 
       if (MOCK_CHAIN) {
@@ -237,12 +263,19 @@ export default function ActiveDealPage() {
           allReleased
         );
       }
-      await patchMilestones(updated);
+      // The on-chain release already succeeded and is irreversible. Persist to
+      // the mirror durably (retries); if it still fails, warn softly — the
+      // payment WENT THROUGH, it just hasn't synced — rather than "failed to
+      // release", which would be wrong and prompt a confusing re-click (F5).
+      const synced = await patchMilestones(updated);
       await postMessage(
         `✅ Milestone ${milestoneIndex + 1} approved. **${formatUsdc(milestones[milestoneIndex].amount)} USDC** released to seller.\n\nTx: \`${sig.slice(0, 8)}...${sig.slice(-8)}\``,
         "assistant"
       );
       await refreshAll();
+      if (!synced) {
+        alert("Payment released on-chain ✓ — but syncing the status is taking a moment. It'll update shortly; no need to release again.");
+      }
     } catch (err) {
       console.error("Release failed:", err);
       alert("Failed to release payment. Check console for details.");
@@ -445,6 +478,46 @@ export default function ActiveDealPage() {
     }
   }
 
+  // Share an image in the chat (#3). Uploads via /api/upload in chat-attachment
+  // mode (image-only, no deliverable row), then posts a message carrying the
+  // storage key so it renders inline. Buyers use this instead of proof upload.
+  async function handleChatAttach(file: File) {
+    if (!wallet || sendingMsg) return;
+    setSendingMsg(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      let key: string | undefined;
+      try {
+        const res = await apiFetch<{ storage_key: string }>("/api/upload", {
+          method: "POST",
+          rawBody: form,
+          headers: { "x-wallet": wallet, "x-deal-id": dealId, "x-chat-attachment": "1" },
+        });
+        key = res.storage_key;
+      } catch (e) {
+        alert(e instanceof ApiError ? e.message : "Image upload failed");
+        return;
+      }
+      if (key) {
+        await apiFetchSafe("/api/messages", {
+          method: "POST",
+          wallet,
+          body: {
+            deal_id: dealId,
+            role: "user",
+            content: `📎 ${file.name}`,
+            wallet,
+            metadata: { attachment: key, kind: "image" },
+          },
+        }, undefined);
+        await refreshAll();
+      }
+    } finally {
+      setSendingMsg(false);
+    }
+  }
+
   const isComplete = milestones.length > 0 && milestones.every((m) => m.status === "Released");
   const currentInReview = currentMilestoneIndex >= 0 && milestones[currentMilestoneIndex]?.status === "In Review";
   const totalValue = milestones.reduce((s, m) => s + m.amount, 0);
@@ -457,6 +530,20 @@ export default function ActiveDealPage() {
   const isTerminal = isComplete || dealStatus === "completed" || dealStatus === "refunded";
   const isFunded = ["funded", "in_progress"].includes(dealStatus) || releasedCount > 0;
   const isUnfunded = !isFunded && ["draft", "seller-ready", "seller-agreed", "escalated", "proposed"].includes(dealStatus);
+
+  // If this deal is (or goes back to) a pre-escrow negotiation status — e.g. a
+  // funded deal re-opened via renegotiate/escalate — the deal page's milestone
+  // view is the wrong place for it; send the user to the negotiation room so a
+  // device sitting here doesn't get stuck while the other advances (S3). Guard
+  // on a loaded deal + a non-funded negotiation status so a genuinely funded
+  // deal is never bounced.
+  useEffect(() => {
+    if (!deal) return;
+    const NEGOTIATION_STATUSES = ["draft", "seller-ready", "seller-agreed", "proposed", "escalated"];
+    if (releasedCount === 0 && NEGOTIATION_STATUSES.includes(dealStatus)) {
+      router.replace(`/negotiate/${encodeURIComponent(dealId)}`);
+    }
+  }, [deal, dealStatus, releasedCount, dealId, router]);
 
   useEffect(() => {
     if (isComplete && !sealedModalShown) {
@@ -568,9 +655,20 @@ export default function ActiveDealPage() {
     );
   }
 
-  const shortBuyer = deal.buyer_wallet ? `${deal.buyer_wallet.slice(0, 4)}…${deal.buyer_wallet.slice(-4)}` : "—";
   const shortSeller = deal.seller_wallet ? `${deal.seller_wallet.slice(0, 4)}…${deal.seller_wallet.slice(-4)}` : "—";
-  const explorerUrl = `https://explorer.solana.com/address/${deal.deal_id}?cluster=devnet`;
+  // View-on-chain must point at the on-chain Deal PDA, not the human-readable
+  // deal_id slug (bug #5) — the slug isn't a valid base58 address, so the old
+  // link produced "Address ... is not valid" on the explorer.
+  // Escrow account (Deal PDA) link + deploy-tx link (N3/N8). The deploy tx was
+  // persisted in the deal-creation message metadata; pull it back to link it.
+  const explorerUrl = escrowAccountUrl(deal.deal_id);
+  const deployTxUrl = (() => {
+    const createMsg = messages.find(
+      (m) => (m.metadata as { tx_signature?: string } | null)?.tx_signature
+    );
+    const sig = (createMsg?.metadata as { tx_signature?: string } | null)?.tx_signature;
+    return txUrl(sig);
+  })();
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--background)", position: "relative" }}>
@@ -614,22 +712,36 @@ export default function ActiveDealPage() {
           </span>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <a
-            href={explorerUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-ghost"
-            style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none" }}
-          >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-            View on chain
-          </a>
+          {deployTxUrl && (
+            <a
+              href={deployTxUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost"
+              style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none" }}
+              title="Escrow deployment transaction"
+            >
+              <ExternalLinkIcon />
+              Deploy tx
+            </a>
+          )}
+          {explorerUrl && (
+            <a
+              href={explorerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost"
+              style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none" }}
+              title="Escrow account on Solana Explorer"
+            >
+              <ExternalLinkIcon />
+              Escrow account
+            </a>
+          )}
         </div>
       </header>
 
-      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "26px 24px", position: "relative", zIndex: 1 }}>
+      <div style={{ maxWidth: 1250, margin: "0 auto", padding: "26px 24px", position: "relative", zIndex: 1 }}>
         {/* Header */}
         <div style={{ marginBottom: 18 }}>
           <p style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted)", margin: 0, fontWeight: 510 }}>Deal</p>
@@ -642,45 +754,74 @@ export default function ActiveDealPage() {
         </div>
 
         {/* Stat strip */}
-        <div className="surface-card" style={{ borderRadius: 12, padding: 16, marginBottom: 16, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0 }}>
-          <StatBlock label="Total value" value={`$${totalValue.toLocaleString()}`} sub="USDC" />
+        <div className="surface-card grid grid-cols-2 gap-y-4 gap-x-0 sm:grid-cols-4" style={{ borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <StatBlock first label="Total value" value={`$${totalValue.toLocaleString()}`} sub="USDC" />
           <StatBlock label="Released" value={`$${releasedValue.toLocaleString()}`} sub={`${releasedCount} of ${milestones.length} milestones`} accent="success" />
-          <StatBlock label="Counterparty" value={role === "buyer" ? shortSeller : shortBuyer} sub={`You as ${role}`} />
-          <StatBlock label="Status" value={isComplete ? "Completed" : "In progress"} sub="Buyer confirms releases" accent={isComplete ? "success" : "warning"} />
+          <StatBlock label="Counterparty" value={counterpartyName} sub={`You as ${role}`} />
+          <StatBlock last label="Status" value={isComplete ? "Completed" : "In progress"} sub="Buyer confirms releases" accent={isComplete ? "success" : "warning"} />
         </div>
 
-        {/* Two-column main */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16 }}>
+        {/* Two-column main. minmax(0, …) tracks (not bare fr) so a long unbroken
+            string in a column — e.g. the on-chain tx signature in the chat —
+            can't force the column past its share and overflow the container,
+            which made this row wider than the stat strip above it. */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
           {/* Milestones */}
-          <div className="surface-card" style={{ borderRadius: 12, padding: 18 }}>
+          <div className="surface-card" style={{ minWidth: 0, borderRadius: 12, padding: 18 }}>
             <p style={{ fontSize: 13, color: "var(--primary)", fontWeight: 590, margin: 0 }}>Milestones</p>
             <p style={{ fontSize: 12, color: "var(--muted)", margin: "2px 0 14px" }}>Each release requires your confirmation.</p>
-            <div style={{ position: "relative", paddingLeft: 18 }}>
-              <div style={{ position: "absolute", left: 5, top: 14, bottom: 14, width: 1, background: "var(--card-border)" }} />
+            {/* Timeline. The connector is drawn per-row as two half-segments off
+                each dot's center — an "up" half (skipped on the first dot) and a
+                "down" half (skipped on the last) — so the line runs only BETWEEN
+                dots, with nothing above the first or below the last. Dots stay
+                centered on their box regardless of height (N6). */}
+            <div style={{ position: "relative", paddingLeft: 24 }}>
               {milestones.map((m, i) => {
                 const isReleased = m.status === "Released";
                 const isInReview = m.status === "In Review";
                 const isPending = !m.status || m.status === "Pending";
                 const isActive = isInReview || (isPending && i === currentMilestoneIndex);
                 const proofs = deliverables.filter((d) => d.milestone_index === i);
+                const isFirst = i === 0;
+                const isLast = i === milestones.length - 1;
 
                 return (
-                  <div key={i} style={{ position: "relative", paddingBottom: 12, paddingLeft: 18 }}>
-                    <span style={{
+                  <div key={i} style={{ position: "relative", paddingBottom: 12 }}>
+                    {/* Marker column spans exactly the box's height (the wrapper
+                        minus its 12px bottom gap) and flex-centers the dot, so the
+                        dot stays vertically centered on the box no matter how tall
+                        it grows (N6). */}
+                    <div style={{
                       position: "absolute",
-                      left: 0,
-                      top: 6,
-                      width: 11,
-                      height: 11,
-                      borderRadius: "50%",
-                      background: isReleased ? "var(--success)" : isInReview ? "var(--warning)" : "var(--muted)",
-                      border: "2px solid var(--background)",
-                      boxShadow: isActive ? "0 0 0 4px rgba(251,191,36,0.18)" : "none",
-                    }} />
+                      left: -18,
+                      top: 0,
+                      bottom: 12,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}>
+                      {/* "up" half: box top → dot center (skip on first dot) */}
+                      {!isFirst && (
+                        <span style={{ position: "absolute", left: 5, top: 0, height: "50%", width: 1, background: "var(--card-border)" }} />
+                      )}
+                      {/* "down" half: dot center → next dot (through the 12px gap).
+                          Skip on the last dot so nothing dangles below it. */}
+                      {!isLast && (
+                        <span style={{ position: "absolute", left: 5, top: "50%", bottom: -12, width: 1, background: "var(--card-border)" }} />
+                      )}
+                      <span style={{
+                        position: "relative",
+                        width: 11,
+                        height: 11,
+                        borderRadius: "50%",
+                        background: isReleased ? "var(--success)" : isInReview ? "var(--warning)" : "var(--muted)",
+                        border: "2px solid var(--background)",
+                        boxShadow: isActive ? "0 0 0 4px rgba(251,191,36,0.18)" : "none",
+                      }} />
+                    </div>
                     <div style={{
                       padding: "12px 14px",
                       borderRadius: 10,
-                      marginLeft: -4,
                       background: isActive ? "rgba(251,191,36,0.05)" : "rgba(255,255,255,0.02)",
                       border: `1px solid ${isActive ? "rgba(251,191,36,0.25)" : "var(--card-border-subtle)"}`,
                     }}>
@@ -696,6 +837,20 @@ export default function ActiveDealPage() {
                           ${m.amount.toLocaleString()}
                         </span>
                       </div>
+
+                      {/* Released milestone → link its on-chain transaction (N3/N8) */}
+                      {isReleased && txUrl(m.release_tx) && (
+                        <a
+                          href={txUrl(m.release_tx)!}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ marginTop: 8, fontSize: 11, color: "var(--muted)", display: "inline-flex", alignItems: "center", gap: 5, textDecoration: "none" }}
+                          title="Release transaction on Solana Explorer"
+                        >
+                          <ExternalLinkIcon />
+                          View release transaction
+                        </a>
+                      )}
 
                       {/* Proof files */}
                       {(isInReview || isReleased) && proofs.length > 0 && (
@@ -772,8 +927,9 @@ export default function ActiveDealPage() {
                         </div>
                       )}
 
-                      {/* Either party can upload proof — release stays buyer-only */}
-                      {role !== "observer" && (isPending || isInReview) && i === currentMilestoneIndex && (
+                      {/* Only the SELLER uploads milestone proof (#3); the buyer
+                          shares files via the chat instead. Release stays buyer-only. */}
+                      {role === "seller" && (isPending || isInReview) && i === currentMilestoneIndex && (
                         <div style={{ marginTop: 10 }}>
                           <input
                             type="file"
@@ -853,8 +1009,7 @@ export default function ActiveDealPage() {
 
             {/* Activity / chat */}
             <div
-              className="surface-card"
-              style={{ borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column", height: "calc(100vh - 480px)", minHeight: 280 }}
+              className="surface-card flex flex-col overflow-hidden rounded-xl h-[65vh] min-h-70 lg:h-[calc(100vh-480px)]"
             >
               <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--card-border-subtle)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                 <div style={{ width: 22, height: 22, borderRadius: 6, background: "rgba(113,112,255,0.1)", color: "var(--accent)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
@@ -873,7 +1028,9 @@ export default function ActiveDealPage() {
                     <p style={{ fontSize: 12, color: "var(--muted)" }}>
                       {role === "observer"
                         ? "No activity yet."
-                        : "Upload proof for the current milestone to get started — either party can submit."}
+                        : role === "seller"
+                        ? "Upload proof for the current milestone to get started."
+                        : "Send a message or share a file with the seller to get started."}
                     </p>
                   </div>
                 )}
@@ -882,25 +1039,40 @@ export default function ActiveDealPage() {
                   const isSystem = m.role === "system";
                   if (isSystem) return (
                     <div key={m.id} style={{ textAlign: "center" }}>
-                      <span style={{ fontSize: 11, color: "var(--subtle)", padding: "0 8px" }}>{m.content}</span>
+                      {/* Break long unbroken strings (e.g. a full tx signature)
+                          so a system line can't stretch the chat column and push
+                          the two-column row past the container width. */}
+                      <span style={{ fontSize: 11, color: "var(--subtle)", padding: "0 8px", overflowWrap: "anywhere", wordBreak: "break-word" }}>{m.content}</span>
                     </div>
                   );
+                  // Align by sender: my own messages on the right, the agent and
+                  // the counterparty on the left. Fall back to left for messages
+                  // with no wallet (agent/legacy) so only mine sit on the right.
+                  const isMine = !isAgent && !!wallet && m.wallet === wallet;
+                  const showCounterpartyName = !isAgent && !isMine;
                   return (
-                    <div key={m.id} style={{ display: "flex", justifyContent: isAgent ? "flex-start" : "flex-end" }}>
+                    <div key={m.id} style={{ display: "flex", justifyContent: isMine ? "flex-end" : "flex-start" }}>
                       <div style={{
                         maxWidth: "88%",
                         borderRadius: 11,
                         padding: "9px 13px",
                         fontSize: 12,
                         lineHeight: 1.55,
-                        background: isAgent ? "rgba(255,255,255,0.025)" : "var(--brand)",
-                        border: isAgent ? "1px solid var(--card-border)" : "none",
-                        color: isAgent ? "var(--foreground)" : "#ffffff",
+                        background: isMine ? "var(--brand)" : "rgba(255,255,255,0.025)",
+                        border: isMine ? "none" : "1px solid var(--card-border)",
+                        color: isMine ? "#ffffff" : "var(--foreground)",
                       }}>
                         {isAgent && (
                           <p style={{ fontSize: 10, color: "var(--accent)", margin: "0 0 4px" }}>Sealed Agent</p>
                         )}
-                        <div style={{ whiteSpace: "pre-wrap" }}>{renderMarkdown(m.content)}</div>
+                        {showCounterpartyName && (
+                          <CounterpartyMsgName wallet={m.wallet} />
+                        )}
+                        {m.metadata?.attachment ? (
+                          <ChatImageAttachment storageKey={m.metadata.attachment} name={m.content} />
+                        ) : (
+                          <div style={{ whiteSpace: "pre-wrap" }}>{renderMarkdown(m.content)}</div>
+                        )}
                       </div>
                     </div>
                   );
@@ -930,6 +1102,28 @@ export default function ActiveDealPage() {
               {wallet && (
                 <div style={{ borderTop: "1px solid var(--card-border-subtle)", padding: "10px 12px", flexShrink: 0 }}>
                   <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="file"
+                      accept=".png,.jpg,.jpeg"
+                      ref={chatFileRef}
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleChatAttach(file);
+                        e.target.value = "";
+                      }}
+                    />
+                    <button
+                      onClick={() => chatFileRef.current?.click()}
+                      disabled={sendingMsg}
+                      className="btn-ghost"
+                      title="Share an image"
+                      style={{ height: 34, width: 34, borderRadius: 6, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                      </svg>
+                    </button>
                     <input
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
@@ -1078,8 +1272,8 @@ export default function ActiveDealPage() {
 
       {/* Request-changes modal (buyer, In Review) */}
       {changesModal !== null && (
-        <div onClick={() => setChangesModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} className="surface-card" style={{ width: "100%", maxWidth: 420, borderRadius: 14, padding: 22 }}>
+        <div onClick={() => setChangesModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} className="modal-card" style={{ width: "100%", maxWidth: 420, borderRadius: 14, padding: 22 }}>
             <p style={{ fontSize: 15, fontWeight: 600, color: "var(--primary)", margin: "0 0 4px" }}>Request changes</p>
             <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 16px", lineHeight: 1.5 }}>
               Send Milestone {changesModal + 1} back to the seller to revise. It returns to <strong>Pending</strong> so they can re-submit proof. No funds move.
@@ -1104,8 +1298,8 @@ export default function ActiveDealPage() {
 
       {/* Report-a-problem modal */}
       {reportOpen && (
-        <div onClick={() => setReportOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} className="surface-card" style={{ width: "100%", maxWidth: 440, borderRadius: 14, padding: 22 }}>
+        <div onClick={() => setReportOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} className="modal-card" style={{ width: "100%", maxWidth: 440, borderRadius: 14, padding: 22 }}>
             {reportDone ? (
               <>
                 <p style={{ fontSize: 15, fontWeight: 600, color: "var(--primary)", margin: "0 0 6px" }}>Report received</p>
@@ -1153,10 +1347,28 @@ export default function ActiveDealPage() {
 
 /* ── Sub-components ── */
 
-function StatBlock({ label, value, sub, accent }: { label: string; value: string; sub: string; accent?: "success" | "warning" }) {
-  const color = accent === "success" ? "var(--success)" : accent === "warning" ? "var(--warning)" : "var(--primary)";
+function ExternalLinkIcon() {
   return (
-    <div style={{ paddingRight: 14, borderRight: "1px solid var(--card-border-subtle)" }}>
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
+  );
+}
+
+function StatBlock({ label, value, sub, accent, first, last }: { label: string; value: string; sub: string; accent?: "success" | "warning"; first?: boolean; last?: boolean }) {
+  const color = accent === "success" ? "var(--success)" : accent === "warning" ? "var(--warning)" : "var(--primary)";
+  // On mobile the strip wraps to 2×2, so the single-row divider + asymmetric
+  // first/last padding would land mid-grid — use plain per-cell padding there.
+  // At ≥sm it's one 4-wide row again: first cell flush-left, last flush-right,
+  // a divider only BETWEEN cells (N2). The `sm:` overrides carry that layout.
+  return (
+    <div
+      className={[
+        "px-0",
+        !last && "sm:border-r sm:border-card-border-subtle",
+        first ? "sm:pl-0 sm:pr-4" : last ? "sm:pl-4 sm:pr-0" : "sm:px-4",
+      ].filter(Boolean).join(" ")}
+    >
       <p style={{ fontSize: 11, color: "var(--muted)", margin: 0, fontWeight: 510, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</p>
       <p style={{ fontSize: 18, fontWeight: 590, color, margin: "6px 0 1px", letterSpacing: "-0.015em", fontVariantNumeric: "tabular-nums" }}>{value}</p>
       <p style={{ fontSize: 11, color: "var(--subtle)", margin: 0 }}>{sub}</p>
@@ -1164,7 +1376,18 @@ function StatBlock({ label, value, sub, accent }: { label: string; value: string
   );
 }
 
+// Small sender label above a counterparty chat bubble, so it's clear who wrote
+// it now that counterparty messages sit on the left.
+function CounterpartyMsgName({ wallet }: { wallet: string | null }) {
+  const name = useDisplayName(wallet || null);
+  if (!name) return null;
+  return <p style={{ fontSize: 10, color: "var(--muted)", margin: "0 0 4px" }}>{name}</p>;
+}
+
 function PartyRow({ label, wallet, isYou }: { label: string; wallet: string; isYou: boolean }) {
+  // Resolve the wallet to a profile name; keep the short wallet as a secondary
+  // line so the address is still available (bug #4).
+  const name = useDisplayName(wallet || null);
   const short = wallet ? `${wallet.slice(0, 4)}…${wallet.slice(-4)}` : "—";
   const initials = wallet ? wallet.slice(0, 2).toUpperCase() : "?";
   return (
@@ -1186,12 +1409,12 @@ function PartyRow({ label, wallet, isYou }: { label: string; wallet: string; isY
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 12, color: "var(--primary)", fontFamily: "ui-monospace, monospace" }}>{short}</span>
+          <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
           {isYou && (
             <span style={{ background: "transparent", border: "1px solid rgba(113,112,255,0.3)", borderRadius: 9999, padding: "1px 8px", fontSize: 10, color: "var(--accent)", fontWeight: 510 }}>You</span>
           )}
         </div>
-        <div style={{ fontSize: 11, color: "var(--muted)" }}>{label}</div>
+        <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "ui-monospace, monospace" }}>{short} · {label}</div>
       </div>
     </div>
   );
@@ -1502,4 +1725,31 @@ function ProjectSealedModal({ onClose }: { onClose: () => void }) {
       </div>
     </>
   );
+}
+
+// Renders a chat image attachment (#3). Fetches a short-lived signed URL for the
+// private storage key and shows the image; falls back to the filename if the URL
+// isn't available (e.g. offline mock mode).
+function ChatImageAttachment({ storageKey, name }: { storageKey: string; name: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    apiFetchSafe<{ url?: string }>(`/api/upload/signed?key=${encodeURIComponent(storageKey)}`, {}, {})
+      .then((d) => { if (!cancelled) setUrl(d.url ?? null); });
+    return () => { cancelled = true; };
+  }, [storageKey]);
+
+  if (url) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={name}
+          style={{ maxWidth: "100%", maxHeight: 220, borderRadius: 8, display: "block" }}
+        />
+      </a>
+    );
+  }
+  return <div style={{ whiteSpace: "pre-wrap", opacity: 0.9 }}>{name}</div>;
 }

@@ -32,7 +32,65 @@ export default function DealReviewPage() {
   const { profile } = useProfileStore(wallet);
   const { show: toast } = useToast();
 
-  const deal = deals.find((d) => d.dealId === dealId);
+  const localDeal = deals.find((d) => d.dealId === dealId);
+
+  // Fallback: a deal reached via a notification (or on a fresh browser) may not
+  // be in the local store. Fetch it from the mirror instead of dead-ending on
+  // "Deal not found locally" (N11). Mapped to the shape this page reads
+  // (dealId + totalAmount/milestone amounts in lamports).
+  const [fetchedDeal, setFetchedDeal] = useState<
+    { dealId: string; totalAmount: number; milestones: Array<{ description: string; amount: number; status?: string }> } | null
+  >(null);
+  const [dealLoading, setDealLoading] = useState(true);
+  const [dealStatus, setDealStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (localDeal) { setDealLoading(false); return; }
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDealLoading(true);
+    apiFetch<{ deal?: { deal_id: string; total_amount_usdc: number; status?: string; milestones?: Array<{ description: string; amount: number; status?: string }> } }>(
+      `/api/deals/${encodeURIComponent(dealId)}`
+    )
+      .then((data) => {
+        if (cancelled || !data.deal) return;
+        setDealStatus(data.deal.status ?? null);
+        setFetchedDeal({
+          dealId: data.deal.deal_id,
+          totalAmount: (data.deal.total_amount_usdc ?? 0) * 1_000_000,
+          milestones: (data.deal.milestones ?? []).map((m) => ({
+            description: m.description,
+            amount: (m.amount ?? 0) * 1_000_000,
+            status: m.status,
+          })),
+        });
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setDealLoading(false); });
+    return () => { cancelled = true; };
+  }, [localDeal, dealId]);
+
+  // This standalone "review" screen was a dead end: its Approve/Decline/
+  // Renegotiate actions didn't touch the real deal (no-op approve, wrong-endpoint
+  // decline, malformed renegotiate) yet showed success. Redirect to the working
+  // flow instead — the negotiation room for pre-escrow deals, the deal page once
+  // funded — which have the real approve/fund/renegotiate/release controls.
+  // Fires once we know the status (from the mirror fetch or a local deal).
+  const localStatus = localDeal ? String(localDeal.status).toLowerCase() : null;
+  useEffect(() => {
+    const status = (dealStatus ?? localStatus ?? "").toLowerCase();
+    if (!status) return;
+    const NEGOTIATION = ["draft", "created", "seller-ready", "seller-agreed", "proposed", "escalated"];
+    router.replace(
+      NEGOTIATION.includes(status)
+        ? `/negotiate/${encodeURIComponent(dealId)}`
+        : `/deals/${encodeURIComponent(dealId)}`,
+    );
+  }, [dealStatus, localStatus, dealId, router]);
+
+  // Prefer the local (live) deal; fall back to the fetched one.
+  const deal = localDeal ?? fetchedDeal;
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMsgs, setLoadingMsgs] = useState(true);
@@ -67,14 +125,42 @@ export default function DealReviewPage() {
     );
   }
 
-  if (!deal) {
+  if (!deal && dealLoading) {
     return (
       <Shell>
-        <div className="flex-1 flex items-center justify-center gap-4 flex-col">
-          <p className="text-muted text-[14px]">Deal not found locally.</p>
-          <Link href="/app" className="btn-primary h-9 px-5 rounded-md text-[13px]">
-            Go to deals
-          </Link>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex gap-1 items-center">
+            {[0, 150, 300].map((d) => (
+              <span key={d} className="h-1.5 w-1.5 rounded-full bg-muted animate-bounce" style={{ animationDelay: `${d}ms` }} />
+            ))}
+          </div>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (!deal) {
+    // Proper empty state (N12) — a card with an icon, title, and explanation,
+    // not a bare line of text.
+    return (
+      <Shell>
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="surface-card rounded-xl flex flex-col items-center text-center gap-4 py-12 px-8" style={{ maxWidth: 380 }}>
+            <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-[rgba(255,255,255,0.04)] text-muted">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="11" y1="8" x2="11" y2="11" /><line x1="11" y1="14" x2="11.01" y2="14" />
+              </svg>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-primary text-[15px]" style={{ fontWeight: 590 }}>Deal not found</p>
+              <p className="text-muted text-[13px] leading-relaxed">
+                We couldn&apos;t load this deal. It may have been removed, or you may not be a party to it.
+              </p>
+            </div>
+            <Link href="/app" className="btn-primary h-9 px-5 rounded-md text-[13px] inline-flex items-center">
+              Go to deals
+            </Link>
+          </div>
         </div>
       </Shell>
     );
