@@ -9,6 +9,7 @@ import { useToast } from "@/components/Toast";
 import { NotificationMenu } from "@/components/NotificationMenu";
 import { useProfileStore } from "@/lib/profile-store";
 import { purgeDealLocally } from "@/lib/deals-store";
+import { POLL_MS } from "@/lib/swr";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import { type DealParams, type PublicProfile, type SupabaseDeal, formatUsdc, usdcToLamports } from "@/lib/types";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
@@ -468,13 +469,26 @@ function DealsBoldBoard({
       setLoading(false); // eslint-disable-line react-hooks/set-state-in-effect
       return;
     }
-    apiFetchSafe<{ deals?: SupabaseDeal[] }>("/api/deals/mirror", { wallet }, { deals: [] })
-      .then((data) => {
-        const supabaseDeals: SupabaseDeal[] = data.deals ?? [];
-        const sessionDeals = readSessionDeals(wallet);
-        setDeals(mergeDedupe(supabaseDeals, sessionDeals));
-      })
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    // Poll the mirror so the board reflects a counterparty's join/agree/fund/
+    // status change without a manual refresh, matching the 4s sync the deal and
+    // negotiate pages have (S7). apiFetchSafe never throws → a transient failure
+    // keeps the last-good lanes instead of emptying the board.
+    const load = () =>
+      apiFetchSafe<{ deals?: SupabaseDeal[] }>("/api/deals/mirror", { wallet }, { deals: [] })
+        .then((data) => {
+          if (cancelled) return;
+          const supabaseDeals: SupabaseDeal[] = data.deals ?? [];
+          const sessionDeals = readSessionDeals(wallet);
+          setDeals(mergeDedupe(supabaseDeals, sessionDeals));
+        })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    load();
+    const interval = setInterval(load, POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [wallet]);
 
   useEffect(() => {
