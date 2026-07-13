@@ -103,6 +103,19 @@ type PublicProfileResponse = {
   member_since?: string | null;
 };
 
+// True if the visible identity fields differ — used to decide whether a
+// background DB revalidation should adopt the server copy over the local one
+// (S6). Ignores llmConfig/timestamps, which aren't server-authoritative.
+function identityDiffers(a: UserProfile, b: UserProfile): boolean {
+  return (
+    a.name !== b.name ||
+    a.username !== b.username ||
+    a.bio !== b.bio ||
+    (a.avatarUrl ?? "") !== (b.avatarUrl ?? "") ||
+    JSON.stringify(a.socials) !== JSON.stringify(b.socials)
+  );
+}
+
 // Map a DB profile into the local UserProfile shape. Returns null if the DB has
 // no real identity yet (so we don't mark a brand-new wallet as onboarded).
 function profileFromDb(p: PublicProfileResponse): UserProfile | null {
@@ -149,12 +162,36 @@ export function useProfileStore(wallet: string | null) {
       return;
     }
 
-    // Local profile wins — it's the freshest (just-edited) copy.
+    // Local profile wins for the initial paint — it's fast and usually freshest.
+    // But it used to win FOREVER, so an edit made on another device never showed
+    // here (stale name/avatar, and stale name embedded in invite links) — S6. So
+    // also revalidate against the DB in the background and adopt the server copy
+    // if its identity fields differ (a cross-device edit). A local updateProfile
+    // re-persists and re-hydrates, so an in-flight local edit still wins.
     const local = loadProfileFromStorage(wallet);
     if (local) {
       setProfile(local);
       setLoadedWallet(wallet);
-      return;
+      let cancelledLocal = false;
+      (async () => {
+        try {
+          const res = await fetch(`/api/users/${encodeURIComponent(wallet)}/public?self=1`);
+          const data = (res.ok ? await res.json() : null) as PublicProfileResponse | null;
+          if (cancelledLocal || !data) return;
+          const fromServer = profileFromDb(data);
+          if (fromServer && identityDiffers(local, fromServer)) {
+            // Preserve the locally-held LLM config (not stored server-side).
+            const merged: UserProfile = { ...fromServer, llmConfig: local.llmConfig, onboardingComplete: true };
+            persist(wallet, merged);
+            setProfile(merged);
+          }
+        } catch {
+          // offline / transient — keep the local copy.
+        }
+      })();
+      return () => {
+        cancelledLocal = true;
+      };
     }
 
     // No local profile: this could be a genuinely new wallet OR a returning user
