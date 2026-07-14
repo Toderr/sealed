@@ -35,6 +35,12 @@ pub struct CreateDeal<'info> {
     )]
     pub escrow_token_account: Account<'info, TokenAccount>,
 
+    /// Global platform config, if it exists — the deal snapshots its fee_bps +
+    /// treasury. Optional so deals can still be created before init_config
+    /// (they're then fee-free). Seeds-validated when provided.
+    #[account(seeds = [b"config"], bump = config.bump)]
+    pub config: Option<Account<'info, Config>>,
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
@@ -78,8 +84,24 @@ pub fn handler(
     deal.created_at = Clock::get()?.unix_timestamp;
     deal.funded_at = 0;
     deal.updated_at = deal.created_at;
+    deal.buyer_fee_paid = false;
     deal.bump = ctx.bumps.deal;
 
-    msg!("Deal created: {}", deal.deal_id);
+    // Snapshot the current platform fee onto the deal. The fee is only "live"
+    // when a rate is set AND a treasury exists — otherwise the deal is fee-free
+    // (fee_bps 0 / treasury default), so deals stay fundable before the treasury
+    // is configured. Later fee changes never affect this (already-created) deal.
+    match &ctx.accounts.config {
+        Some(config) if config.fee_active() => {
+            deal.fee_bps = config.fee_bps;
+            deal.treasury = config.treasury;
+        }
+        _ => {
+            deal.fee_bps = 0;
+            deal.treasury = Pubkey::default();
+        }
+    }
+
+    msg!("Deal created: {} (fee_bps={})", deal.deal_id, deal.fee_bps);
     Ok(())
 }

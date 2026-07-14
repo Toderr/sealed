@@ -29,6 +29,11 @@ pub struct FundEscrow<'info> {
     )]
     pub buyer_token_account: Account<'info, TokenAccount>,
 
+    /// Treasury token account — required only when the deal charges a fee.
+    /// Validated in the handler against deal.treasury + mint.
+    #[account(mut)]
+    pub treasury_token_account: Option<Account<'info, TokenAccount>>,
+
     pub token_program: Program<'info, Token>,
 }
 
@@ -40,7 +45,7 @@ pub fn handler(ctx: Context<FundEscrow>, amount: u64) -> Result<()> {
         EscrowError::OverFunding
     );
 
-    // Transfer USDC from buyer to escrow
+    // Transfer the contract amount from buyer → escrow vault.
     let transfer_ctx = CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         Transfer {
@@ -50,6 +55,35 @@ pub fn handler(ctx: Context<FundEscrow>, amount: u64) -> Result<()> {
         },
     );
     token::transfer(transfer_ctx, amount)?;
+
+    // Charge the buyer's fee half ONCE, to the treasury. Only when the deal
+    // carries a fee; skipped entirely for fee-free deals (no treasury needed).
+    if deal.has_fee() && !deal.buyer_fee_paid {
+        let buyer_fee = deal.half_fee(deal.total_amount);
+        if buyer_fee > 0 {
+            let treasury_ta = ctx
+                .accounts
+                .treasury_token_account
+                .as_ref()
+                .ok_or(EscrowError::TreasuryAccountRequired)?;
+            // The treasury account must belong to the snapshotted treasury + mint.
+            require!(
+                treasury_ta.owner == deal.treasury && treasury_ta.mint == deal.mint,
+                EscrowError::TreasuryAccountRequired
+            );
+            let fee_ctx = CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.buyer_token_account.to_account_info(),
+                    to: treasury_ta.to_account_info(),
+                    authority: ctx.accounts.buyer.to_account_info(),
+                },
+            );
+            token::transfer(fee_ctx, buyer_fee)?;
+            msg!("Buyer fee charged: {} USDC", buyer_fee);
+        }
+        deal.buyer_fee_paid = true;
+    }
 
     let now = Clock::get()?.unix_timestamp;
     deal.funded_amount += amount;

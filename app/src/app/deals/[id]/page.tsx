@@ -17,7 +17,9 @@ import {
   coSignAndSend,
   getUsdcMint,
   sendTx,
+  fetchFeeConfig,
 } from "@/lib/escrow-client";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { escrowAccountUrl, txUrl } from "@/lib/explorer";
 import { useDisplayName } from "@/lib/hooks/use-display-name";
 import { MOCK_CHAIN } from "@/lib/env";
@@ -245,7 +247,14 @@ export default function ActiveDealPage() {
       const sellerPubkey = new PublicKey(deal.seller_wallet);
       const mint = getUsdcMint();
       const ensureIx = await buildEnsureAtaIx(publicKey, sellerPubkey, mint);
-      const releaseIx = await buildReleaseMilestoneIx(publicKey, dealId, milestoneIndex, sellerPubkey);
+      // Fee-bearing deals take the seller's fee half from this milestone and send
+      // it to the treasury, so release must pass the treasury token account (else
+      // the program reverts with TreasuryAccountRequired). Mirrors funding.
+      const fee = await fetchFeeConfig(connection);
+      const treasuryTa = fee.active
+        ? await getAssociatedTokenAddress(mint, new PublicKey(fee.treasury))
+        : undefined;
+      const releaseIx = await buildReleaseMilestoneIx(publicKey, dealId, milestoneIndex, sellerPubkey, treasuryTa);
       const sig = await sendTx(connection, [ensureIx, releaseIx], signTransaction);
 
       const updated = milestones.map((m, i) =>

@@ -4,9 +4,134 @@
     "name": "escrow",
     "version": "0.1.0",
     "spec": "0.1.0",
-    "description": "Sealed — milestone-based escrow with USDC support"
+    "description": "Sealed: milestone-based escrow with USDC support"
   },
   "instructions": [
+    {
+      "name": "buyer_timeout_refund",
+      "docs": [
+        "Unilateral refund after 30-day inactivity timeout (buyer only, no seller required)"
+      ],
+      "discriminator": [
+        38,
+        221,
+        152,
+        97,
+        238,
+        39,
+        29,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "buyer",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "deal"
+          ]
+        },
+        {
+          "name": "deal",
+          "writable": true
+        },
+        {
+          "name": "escrow_token_account",
+          "writable": true
+        },
+        {
+          "name": "buyer_token_account",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "cancel_deal",
+      "docs": [
+        "Cancel an unfunded deal, close accounts, reclaim rent (buyer only)"
+      ],
+      "discriminator": [
+        158,
+        86,
+        193,
+        45,
+        168,
+        111,
+        48,
+        29
+      ],
+      "accounts": [
+        {
+          "name": "buyer",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "deal"
+          ]
+        },
+        {
+          "name": "deal",
+          "writable": true
+        },
+        {
+          "name": "escrow_token_account",
+          "writable": true
+        },
+        {
+          "name": "buyer_token_account",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_deal",
+      "docs": [
+        "Close a completed or refunded deal, reclaim escrow vault rent (buyer only)"
+      ],
+      "discriminator": [
+        157,
+        173,
+        33,
+        216,
+        146,
+        16,
+        65,
+        82
+      ],
+      "accounts": [
+        {
+          "name": "buyer",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "deal"
+          ]
+        },
+        {
+          "name": "deal",
+          "writable": true
+        },
+        {
+          "name": "escrow_token_account",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
     {
       "name": "create_deal",
       "docs": [
@@ -88,6 +213,30 @@
           }
         },
         {
+          "name": "config",
+          "docs": [
+            "Global platform config, if it exists — the deal snapshots its fee_bps +",
+            "treasury. Optional so deals can still be created before init_config",
+            "(they're then fee-free). Seeds-validated when provided."
+          ],
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
@@ -158,6 +307,15 @@
           "writable": true
         },
         {
+          "name": "treasury_token_account",
+          "docs": [
+            "Treasury token account — required only when the deal charges a fee.",
+            "Validated in the handler against deal.treasury + mint."
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
@@ -170,9 +328,61 @@
       ]
     },
     {
+      "name": "init_config",
+      "docs": [
+        "Initialize the global platform config (fee + treasury + authority). Once."
+      ],
+      "discriminator": [
+        23,
+        235,
+        115,
+        232,
+        168,
+        96,
+        1,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "fee_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
       "name": "refund",
       "docs": [
-        "Refund remaining funds to buyer (mutual agreement or timeout)"
+        "Refund remaining funds to buyer (requires both signatures)"
       ],
       "discriminator": [
         2,
@@ -257,6 +467,15 @@
           "writable": true
         },
         {
+          "name": "treasury_token_account",
+          "docs": [
+            "Treasury token account — required only when the deal charges a fee.",
+            "Validated in the handler against deal.treasury + mint."
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
@@ -267,9 +486,172 @@
           "type": "u8"
         }
       ]
+    },
+    {
+      "name": "set_authority",
+      "docs": [
+        "Transfer the config authority to a new wallet (authority only)"
+      ],
+      "discriminator": [
+        133,
+        250,
+        37,
+        21,
+        110,
+        163,
+        26,
+        121
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "new_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_fee",
+      "docs": [
+        "Change the platform fee in basis points (authority only)"
+      ],
+      "discriminator": [
+        18,
+        154,
+        24,
+        18,
+        237,
+        214,
+        19,
+        80
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "fee_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "set_treasury",
+      "docs": [
+        "Change the treasury address (authority only)"
+      ],
+      "discriminator": [
+        57,
+        97,
+        196,
+        95,
+        195,
+        206,
+        106,
+        136
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "treasury",
+          "type": "pubkey"
+        }
+      ]
     }
   ],
   "accounts": [
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
     {
       "name": "Deal",
       "discriminator": [
@@ -334,9 +716,77 @@
       "code": 6009,
       "name": "OverFunding",
       "msg": "Funding amount exceeds remaining balance"
+    },
+    {
+      "code": 6010,
+      "name": "TimeoutNotReached",
+      "msg": "30-day timeout period has not elapsed yet"
+    },
+    {
+      "code": 6011,
+      "name": "UnauthorizedAuthority",
+      "msg": "Unauthorized: only the config authority can perform this action"
+    },
+    {
+      "code": 6012,
+      "name": "FeeTooHigh",
+      "msg": "Fee exceeds the maximum allowed (5%)"
+    },
+    {
+      "code": 6013,
+      "name": "TreasuryAccountRequired",
+      "msg": "This deal charges a fee; the correct treasury token account is required"
+    },
+    {
+      "code": 6014,
+      "name": "MathOverflow",
+      "msg": "Arithmetic overflow"
     }
   ],
   "types": [
+    {
+      "name": "Config",
+      "docs": [
+        "Global platform config (PDA: seeds = [\"config\"]). Holds the changeable fee",
+        "rate, treasury, and the admin authority. A single instance for the program.",
+        "The fee is only ACTUALLY charged when fee_bps > 0 AND treasury is set — so",
+        "the program can be deployed and run fee-free until the treasury exists."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "The only wallet allowed to change fee settings."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "Where platform fees are sent (owner of the treasury token account).",
+              "Pubkey::default() means \"unset\" → no fee is charged."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_bps",
+            "docs": [
+              "Total platform fee in basis points (100 = 1%). Split half buyer / half seller."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
     {
       "name": "Deal",
       "type": {
@@ -430,11 +880,41 @@
             "type": "i64"
           },
           {
+            "name": "funded_at",
+            "docs": [
+              "Timestamp when deal reached fully-funded status (0 = not yet funded)"
+            ],
+            "type": "i64"
+          },
+          {
             "name": "updated_at",
             "docs": [
               "Last updated timestamp"
             ],
             "type": "i64"
+          },
+          {
+            "name": "fee_bps",
+            "docs": [
+              "Platform fee (bps) snapshotted from Config at creation. 0 = fee-free deal.",
+              "Frozen per-deal so later fee changes never affect in-flight deals."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "Treasury snapshotted at creation (owner of the treasury token account the",
+              "buyer/seller fees are sent to). Pubkey::default() = no fee for this deal."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer_fee_paid",
+            "docs": [
+              "Whether the buyer's fee half has already been charged (once, at funding)."
+            ],
+            "type": "bool"
           },
           {
             "name": "bump",

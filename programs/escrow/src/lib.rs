@@ -13,6 +13,26 @@ declare_id!("3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ");
 pub mod escrow {
     use super::*;
 
+    /// Initialize the global platform config (fee + treasury + authority). Once.
+    pub fn init_config(ctx: Context<InitConfig>, fee_bps: u16) -> Result<()> {
+        instructions::config::init_config(ctx, fee_bps)
+    }
+
+    /// Change the platform fee in basis points (authority only)
+    pub fn set_fee(ctx: Context<UpdateConfig>, fee_bps: u16) -> Result<()> {
+        instructions::config::set_fee(ctx, fee_bps)
+    }
+
+    /// Change the treasury address (authority only)
+    pub fn set_treasury(ctx: Context<UpdateConfig>, treasury: Pubkey) -> Result<()> {
+        instructions::config::set_treasury(ctx, treasury)
+    }
+
+    /// Transfer the config authority to a new wallet (authority only)
+    pub fn set_authority(ctx: Context<UpdateConfig>, new_authority: Pubkey) -> Result<()> {
+        instructions::config::set_authority(ctx, new_authority)
+    }
+
     /// Create a new deal with milestones and escrow parameters
     pub fn create_deal(
         ctx: Context<CreateDeal>,

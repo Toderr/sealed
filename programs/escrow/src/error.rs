@@ -24,4 +24,12 @@ pub enum EscrowError {
     OverFunding,
     #[msg("30-day timeout period has not elapsed yet")]
     TimeoutNotReached,
+    #[msg("Unauthorized: only the config authority can perform this action")]
+    UnauthorizedAuthority,
+    #[msg("Fee exceeds the maximum allowed (5%)")]
+    FeeTooHigh,
+    #[msg("This deal charges a fee; the correct treasury token account is required")]
+    TreasuryAccountRequired,
+    #[msg("Arithmetic overflow")]
+    MathOverflow,
 }
