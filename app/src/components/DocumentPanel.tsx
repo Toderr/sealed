@@ -57,6 +57,12 @@ export function DocumentPanel({
 
   async function uploadFile(file: File) {
     setError(null);
+    // Guard the 25 MB cap client-side (matches the server) so the user sees a
+    // clear message instead of a raw 413 (#10).
+    if (file.size > 25 * 1024 * 1024) {
+      setError("File is over 25 MB. Please share a Google Drive link instead.");
+      return;
+    }
     setUploading(true);
     try {
       const form = new FormData();

@@ -82,13 +82,19 @@ export const POST = withRoute(async (request) => {
     throw new HttpError(403, "Forbidden");
   }
 
+  // Never null-clobber a slot that's already filled. A re-sync of a seller-created
+  // deal (creator_role:"seller", buyer_wallet null) must NOT wipe a buyer who has
+  // since joined — preserve the existing slot when this write doesn't provide one.
+  const finalBuyer = buyer_wallet ?? existing?.buyer_wallet ?? null;
+  const finalSeller = resolvedSeller ?? existing?.seller_wallet ?? null;
+
   const { data, error } = await supabase
     .from(table("deals"))
     .upsert(
       {
         deal_id,
-        buyer_wallet,
-        seller_wallet: resolvedSeller,
+        buyer_wallet: finalBuyer,
+        seller_wallet: finalSeller,
         title,
         description: description ?? null,
         total_amount_usdc,

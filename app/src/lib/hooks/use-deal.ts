@@ -37,7 +37,10 @@ function readSessionDeal(dealId: string): SupabaseDeal | null {
 // defaulting them to the buyer. Previously this bailed when buyer_wallet was
 // empty, so a seller-created deal never re-synced (Round 6, #1).
 function retryMirrorSync(local: SupabaseDeal) {
-  const creatorWallet = local.buyer_wallet ?? local.seller_wallet;
+  // Use truthiness, not ??: a seller-created draft is stored with buyer_wallet:""
+  // (empty string, not null), and "" ?? x === "" would wrongly pick the empty
+  // buyer and bail. Fall through to the seller slot when the buyer slot is blank.
+  const creatorWallet = local.buyer_wallet || local.seller_wallet;
   if (!creatorWallet) return;
   const creatorRole: "buyer" | "seller" = local.buyer_wallet ? "buyer" : "seller";
   apiFetchSafe(

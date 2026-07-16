@@ -38,6 +38,12 @@ import WalletMultiButton from "@/components/AppWalletButton";
 // program's TIMEOUT_SECONDS (30 days). Used to compute/display the unlock date.
 const TIMEOUT_SECONDS = 30 * 24 * 60 * 60;
 
+// Product upload cap. Matches the server MAX_SIZE; guards each upload entry point
+// client-side so the user gets a clear message + Drive-link hint instead of a
+// raw 413. (On Vercel the effective body cap is lower ~4.5 MB — see the upload
+// route; large files should move to a direct-to-Storage signed upload.)
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
 type Milestone = { description: string; amount: number; status?: string };
 type RefundRequest = {
   deal_id: string;
@@ -220,7 +226,7 @@ export default function ActiveDealPage() {
     if (!wallet) return;
     // Guard the 25 MB product cap client-side so the user gets a clear message
     // (and the Drive-link hint) instead of a raw 413 (#10).
-    if (file.size > 25 * 1024 * 1024) {
+    if (file.size > MAX_UPLOAD_BYTES) {
       alert("That file is over 25 MB. Please share a Google Drive link instead (use “paste a link / text”).");
       return;
     }
@@ -283,12 +289,19 @@ export default function ActiveDealPage() {
         alert(e instanceof ApiError ? e.message : "Failed to submit proof");
         return;
       }
+      // The proof row is already saved server-side. Update the milestone status
+      // + thread best-effort: if these fail, the proof still exists, so don't
+      // error out — just close the form and refresh.
       const updated = milestones.map((m, i) =>
         i === milestoneIndex ? { ...m, status: "In Review" } : m
       );
-      await patchMilestones(updated);
-      const tail = role === "buyer" ? "Awaiting your review & release." : "Awaiting buyer review.";
-      await postMessage(`🔗 Proof submitted for Milestone ${milestoneIndex + 1}: **${milestones[milestoneIndex].description}**. ${tail}`);
+      try {
+        await patchMilestones(updated);
+        const tail = role === "buyer" ? "Awaiting your review & release." : "Awaiting buyer review.";
+        await postMessage(`🔗 Proof submitted for Milestone ${milestoneIndex + 1}: **${milestones[milestoneIndex].description}**. ${tail}`);
+      } catch (e) {
+        console.error("Link proof saved, but status/message update failed:", e);
+      }
       setLinkProofValue("");
       setLinkProofOpen(null);
       await refreshAll();
@@ -412,11 +425,20 @@ export default function ActiveDealPage() {
         // for older deals created before that column existed. Surface the computed
         // unlock date so the buyer knows when reclaim becomes possible, instead of
         // a bare "hasn't elapsed yet".
+        // Prefer funded_at (the true funding time). updated_at is only an
+        // approximation — it's bumped by later edits, so mark the date "approx"
+        // when that's all we have, rather than stating a precise (possibly wrong)
+        // unlock date. The chain is authoritative either way.
+        const exact = !!deal?.funded_at;
         const fundedRaw = deal?.funded_at ?? deal?.updated_at ?? null;
         const fundedAt = fundedRaw ? new Date(fundedRaw) : null;
         if (fundedAt && !isNaN(fundedAt.getTime())) {
           const unlock = new Date(fundedAt.getTime() + TIMEOUT_SECONDS * 1000);
-          alert(`You can reclaim these funds after ${unlock.toLocaleDateString()} (30 days after funding). It hasn't elapsed yet.`);
+          alert(
+            exact
+              ? `You can reclaim these funds after ${unlock.toLocaleDateString()} (30 days after funding). It hasn't elapsed yet.`
+              : `The 30-day inactivity window hasn't elapsed yet — reclaim unlocks roughly ${unlock.toLocaleDateString()} (approximate; measured 30 days after funding).`
+          );
         } else {
           alert("You can reclaim these funds 30 days after the deal was funded. That window hasn't elapsed yet.");
         }
@@ -480,12 +502,16 @@ export default function ActiveDealPage() {
       // cancellation. Phantom/Solflare surface this as a message containing
       // "reject"/"denied", or an object with code 4001.
       const code = (err as { code?: number } | null)?.code;
-      const cancelled = code === 4001 || /reject|denied|user rejected|cancel/i.test(msg);
-      if (cancelled) {
+      // Only treat it as a user cancellation on the wallet's explicit signal:
+      // the standard 4001 code, or a tight "user rejected/denied" phrase. A loose
+      // match on "cancel"/"reject" wrongly swallowed real network/abort errors as
+      // "you declined" (which they weren't).
+      const userCancelled = code === 4001 || /user (rejected|denied)|rejected the request/i.test(msg);
+      if (userCancelled) {
         alert("Refund cancelled — you declined the signature.");
       } else if (err instanceof ApiError && err.status === 403) {
         alert("Only the buyer or seller on this deal can start a refund.");
-      } else if (/blockhash|fetch|timeout|network|failed to fetch/i.test(msg)) {
+      } else if (/blockhash|fetch|timeout|network|failed to fetch|aborted/i.test(msg)) {
         alert("Couldn't reach the network. Check your connection and try again.");
       } else {
         alert("Couldn't start the refund. Please try again.");
@@ -578,6 +604,10 @@ export default function ActiveDealPage() {
   // storage key so it renders inline. Buyers use this instead of proof upload.
   async function handleChatAttach(file: File) {
     if (!wallet || sendingMsg) return;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      alert("That image is over 25 MB. Please attach a smaller one.");
+      return;
+    }
     setSendingMsg(true);
     try {
       const form = new FormData();
@@ -1269,12 +1299,32 @@ export default function ActiveDealPage() {
                       <p style={{ fontSize: 10, color: "var(--accent)", margin: "0 0 6px", fontWeight: 510, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                         Review Milestone {currentMilestoneIndex + 1}
                       </p>
-                      {proofs.map((p) => (
-                        <button key={p.id} onClick={() => openProof(p.storage_key)} disabled={openingProof === p.storage_key}
-                          style={{ fontSize: 11, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-                          📎 {p.filename}
-                        </button>
-                      ))}
+                      {proofs.map((p) => {
+                        // Link/text proofs store the URL/text in storage_key (not a
+                        // storage path), so they must NOT go through openProof (which
+                        // builds a signed Storage URL and would fail). Render inline.
+                        if (p.content_type === "text/uri-list") {
+                          return (
+                            <a key={p.id} href={p.storage_key} target="_blank" rel="noopener noreferrer"
+                              style={{ display: "block", fontSize: 11, color: "var(--accent)", overflowWrap: "anywhere" }}>
+                              🔗 {p.filename}
+                            </a>
+                          );
+                        }
+                        if (p.content_type === "text/plain") {
+                          return (
+                            <p key={p.id} style={{ fontSize: 11, color: "var(--primary)", margin: "2px 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                              📝 {p.storage_key}
+                            </p>
+                          );
+                        }
+                        return (
+                          <button key={p.id} onClick={() => openProof(p.storage_key)} disabled={openingProof === p.storage_key}
+                            style={{ display: "block", fontSize: 11, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                            📎 {p.filename}
+                          </button>
+                        );
+                      })}
                     </div>
                   ) : null;
                 })()}

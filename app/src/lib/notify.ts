@@ -69,7 +69,14 @@ export async function drainQueue(): Promise<{ sent: number; failed: number }> {
         .update({ status: "sent", sent_at: new Date().toISOString() })
         .eq("id", row.id);
       sent++;
-    } catch {
+    } catch (err) {
+      // If email simply isn't configured yet, DON'T burn the row to "failed"
+      // (nothing ever resets failed → pending, so it'd never send once the key
+      // is added). Leave it pending so a later drain retries it.
+      if (err instanceof EmailNotConfiguredError) {
+        failed++;
+        continue;
+      }
       await supabase
         .from(table("notification_queue"))
         .update({ status: "failed" })

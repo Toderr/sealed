@@ -47,6 +47,21 @@ export const POST = withRoute(async (request) => {
     throw new HttpError(400, "Missing or invalid milestone_index");
   }
 
+  // Authorize: only a party to the deal may submit proof — this route DELETES
+  // prior proof for the milestone before inserting, so an unauthorized caller
+  // could otherwise wipe the counterparty's proof. (The x-wallet header is still
+  // unsigned/spoofable — the platform-wide SIWS cutover is the real fix — but at
+  // least gate on deal membership here.)
+  const { data: dealRow } = await supabase
+    .from(table("deals"))
+    .select("buyer_wallet, seller_wallet")
+    .eq("deal_id", dealId)
+    .maybeSingle();
+  if (!dealRow) throw new HttpError(404, "Deal not found");
+  if (dealRow.buyer_wallet !== wallet && dealRow.seller_wallet !== wallet) {
+    throw new HttpError(403, "Only a party to this deal can submit proof");
+  }
+
   const rawUrl = typeof url === "string" ? url.trim() : "";
   const rawText = typeof text === "string" ? text.trim() : "";
   if (!rawUrl && !rawText) {
