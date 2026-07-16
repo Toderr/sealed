@@ -91,6 +91,12 @@ export function DocumentPanel({
   }
 
   async function openDoc(doc: DocRecord) {
+    // Link proofs store the URL directly in storage_key (not a storage path), so
+    // open it as-is rather than requesting a signed Storage URL (which fails).
+    if (doc.content_type === "text/uri-list") {
+      window.open(doc.storage_key, "_blank", "noopener,noreferrer");
+      return;
+    }
     try {
       const { url } = await apiFetch<{ url?: string }>(`/api/upload/signed?key=${encodeURIComponent(doc.storage_key)}`);
       if (url) window.open(url, "_blank", "noopener,noreferrer");
@@ -98,6 +104,9 @@ export function DocumentPanel({
       // ignore — can't open
     }
   }
+
+  // Link/text proofs aren't downloadable Storage objects.
+  const isInline = (ct: string) => ct === "text/uri-list" || ct === "text/plain";
 
   return (
     <div className="surface-card rounded-xl overflow-hidden">
@@ -154,7 +163,7 @@ export function DocumentPanel({
               <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
             <p className="text-[13px] text-muted">Drop files here or click to upload</p>
-            <p className="text-[11px] text-subtle">PDF, DOCX, XLSX, PNG, JPG · Max 10 MB</p>
+            <p className="text-[11px] text-subtle">PDF, DOCX, PPTX, XLSX, PNG, JPG, MD · Max 25 MB</p>
           </div>
         )}
 
@@ -178,19 +187,29 @@ export function DocumentPanel({
               </p>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
-              <button
-                onClick={() => openDoc(doc)}
-                className="btn-ghost h-7 px-2.5 rounded-md text-[11px]"
-              >
-                View
-              </button>
-              <a
-                href={`/api/upload/signed?key=${encodeURIComponent(doc.storage_key)}`}
-                download={doc.filename}
-                className="btn-ghost h-7 px-2.5 rounded-md text-[11px] flex items-center"
-              >
-                ↓
-              </a>
+              {doc.content_type === "text/plain" ? (
+                // Inline text proof — nothing to open/download.
+                <span className="text-[11px] text-muted">text</span>
+              ) : (
+                <>
+                  <button
+                    onClick={() => openDoc(doc)}
+                    className="btn-ghost h-7 px-2.5 rounded-md text-[11px]"
+                  >
+                    {doc.content_type === "text/uri-list" ? "Open link" : "View"}
+                  </button>
+                  {/* Only file proofs are downloadable Storage objects. */}
+                  {!isInline(doc.content_type) && (
+                    <a
+                      href={`/api/upload/signed?key=${encodeURIComponent(doc.storage_key)}`}
+                      download={doc.filename}
+                      className="btn-ghost h-7 px-2.5 rounded-md text-[11px] flex items-center"
+                    >
+                      ↓
+                    </a>
+                  )}
+                </>
+              )}
             </div>
           </div>
         ))}

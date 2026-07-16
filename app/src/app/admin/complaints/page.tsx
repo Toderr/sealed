@@ -13,6 +13,7 @@ type Complaint = {
   id: string;
   deal_id: string | null;
   reporter_wallet: string;
+  reported_wallet: string | null;
   category: string;
   message: string;
   status: "open" | "reviewing" | "resolved" | "dismissed";
@@ -25,6 +26,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   quality: "Quality",
   communication: "Communication",
   payment: "Payment",
+  account: "Account report",
   other: "Other",
 };
 
@@ -114,6 +116,11 @@ export default function AdminComplaintsPage() {
                   {c.deal_id && (
                     <Link href={`/admin/deals/${encodeURIComponent(c.deal_id)}`} className="text-xs text-indigo-300 font-mono hover:underline">
                       {c.deal_id}
+                    </Link>
+                  )}
+                  {c.reported_wallet && (
+                    <Link href={`/profile/${c.reported_wallet}`} className="text-xs text-red-300 font-mono hover:underline">
+                      reported: {shortWallet(c.reported_wallet)}
                     </Link>
                   )}
                 </div>

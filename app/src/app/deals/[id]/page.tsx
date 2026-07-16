@@ -501,7 +501,10 @@ export default function ActiveDealPage() {
       // Wallet rejection / user cancelled the signature — not an error, just a
       // cancellation. Phantom/Solflare surface this as a message containing
       // "reject"/"denied", or an object with code 4001.
-      const code = (err as { code?: number } | null)?.code;
+      // Solana wallet-adapter wraps the provider error in `.error`, so the 4001
+      // "user rejected" code lives at err.error.code, not err.code.
+      const e = err as { code?: number; error?: { code?: number } } | null;
+      const code = e?.code ?? e?.error?.code;
       // Only treat it as a user cancellation on the wallet's explicit signal:
       // the standard 4001 code, or a tight "user rejected/denied" phrase. A loose
       // match on "cancel"/"reject" wrongly swallowed real network/abort errors as

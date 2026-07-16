@@ -90,6 +90,22 @@ export const POST = withRoute(async (request) => {
     throw new HttpError(413, "File exceeds the 25 MB limit. Share a Google Drive link instead.");
   }
 
+  // Authorize milestone-proof uploads: only a party to the deal may upload,
+  // because Step 5 below DELETES prior proof for the milestone — otherwise any
+  // wallet could wipe/replace a counterparty's proof. Skipped for the
+  // "standalone" bucket and chat attachments (not milestone proof).
+  if (dealId !== "standalone" && !isChatAttachment) {
+    const { data: dealRow } = await supabase
+      .from(table("deals"))
+      .select("buyer_wallet, seller_wallet")
+      .eq("deal_id", dealId)
+      .maybeSingle();
+    if (!dealRow) throw new HttpError(404, "Deal not found");
+    if (dealRow.buyer_wallet !== walletHeader && dealRow.seller_wallet !== walletHeader) {
+      throw new HttpError(403, "Only a party to this deal can upload proof");
+    }
+  }
+
   const arrayBuffer = await file.arrayBuffer();
   let buf = Buffer.from(arrayBuffer as ArrayBuffer);
 
