@@ -43,6 +43,11 @@ function retryMirrorSync(local: SupabaseDeal) {
   const creatorWallet = local.buyer_wallet || local.seller_wallet;
   if (!creatorWallet) return;
   const creatorRole: "buyer" | "seller" = local.buyer_wallet ? "buyer" : "seller";
+  // Only re-push the CREATOR's own slot, never the (stale) counterparty slot.
+  // The counterparty joins via the authoritative accept-invite flow — resending
+  // a stale counterparty from sessionStorage could resurrect one the server just
+  // cleared (e.g. after reject-and-recycle). The mirror route preserves an
+  // existing filled counterparty slot, so omitting it here is safe.
   apiFetchSafe(
     "/api/deals/mirror",
     {
@@ -50,8 +55,8 @@ function retryMirrorSync(local: SupabaseDeal) {
       wallet: creatorWallet,
       body: {
         deal_id: local.deal_id,
-        buyer_wallet: local.buyer_wallet ?? null,
-        seller_wallet: local.seller_wallet ?? null,
+        buyer_wallet: creatorRole === "buyer" ? local.buyer_wallet : null,
+        seller_wallet: creatorRole === "seller" ? local.seller_wallet : null,
         creator_role: creatorRole,
         title: local.title,
         description: local.description ?? null,

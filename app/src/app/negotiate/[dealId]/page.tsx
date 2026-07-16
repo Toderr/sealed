@@ -725,7 +725,19 @@ export default function NegotiateRoom() {
 
       setNegState({ kind: "done", proposal: finalProposal });
       if (finalProposal.status === "escalated") {
+        // Auto-escalation (agents couldn't agree) must sync to the shared deal
+        // too — otherwise the seller, who never runs the stream, is stranded on
+        // the "Agents negotiating" spinner forever (same failure as #2, on the
+        // escalated branch). Durable write so a transient failure doesn't strand.
         applyServerPatch((prev) => (prev ? { ...prev, status: "escalated" } : prev));
+        const escWallet = wallet;
+        void retryWrite(() =>
+          apiFetch(`/api/deals/${deal.deal_id}`, {
+            method: "PATCH",
+            wallet: escWallet,
+            body: { status: "escalated" },
+          })
+        );
       } else {
         // Negotiation concluded on the buyer's device only. Persist "proposed"
         // ("Ready to sign") to the shared deal so the seller — who never runs the
@@ -944,16 +956,22 @@ export default function NegotiateRoom() {
         title: deal?.title || finalTerms.title || finalTerms.dealId,
         description: finalTerms.milestones.map((m) => m.description).join(" | "),
         total_amount_usdc: finalTerms.totalAmount,
-        milestones: finalTerms.milestones.map((m, idx) => ({
-          description: m.description,
-          amount: m.amount,
-          status: "Pending",
+        milestones: finalTerms.milestones.map((m, idx) => {
           // Carry the per-milestone proof responsibility (#11) from the existing
-          // deal (set at creation) so it survives funding.
-          ...(deal?.milestones?.[idx]?.proof_by
-            ? { proof_by: deal.milestones[idx].proof_by }
-            : {}),
-        })),
+          // deal (set at creation). Match by DESCRIPTION, not blind index — the
+          // negotiation engine can reorder/recount milestones, so index-matching
+          // would attach the wrong party's proof_by. Fall back to same-index only
+          // when the description is unique-matchable fails and counts are equal.
+          const byDesc = deal?.milestones?.find((dm) => dm.description === m.description);
+          const sameCount = deal?.milestones?.length === finalTerms.milestones.length;
+          const carried = byDesc?.proof_by ?? (sameCount ? deal?.milestones?.[idx]?.proof_by : undefined);
+          return {
+            description: m.description,
+            amount: m.amount,
+            status: "Pending",
+            ...(carried ? { proof_by: carried } : {}),
+          };
+        }),
         tx_signature: sig,
         status: "funded",
         // Stamp the funding time so the reclaim UI can show when the 30-day

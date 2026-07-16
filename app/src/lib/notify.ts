@@ -39,10 +39,19 @@ export async function queueNotification(
 }
 
 export async function drainQueue(): Promise<{ sent: number; failed: number }> {
-  const { data: pending } = await supabase
+  // When email isn't configured, EXCLUDE email rows from the batch entirely.
+  // Otherwise stuck email rows (left pending, never sendable) fill the LIMIT 50
+  // window on every drain and starve sendable channels (e.g. telegram) — a
+  // head-of-line block on the whole queue. Skipping them keeps the queue moving;
+  // they resume sending once the key is set.
+  let query = supabase
     .from(table("notification_queue"))
     .select("*")
-    .eq("status", "pending")
+    .eq("status", "pending");
+  if (!emailConfigured()) {
+    query = query.neq("channel", "email");
+  }
+  const { data: pending } = await query
     .order("created_at", { ascending: true })
     .limit(50);
 
