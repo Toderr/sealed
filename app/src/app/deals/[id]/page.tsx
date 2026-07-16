@@ -34,6 +34,10 @@ import Link from "next/link";
 
 import WalletMultiButton from "@/components/AppWalletButton";
 
+// Inactivity timeout for the buyer's unilateral reclaim, mirroring the on-chain
+// program's TIMEOUT_SECONDS (30 days). Used to compute/display the unlock date.
+const TIMEOUT_SECONDS = 30 * 24 * 60 * 60;
+
 type Milestone = { description: string; amount: number; status?: string };
 type RefundRequest = {
   deal_id: string;
@@ -122,6 +126,10 @@ export default function ActiveDealPage() {
 
   const [chatInput, setChatInput] = useState("");
   const [uploading, setUploading] = useState<number | null>(null);
+  // Link/text proof (an alternative to a file upload for the current milestone).
+  const [linkProofOpen, setLinkProofOpen] = useState<number | null>(null);
+  const [linkProofValue, setLinkProofValue] = useState("");
+  const [submittingLink, setSubmittingLink] = useState(false);
   const [approvingIndex, setApprovingIndex] = useState<number | null>(null);
   const [sendingMsg, setSendingMsg] = useState(false);
   const [openingProof, setOpeningProof] = useState<string | null>(null);
@@ -210,6 +218,12 @@ export default function ActiveDealPage() {
 
   async function handleUploadProof(file: File, milestoneIndex: number) {
     if (!wallet) return;
+    // Guard the 25 MB product cap client-side so the user gets a clear message
+    // (and the Drive-link hint) instead of a raw 413 (#10).
+    if (file.size > 25 * 1024 * 1024) {
+      alert("That file is over 25 MB. Please share a Google Drive link instead (use “paste a link / text”).");
+      return;
+    }
     setUploading(milestoneIndex);
     try {
       const form = new FormData();
@@ -236,6 +250,50 @@ export default function ActiveDealPage() {
       await refreshAll();
     } finally {
       setUploading(null);
+    }
+  }
+
+  // Submit milestone proof as a link or block of text instead of a file.
+  async function handleSubmitLink(milestoneIndex: number) {
+    if (!wallet) return;
+    const raw = linkProofValue.trim();
+    if (!raw) return;
+    // Anything that parses as an http/https URL is sent as a link; otherwise
+    // it's treated as text proof.
+    let isUrl = false;
+    try {
+      const u = new URL(raw);
+      isUrl = u.protocol === "http:" || u.protocol === "https:";
+    } catch {
+      isUrl = false;
+    }
+    setSubmittingLink(true);
+    try {
+      try {
+        await apiFetch("/api/deliverables/link", {
+          method: "POST",
+          wallet,
+          body: {
+            deal_id: dealId,
+            milestone_index: milestoneIndex,
+            ...(isUrl ? { url: raw } : { text: raw }),
+          },
+        });
+      } catch (e) {
+        alert(e instanceof ApiError ? e.message : "Failed to submit proof");
+        return;
+      }
+      const updated = milestones.map((m, i) =>
+        i === milestoneIndex ? { ...m, status: "In Review" } : m
+      );
+      await patchMilestones(updated);
+      const tail = role === "buyer" ? "Awaiting your review & release." : "Awaiting buyer review.";
+      await postMessage(`🔗 Proof submitted for Milestone ${milestoneIndex + 1}: **${milestones[milestoneIndex].description}**. ${tail}`);
+      setLinkProofValue("");
+      setLinkProofOpen(null);
+      await refreshAll();
+    } finally {
+      setSubmittingLink(false);
     }
   }
 
@@ -348,9 +406,23 @@ export default function ActiveDealPage() {
       await refreshAll();
     } catch (err) {
       console.error("Timeout refund failed:", err);
-      alert(err instanceof Error && /Timeout/i.test(err.message)
-        ? "The inactivity timeout hasn't elapsed yet."
-        : "Refund failed. Check console for details.");
+      if (err instanceof Error && /Timeout/i.test(err.message)) {
+        // The 30-day inactivity timeout is anchored to the on-chain deal.funded_at.
+        // The mirror now stores funded_at (set at funding); fall back to updated_at
+        // for older deals created before that column existed. Surface the computed
+        // unlock date so the buyer knows when reclaim becomes possible, instead of
+        // a bare "hasn't elapsed yet".
+        const fundedRaw = deal?.funded_at ?? deal?.updated_at ?? null;
+        const fundedAt = fundedRaw ? new Date(fundedRaw) : null;
+        if (fundedAt && !isNaN(fundedAt.getTime())) {
+          const unlock = new Date(fundedAt.getTime() + TIMEOUT_SECONDS * 1000);
+          alert(`You can reclaim these funds after ${unlock.toLocaleDateString()} (30 days after funding). It hasn't elapsed yet.`);
+        } else {
+          alert("You can reclaim these funds 30 days after the deal was funded. That window hasn't elapsed yet.");
+        }
+      } else {
+        alert("Refund failed. Check console for details.");
+      }
     } finally {
       setRefunding(false);
     }
@@ -403,7 +475,21 @@ export default function ActiveDealPage() {
       await refreshAll();
     } catch (err) {
       console.error("Refund request failed:", err);
-      alert("Could not start the refund. Check console for details.");
+      const msg = err instanceof Error ? err.message : String(err ?? "");
+      // Wallet rejection / user cancelled the signature — not an error, just a
+      // cancellation. Phantom/Solflare surface this as a message containing
+      // "reject"/"denied", or an object with code 4001.
+      const code = (err as { code?: number } | null)?.code;
+      const cancelled = code === 4001 || /reject|denied|user rejected|cancel/i.test(msg);
+      if (cancelled) {
+        alert("Refund cancelled — you declined the signature.");
+      } else if (err instanceof ApiError && err.status === 403) {
+        alert("Only the buyer or seller on this deal can start a refund.");
+      } else if (/blockhash|fetch|timeout|network|failed to fetch/i.test(msg)) {
+        alert("Couldn't reach the network. Check your connection and try again.");
+      } else {
+        alert("Couldn't start the refund. Please try again.");
+      }
     } finally {
       setRefunding(false);
     }
@@ -841,6 +927,7 @@ export default function ActiveDealPage() {
                           {isReleased && <MiniPill tone="success">Released</MiniPill>}
                           {isInReview && <MiniPill tone="warning">Awaiting confirm</MiniPill>}
                           {isPending && i !== currentMilestoneIndex && <MiniPill tone="muted">Pending</MiniPill>}
+                          {m.proof_by && <MiniPill tone="muted">proof: {m.proof_by}</MiniPill>}
                         </div>
                         <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510, fontVariantNumeric: "tabular-nums", fontFamily: "ui-monospace, monospace", flexShrink: 0 }}>
                           ${m.amount.toLocaleString()}
@@ -867,36 +954,80 @@ export default function ActiveDealPage() {
                           <p style={{ fontSize: 11, color: "var(--muted)", fontWeight: 510, margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                             Delivery proof
                           </p>
-                          {proofs.map((proof) => (
-                            <button
-                              key={proof.id}
-                              onClick={() => openProof(proof.storage_key)}
-                              disabled={openingProof === proof.storage_key}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 10,
-                                width: "100%",
-                                padding: "8px 10px",
-                                borderRadius: 7,
-                                background: "var(--surface)",
-                                border: "1px solid var(--card-border)",
-                                cursor: "pointer",
-                                textAlign: "left",
-                              }}
-                            >
-                              <div style={{ width: 28, height: 28, borderRadius: 6, background: "rgba(113,112,255,0.1)", color: "var(--accent)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
-                                </svg>
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <p style={{ fontSize: 12, color: "var(--primary)", margin: 0, fontWeight: 510, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proof.filename}</p>
-                                <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>{(proof.size_bytes / 1024).toFixed(1)} KB</p>
-                              </div>
-                              <span className="btn-ghost" style={{ height: 24, padding: "0 8px", borderRadius: 4, fontSize: 11, display: "inline-flex", alignItems: "center" }}>Open</span>
-                            </button>
-                          ))}
+                          {proofs.map((proof) => {
+                            // Link/text proofs (no stored file) render inline
+                            // rather than routing through the signed-file opener.
+                            if (proof.content_type === "text/uri-list") {
+                              return (
+                                <a
+                                  key={proof.id}
+                                  href={proof.storage_key}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    display: "flex", alignItems: "center", gap: 10, width: "100%",
+                                    padding: "8px 10px", borderRadius: 7, background: "var(--surface)",
+                                    border: "1px solid var(--card-border)", textDecoration: "none",
+                                  }}
+                                >
+                                  <div style={{ width: 28, height: 28, borderRadius: 6, background: "rgba(113,112,255,0.1)", color: "var(--accent)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                    </svg>
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <p style={{ fontSize: 12, color: "var(--accent)", margin: 0, fontWeight: 510, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proof.filename}</p>
+                                    <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>Link</p>
+                                  </div>
+                                  <span className="btn-ghost" style={{ height: 24, padding: "0 8px", borderRadius: 4, fontSize: 11, display: "inline-flex", alignItems: "center" }}>Open</span>
+                                </a>
+                              );
+                            }
+                            if (proof.content_type === "text/plain") {
+                              return (
+                                <div
+                                  key={proof.id}
+                                  style={{
+                                    padding: "8px 10px", borderRadius: 7, background: "var(--surface)",
+                                    border: "1px solid var(--card-border)",
+                                  }}
+                                >
+                                  <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 4px", fontWeight: 510 }}>Text proof</p>
+                                  <p style={{ fontSize: 12, color: "var(--primary)", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{proof.storage_key}</p>
+                                </div>
+                              );
+                            }
+                            return (
+                              <button
+                                key={proof.id}
+                                onClick={() => openProof(proof.storage_key)}
+                                disabled={openingProof === proof.storage_key}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 10,
+                                  width: "100%",
+                                  padding: "8px 10px",
+                                  borderRadius: 7,
+                                  background: "var(--surface)",
+                                  border: "1px solid var(--card-border)",
+                                  cursor: "pointer",
+                                  textAlign: "left",
+                                }}
+                              >
+                                <div style={{ width: 28, height: 28, borderRadius: 6, background: "rgba(113,112,255,0.1)", color: "var(--accent)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+                                  </svg>
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <p style={{ fontSize: 12, color: "var(--primary)", margin: 0, fontWeight: 510, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proof.filename}</p>
+                                  <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>{(proof.size_bytes / 1024).toFixed(1)} KB</p>
+                                </div>
+                                <span className="btn-ghost" style={{ height: 24, padding: "0 8px", borderRadius: 4, fontSize: 11, display: "inline-flex", alignItems: "center" }}>Open</span>
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
 
@@ -942,7 +1073,7 @@ export default function ActiveDealPage() {
                         <div style={{ marginTop: 10 }}>
                           <input
                             type="file"
-                            accept=".pdf,.png,.jpg,.jpeg,.docx"
+                            accept=".pdf,.png,.jpg,.jpeg,.docx,.pptx,.xlsx,.md"
                             ref={(el) => { fileInputRefs.current[i] = el; }}
                             className="hidden"
                             onChange={(e) => {
@@ -952,24 +1083,67 @@ export default function ActiveDealPage() {
                             }}
                             style={{ display: "none" }}
                           />
-                          <button
-                            onClick={() => fileInputRefs.current[i]?.click()}
-                            disabled={uploading === i}
-                            className="btn-ghost"
-                            style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 6, fontSize: 12, cursor: "pointer" }}
-                          >
-                            {uploading === i ? (
-                              <>
-                                <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round" /></svg>
-                                Uploading…
-                              </>
-                            ) : (
-                              <>
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-                                {isInReview ? "Re-upload proof" : "Upload proof"}
-                              </>
-                            )}
-                          </button>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              onClick={() => fileInputRefs.current[i]?.click()}
+                              disabled={uploading === i}
+                              className="btn-ghost"
+                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 6, fontSize: 12, cursor: "pointer" }}
+                            >
+                              {uploading === i ? (
+                                <>
+                                  <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round" /></svg>
+                                  Uploading…
+                                </>
+                              ) : (
+                                <>
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                                  {isInReview ? "Re-upload proof" : "Upload proof"}
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => { setLinkProofOpen(linkProofOpen === i ? null : i); setLinkProofValue(""); }}
+                              className="btn-ghost"
+                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 6, fontSize: 12, cursor: "pointer" }}
+                            >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                              or paste a link / text
+                            </button>
+                          </div>
+                          {linkProofOpen === i && (
+                            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                              <textarea
+                                value={linkProofValue}
+                                onChange={(e) => setLinkProofValue(e.target.value)}
+                                placeholder="Paste a link (https://…) or type your proof"
+                                rows={2}
+                                style={{
+                                  width: "100%", resize: "vertical", padding: "8px 10px", borderRadius: 6,
+                                  background: "var(--surface)", border: "1px solid var(--card-border)",
+                                  color: "var(--foreground)", fontSize: 12, fontFamily: "inherit",
+                                }}
+                              />
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button
+                                  onClick={() => handleSubmitLink(i)}
+                                  disabled={submittingLink || !linkProofValue.trim()}
+                                  className="btn-primary"
+                                  style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}
+                                >
+                                  {submittingLink ? "Submitting…" : "Submit proof"}
+                                </button>
+                                <button
+                                  onClick={() => { setLinkProofOpen(null); setLinkProofValue(""); }}
+                                  disabled={submittingLink}
+                                  className="btn-ghost"
+                                  style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12 }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -987,7 +1161,7 @@ export default function ActiveDealPage() {
               <div style={{ marginTop: 12 }}>
                 <PartyRow
                   label="Buyer"
-                  wallet={deal.buyer_wallet}
+                  wallet={deal.buyer_wallet ?? ""}
                   isYou={wallet === deal.buyer_wallet}
                 />
                 <div style={{ height: 10 }} />

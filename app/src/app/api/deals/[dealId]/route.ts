@@ -32,6 +32,7 @@ const PATCH_FIELDS = new Set([
   "title",
   "description",
   "total_amount_usdc",
+  "funded_at",
 ]);
 
 function normalizeDealStatus(status: unknown): string | null {
@@ -257,6 +258,13 @@ export const PATCH = withRoute<{ params: Promise<{ dealId: string }> }>(
       throw new HttpError(400, "Invalid total amount");
     }
     patch.total_amount_usdc = body.total_amount_usdc;
+  }
+
+  if (body.funded_at !== undefined) {
+    if (body.funded_at !== null && typeof body.funded_at !== "string") {
+      throw new HttpError(400, "Invalid funded_at");
+    }
+    patch.funded_at = body.funded_at;
   }
 
   const nextMilestones =
