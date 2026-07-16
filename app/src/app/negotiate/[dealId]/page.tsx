@@ -730,13 +730,44 @@ export default function NegotiateRoom() {
         // Negotiation concluded on the buyer's device only. Persist "proposed"
         // ("Ready to sign") to the shared deal so the seller — who never runs the
         // stream — leaves the "Agents negotiating" spinner and sees the result
-        // (bug #2). Best-effort: the on-screen result already shows for the buyer.
-        applyServerPatch((prev) => (prev ? { ...prev, status: "proposed" } : prev));
-        void apiFetchSafe(`/api/deals/${deal.deal_id}`, {
-          method: "PATCH",
-          wallet,
-          body: { status: "proposed" },
-        }, undefined);
+        // (bug #2). Agents may change the amount/milestones during negotiation, so
+        // write the AGREED terms too (not just status) — otherwise the seller's
+        // result panel shows the pre-negotiation numbers as "agreed" (divergence).
+        const agreedTerms = finalProposal.finalTerms;
+        const patchBody: Record<string, unknown> = { status: "proposed" };
+        if (agreedTerms) {
+          patchBody.total_amount_usdc = agreedTerms.totalAmount;
+          patchBody.milestones = agreedTerms.milestones.map((m) => ({
+            description: m.description,
+            amount: m.amount,
+            status: "Pending",
+          }));
+        }
+        applyServerPatch((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: "proposed",
+                ...(agreedTerms
+                  ? {
+                      total_amount_usdc: agreedTerms.totalAmount,
+                      milestones: (patchBody.milestones as SupabaseDeal["milestones"]),
+                    }
+                  : {}),
+              }
+            : prev
+        );
+        // Durable write (retry): if this doesn't land, the seller is stranded on
+        // the spinner forever — the exact failure #2 targets — so don't leave it
+        // to a single fire-and-forget PATCH.
+        const patchWallet = wallet;
+        void retryWrite(() =>
+          apiFetch(`/api/deals/${deal.deal_id}`, {
+            method: "PATCH",
+            wallet: patchWallet,
+            body: patchBody,
+          })
+        );
       }
     } catch (err) {
       // A failed run (rate limit, out of credits, provider error) is an error to
@@ -913,10 +944,15 @@ export default function NegotiateRoom() {
         title: deal?.title || finalTerms.title || finalTerms.dealId,
         description: finalTerms.milestones.map((m) => m.description).join(" | "),
         total_amount_usdc: finalTerms.totalAmount,
-        milestones: finalTerms.milestones.map((m) => ({
+        milestones: finalTerms.milestones.map((m, idx) => ({
           description: m.description,
           amount: m.amount,
           status: "Pending",
+          // Carry the per-milestone proof responsibility (#11) from the existing
+          // deal (set at creation) so it survives funding.
+          ...(deal?.milestones?.[idx]?.proof_by
+            ? { proof_by: deal.milestones[idx].proof_by }
+            : {}),
         })),
         tx_signature: sig,
         status: "funded",
@@ -1998,8 +2034,28 @@ function NegotiationResult({
   const isBuyer = role === "buyer";
   // Terms currently on the table when nothing was auto-agreed: the last
   // revision's proposed terms, falling back to the buyer's initial offer.
-  const latestTerms: DealParams =
-    proposal.revisions[proposal.revisions.length - 1]?.proposedTerms ?? proposal.initialTerms;
+  const lastRevision = proposal.revisions[proposal.revisions.length - 1];
+  const latestTerms: DealParams = lastRevision?.proposedTerms ?? proposal.initialTerms;
+  // Whose figure is on the table matters: when the negotiation did NOT settle,
+  // the last revision is often the COUNTERPARTY's un-accepted counter-offer, so
+  // deploying it would fund an amount that was never agreed. Name it in the
+  // confirm dialog so the buyer isn't blind-funding the seller's last demand.
+  const latestBy = lastRevision?.onBehalfOf; // "buyer" | "seller" | undefined
+  const latestFromSeller = latestBy === "seller";
+
+  function confirmAccept() {
+    const amount = latestTerms.totalAmount.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const whose = latestFromSeller
+      ? "the seller's last counter-offer — this was NOT a settled agreement"
+      : "your last offer";
+    const ok = window.confirm(
+      `Deploy escrow at $${amount} USDC?\n\nThese are ${whose}. Escrow will be funded for this exact amount and split across ${latestTerms.milestones.length} milestone(s).\n\nContinue?`
+    );
+    if (ok) onAccept(latestTerms);
+  }
 
   return (
     <div className="p-5 space-y-5">
@@ -2131,7 +2187,7 @@ function NegotiationResult({
                 recommends renegotiating (no auto-agreement was reached). */}
             {isBuyer && (
               <button
-                onClick={() => onAccept(latestTerms)}
+                onClick={confirmAccept}
                 disabled={deploying}
                 aria-busy={deploying}
                 className="btn-primary flex-1 h-10 rounded-md text-[13px] flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
@@ -2144,7 +2200,7 @@ function NegotiationResult({
                     Deploying…
                   </>
                 ) : (
-                  "Accept current terms & deploy"
+                  `Accept ${latestFromSeller ? "seller's" : "current"} terms ($${latestTerms.totalAmount.toLocaleString()}) & deploy`
                 )}
               </button>
             )}

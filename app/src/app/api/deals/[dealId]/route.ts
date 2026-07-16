@@ -9,6 +9,7 @@ type DealMilestone = {
   amount: number;
   status?: string;
   release_tx?: string;
+  proof_by?: "seller" | "buyer";
 };
 
 const DEAL_STATUSES = new Set([
@@ -66,6 +67,11 @@ function sanitizeMilestones(value: unknown): DealMilestone[] | null {
     if (typeof milestone.status === "string") next.status = milestone.status;
     // Preserve the on-chain release tx signature (N3/N8) so it survives PATCH.
     if (typeof milestone.release_tx === "string") next.release_tx = milestone.release_tx;
+    // Preserve who's responsible for uploading this milestone's proof (#11) so
+    // it isn't stripped on every milestone PATCH.
+    if (milestone.proof_by === "seller" || milestone.proof_by === "buyer") {
+      next.proof_by = milestone.proof_by;
+    }
     milestones.push(next);
   }
 
