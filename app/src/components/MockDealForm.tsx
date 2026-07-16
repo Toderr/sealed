@@ -16,7 +16,7 @@ import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { MOCK_IDENTITIES } from "@/lib/mock-wallet";
 import { labelStyle, headingStyle } from "@/lib/typography";
 
-type MilestoneRow = { description: string; amount: string };
+type MilestoneRow = { description: string; amount: string; proof_by: "seller" | "buyer" };
 
 export default function MockDealForm({
   creatorRole,
@@ -34,7 +34,7 @@ export default function MockDealForm({
   // deal won't appear on the counterparty's board until they actually join.
   const [counterparty, setCounterparty] = useState("");
   const [milestones, setMilestones] = useState<MilestoneRow[]>([
-    { description: "", amount: "" },
+    { description: "", amount: "", proof_by: "seller" },
   ]);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +53,7 @@ export default function MockDealForm({
     setMilestones((prev) => prev.map((m, idx) => (idx === i ? { ...m, ...patch } : m)));
   }
   function addMilestone() {
-    setMilestones((prev) => [...prev, { description: "", amount: "" }]);
+    setMilestones((prev) => [...prev, { description: "", amount: "", proof_by: "seller" }]);
   }
   function removeMilestone(i: number) {
     setMilestones((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
@@ -69,7 +69,7 @@ export default function MockDealForm({
       return setError(`Enter a valid ${cpLabel} wallet, or leave it blank to invite later.`);
     }
     const parsed = milestones
-      .map((m) => ({ description: m.description.trim(), amount: parseFloat(m.amount) || 0 }))
+      .map((m) => ({ description: m.description.trim(), amount: parseFloat(m.amount) || 0, proof_by: m.proof_by }))
       .filter((m) => m.description && m.amount > 0);
     if (parsed.length === 0) return setError("Add at least one milestone with a description and amount.");
 
@@ -181,6 +181,15 @@ export default function MockDealForm({
                   placeholder="USDC"
                   inputMode="decimal"
                 />
+                <select
+                  value={m.proof_by}
+                  onChange={(e) => updateMilestone(i, { proof_by: e.target.value as "seller" | "buyer" })}
+                  title="Who uploads this milestone's proof"
+                  style={{ ...inputStyle, width: 96, cursor: "pointer" }}
+                >
+                  <option value="seller">Seller proof</option>
+                  <option value="buyer">Buyer proof</option>
+                </select>
                 <button
                   onClick={() => removeMilestone(i)}
                   disabled={milestones.length === 1}

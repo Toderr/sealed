@@ -190,6 +190,9 @@ function HomeContent() {
       description: m.description,
       amount: m.amount,
       status: "Pending",
+      // Who uploads this milestone's proof (off-chain only). Defaults to
+      // "seller"; omit when unset to keep the current behavior/shape.
+      ...(m.proof_by ? { proof_by: m.proof_by } : {}),
     }));
     const description = params.milestones.map((m) => m.description).join(" | ");
 
@@ -815,7 +818,9 @@ function DealDetailPanelBody({
     : deal.buyer_wallet === myWallet ? "buyer"
     : deal.seller_wallet === myWallet ? "seller"
     : "observer";
-  const shortBuyer = `${deal.buyer_wallet.slice(0, 4)}…${deal.buyer_wallet.slice(-4)}`;
+  const shortBuyer = deal.buyer_wallet
+    ? `${deal.buyer_wallet.slice(0, 4)}…${deal.buyer_wallet.slice(-4)}`
+    : "—";
   const shortSeller = deal.seller_wallet
     ? `${deal.seller_wallet.slice(0, 4)}…${deal.seller_wallet.slice(-4)}`
     : "Awaiting counterparty";

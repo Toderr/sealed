@@ -549,6 +549,9 @@ export default function DealDetail({
                     {milestone.status === MilestoneStatus.Released
                       ? `Released${milestone.confirmedAt ? ` ${new Date(milestone.confirmedAt * 1000).toLocaleDateString()}` : ""}`
                       : milestone.status}
+                    {milestone.proof_by && (
+                      <span className="ml-1.5">· proof by: {milestone.proof_by}</span>
+                    )}
                   </p>
 
                   <MilestoneProofSection
