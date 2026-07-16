@@ -165,6 +165,25 @@ function buildEmailContent(
   return { subject: msg.subject, html };
 }
 
+/** True when the email transport is configured (a Resend key is present). */
+export function emailConfigured(): boolean {
+  return !!process.env.RESEND_API_KEY;
+}
+
+/** Thrown when a send is attempted but the transport isn't configured. Lets
+ *  callers that MUST reach the user (e.g. the OTP flow) surface a real error,
+ *  while background/queue senders can choose to swallow it. */
+export class EmailNotConfiguredError extends Error {
+  constructor() {
+    super("Email is not configured (RESEND_API_KEY unset)");
+    this.name = "EmailNotConfiguredError";
+  }
+}
+
+// The verified sender. Override with EMAIL_FROM once your domain is verified in
+// Resend; the default domain must be verified there or Resend rejects the send.
+const EMAIL_FROM = process.env.EMAIL_FROM ?? "Sealed Agent <noreply@sealed.app>";
+
 export async function sendEmail(
   to: string,
   subject: string,
@@ -172,15 +191,18 @@ export async function sendEmail(
 ): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.warn("[notify] RESEND_API_KEY not set — skipping email to", to);
-    return;
+    // No silent success: throw so callers decide. Previously this returned
+    // void, so the OTP route reported ok:true while nothing was ever sent
+    // (Round 6, #13).
+    console.warn("[notify] RESEND_API_KEY not set — cannot send email to", to);
+    throw new EmailNotConfiguredError();
   }
 
   const { Resend } = await import("resend");
   const resend = new Resend(apiKey);
 
   const { error } = await resend.emails.send({
-    from: "Sealed Agent <noreply@sealed.app>",
+    from: EMAIL_FROM,
     to,
     subject,
     html,
