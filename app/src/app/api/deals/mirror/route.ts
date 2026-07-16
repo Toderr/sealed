@@ -17,6 +17,7 @@ export const POST = withRoute(async (request) => {
     milestones,
     tx_signature,
     status: bodyStatus,
+    funded_at,
   } = body as {
     deal_id?: string;
     buyer_wallet?: string | null;
@@ -28,6 +29,7 @@ export const POST = withRoute(async (request) => {
     milestones?: Array<{ description: string; amount: number; status?: string }>;
     tx_signature?: string;
     status?: string;
+    funded_at?: string | null;
   };
 
   if (
@@ -92,6 +94,9 @@ export const POST = withRoute(async (request) => {
         total_amount_usdc,
         milestones,
         status: bodyStatus ?? "draft",
+        // Only include funded_at when provided so a plain draft-create doesn't
+        // null out a previously-stamped funding time on upsert.
+        ...(funded_at !== undefined ? { funded_at } : {}),
       },
       { onConflict: "deal_id" }
     )

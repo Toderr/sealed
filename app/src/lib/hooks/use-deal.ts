@@ -30,16 +30,26 @@ function readSessionDeal(dealId: string): SupabaseDeal | null {
 
 // Re-push a sessionStorage deal to Supabase so counterparties on other devices
 // can load it. Best-effort; mirrors the old retryMirrorSync side effect.
+//
+// Works for seller-created deals too: those have no buyer_wallet yet, so we
+// authenticate the mirror write with whichever slot IS filled (the creator)
+// and pass creator_role so the route binds them to the right slot rather than
+// defaulting them to the buyer. Previously this bailed when buyer_wallet was
+// empty, so a seller-created deal never re-synced (Round 6, #1).
 function retryMirrorSync(local: SupabaseDeal) {
-  if (!local.buyer_wallet) return;
+  const creatorWallet = local.buyer_wallet ?? local.seller_wallet;
+  if (!creatorWallet) return;
+  const creatorRole: "buyer" | "seller" = local.buyer_wallet ? "buyer" : "seller";
   apiFetchSafe(
     "/api/deals/mirror",
     {
       method: "POST",
-      wallet: local.buyer_wallet,
+      wallet: creatorWallet,
       body: {
         deal_id: local.deal_id,
+        buyer_wallet: local.buyer_wallet ?? null,
         seller_wallet: local.seller_wallet ?? null,
+        creator_role: creatorRole,
         title: local.title,
         description: local.description ?? null,
         total_amount_usdc: local.total_amount_usdc,
@@ -70,7 +80,8 @@ async function fetchDeal([, dealId]: readonly [string, string]): Promise<DealRes
     // on the other party's device). Purge our local copy so it can't resurrect
     // and stops showing here.
     if (err instanceof ApiError && err.status === 404) {
-      purgeDealLocally(dealId, readSessionDeal(dealId)?.buyer_wallet ?? null);
+      const sess = readSessionDeal(dealId);
+      purgeDealLocally(dealId, sess?.buyer_wallet ?? sess?.seller_wallet ?? null);
       return { deal: null, error: "Deal not found" };
     }
     // Transient/network error (couldn't reach the server): fall back to the

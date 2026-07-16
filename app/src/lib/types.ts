@@ -37,6 +37,11 @@ export interface MilestoneProof {
   review?: VerifierReview;
 }
 
+// Which party is responsible for uploading a milestone's proof. Defaults to
+// "seller" (today's behavior) when unset. E.g. M1 = seller uploads a shipping
+// receipt, M2 = buyer uploads proof-of-receipt.
+export type ProofBy = "seller" | "buyer";
+
 export interface Milestone {
   description: string;
   amount: number; // USDC lamports (6 decimals)
@@ -44,6 +49,8 @@ export interface Milestone {
   confirmedBy: PublicKey | null;
   confirmedAt: number | null; // unix timestamp
   proof?: MilestoneProof;
+  /** Who uploads this milestone's proof. Defaults to "seller" when unset. */
+  proof_by?: ProofBy;
 }
 
 export interface Deal {
@@ -78,11 +85,14 @@ export interface SupabaseMilestone {
   status?: string;
   /** On-chain release transaction signature (set when the milestone is released). */
   release_tx?: string;
+  /** Who uploads this milestone's proof. Defaults to "seller" when unset. */
+  proof_by?: ProofBy;
 }
 
 export interface SupabaseDeal {
   deal_id: string;
-  buyer_wallet: string;
+  // Nullable: a seller-created (inviter) deal has no buyer until one joins.
+  buyer_wallet: string | null;
   seller_wallet: string | null;
   title: string;
   description?: string | null;
@@ -91,6 +101,9 @@ export interface SupabaseDeal {
   milestones: SupabaseMilestone[];
   created_at?: string;
   updated_at?: string;
+  // Wall-clock funding time, mirrored from on-chain deal.funded_at, used to show
+  // when the 30-day buyer-timeout reclaim window elapses (#9). Unset until funded.
+  funded_at?: string | null;
 }
 
 // --- AI Agent types ---
@@ -98,6 +111,8 @@ export interface SupabaseDeal {
 export interface MilestoneInput {
   description: string;
   amount: number; // USDC (human readable, e.g. 1000 = 1000 USDC)
+  /** Who uploads this milestone's proof. Defaults to "seller" when unset. */
+  proof_by?: ProofBy;
 }
 
 export interface DealParams {

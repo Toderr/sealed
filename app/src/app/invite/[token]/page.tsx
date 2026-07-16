@@ -640,10 +640,13 @@ function createInviteHandle(name: string, wallet: string) {
 async function resolveInviterWallet(payload: InvitePayload) {
   if (isUsableWallet(payload.inviterWallet)) return payload.inviterWallet;
 
-  const data = await apiFetchSafe<{ deal?: { buyer_wallet?: string } }>(
+  // Fall back to whichever slot the deal has filled: a buyer-inviter sits in
+  // buyer_wallet, a seller-inviter in seller_wallet. Previously only buyer_wallet
+  // was checked, so seller-created invites couldn't resolve the inviter (#1).
+  const data = await apiFetchSafe<{ deal?: { buyer_wallet?: string; seller_wallet?: string } }>(
     `/api/deals/${encodeURIComponent(payload.dealId)}`, {}, {}
   );
-  return data?.deal?.buyer_wallet ?? payload.inviterWallet;
+  return data?.deal?.buyer_wallet ?? data?.deal?.seller_wallet ?? payload.inviterWallet;
 }
 
 function InviteShell({ children }: { children: React.ReactNode }) {
