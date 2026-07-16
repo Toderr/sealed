@@ -412,7 +412,12 @@ export default function NegotiateRoom() {
     if (!deal || role !== "seller") return;
     if (deal.status === "seller-ready") setSellerView("agent-waiting");
     if (deal.status === "seller-agreed") setSellerView("manual");
-  }, [deal?.status, role]);
+    // AI negotiation concluded (buyer PATCHed "proposed"): the seller ran no
+    // stream, so pull them out of the "agent-waiting" spinner and back into the
+    // shared conversation + result view (bug #2). "choice" lets the result panel
+    // and persisted turns render; the synthetic-proposal effect below fills negState.
+    if (deal.status === "proposed" && sellerView === "agent-waiting") setSellerView("choice");
+  }, [deal?.status, role, sellerView]);
 
   // Restore seller's accepted state when they refresh after agreeing.
   // Without this, negState resets to "idle" and they see the choice screen again.
@@ -431,7 +436,7 @@ export default function NegotiateRoom() {
       proposal: {
         id: `${deal.deal_id}-restored`,
         origin: "manual",
-        buyerWallet: deal.buyer_wallet,
+        buyerWallet: deal.buyer_wallet ?? "",
         sellerWallet: deal.seller_wallet ?? "",
         initialTerms: terms,
         revisions: [],
@@ -445,6 +450,52 @@ export default function NegotiateRoom() {
           confidenceScore: 1,
           recommendation: "accept",
           recommendationReasoning: "You accepted the terms. Waiting for the buyer to deploy escrow.",
+        },
+        buyerBoundaries: defaultSellerBoundaries(),
+        sellerBoundaries: defaultSellerBoundaries(),
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+  }, [deal?.status, role, negState.kind]);
+
+  // Show the AI-negotiation result to the seller once the buyer PATCHes "proposed"
+  // (bug #2). The seller never runs the stream, so negState stays "idle" and they'd
+  // otherwise sit on the "Agents negotiating" spinner forever. Build a synthetic
+  // "done" proposal from the concluded terms so NegotiationResult renders (read-only
+  // for the seller — the Accept & Deploy controls are buyer-gated). The turn-by-turn
+  // exchange itself is already visible in the shared ConversationView (turns are
+  // persisted to chat server-side after the run).
+  useEffect(() => {
+    if (!deal || role !== "seller" || deal.status !== "proposed" || negState.kind !== "idle") return;
+    const now = Date.now();
+    const terms: DealParams = {
+      dealId: deal.deal_id,
+      title: deal.title,
+      sellerWallet: deal.seller_wallet ?? "",
+      totalAmount: deal.total_amount_usdc,
+      milestones: (deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
+    };
+    setNegState({
+      kind: "done",
+      proposal: {
+        id: `${deal.deal_id}-proposed`,
+        origin: "manual",
+        buyerWallet: deal.buyer_wallet ?? "",
+        sellerWallet: deal.seller_wallet ?? "",
+        initialTerms: terms,
+        revisions: [],
+        status: "agreed",
+        finalTerms: terms,
+        summary: {
+          pros: ["Your agent and the buyer's agent reached agreement"],
+          cons: [],
+          keyConcessions: [],
+          riskFlags: [],
+          confidenceScore: 1,
+          recommendation: "accept",
+          recommendationReasoning:
+            "Your agents agreed on these terms. Waiting for the buyer to accept and deploy the escrow.",
         },
         buyerBoundaries: defaultSellerBoundaries(),
         sellerBoundaries: defaultSellerBoundaries(),
@@ -571,7 +622,7 @@ export default function NegotiateRoom() {
         proposal: {
           id: `${deal.deal_id}-mock`,
           origin: "manual",
-          buyerWallet: deal.buyer_wallet,
+          buyerWallet: deal.buyer_wallet ?? "",
           sellerWallet: dealParams.sellerWallet,
           initialTerms: dealParams,
           revisions: [
@@ -620,7 +671,7 @@ export default function NegotiateRoom() {
         },
         body: JSON.stringify({
           proposalId: `${deal.deal_id}-${Date.now()}`,
-          buyerWallet: deal.buyer_wallet,
+          buyerWallet: deal.buyer_wallet ?? "",
           initialTerms: dealParams,
           buyerBoundaries,
           sellerBoundaries,
@@ -675,6 +726,17 @@ export default function NegotiateRoom() {
       setNegState({ kind: "done", proposal: finalProposal });
       if (finalProposal.status === "escalated") {
         applyServerPatch((prev) => (prev ? { ...prev, status: "escalated" } : prev));
+      } else {
+        // Negotiation concluded on the buyer's device only. Persist "proposed"
+        // ("Ready to sign") to the shared deal so the seller — who never runs the
+        // stream — leaves the "Agents negotiating" spinner and sees the result
+        // (bug #2). Best-effort: the on-screen result already shows for the buyer.
+        applyServerPatch((prev) => (prev ? { ...prev, status: "proposed" } : prev));
+        void apiFetchSafe(`/api/deals/${deal.deal_id}`, {
+          method: "PATCH",
+          wallet,
+          body: { status: "proposed" },
+        }, undefined);
       }
     } catch (err) {
       // A failed run (rate limit, out of credits, provider error) is an error to
@@ -858,6 +920,9 @@ export default function NegotiateRoom() {
         })),
         tx_signature: sig,
         status: "funded",
+        // Stamp the funding time so the reclaim UI can show when the 30-day
+        // buyer-timeout window elapses (#9).
+        funded_at: new Date().toISOString(),
       };
       const mirrorPatch = {
         seller_wallet: mirroredDeal.seller_wallet,
@@ -866,6 +931,7 @@ export default function NegotiateRoom() {
         total_amount_usdc: mirroredDeal.total_amount_usdc,
         milestones: mirroredDeal.milestones,
         status: mirroredDeal.status,
+        funded_at: mirroredDeal.funded_at,
       };
 
       // On-chain deploy already succeeded — reflect the funded state locally.
@@ -879,6 +945,7 @@ export default function NegotiateRoom() {
               total_amount_usdc: finalTerms.totalAmount,
               milestones: mirroredDeal.milestones,
               status: "funded",
+              funded_at: mirroredDeal.funded_at,
             }
           : prev
       );
@@ -999,51 +1066,8 @@ export default function NegotiateRoom() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left: conversation + negotiation */}
           <div className="lg:col-span-2 space-y-4">
-            {/* Shared conversation view — buyer always, seller only in non-manual mode */}
-            {!!deal.seller_wallet && !(role === "seller" && sellerView === "manual") && (
-              <ConversationView dealId={deal.deal_id} buyerView={role === "buyer"} myWallet={wallet} />
-            )}
-
-            {/* Invite counterparty (buyer only, no seller yet) */}
-            {awaitingCounterparty && deal.status === "draft" && inviteLink && (
-              <div className="surface-card rounded-xl p-5 space-y-4">
-                <div>
-                  <p className="text-[13px] text-primary" style={labelStyle}>Invite counterparty</p>
-                  <p className="text-[12px] text-muted mt-0.5">
-                    Only you and the counterparty can participate in this negotiation room.
-                  </p>
-                </div>
-
-                {/* Friend list invite */}
-                <FriendInviteSection wallet={wallet} inviteLink={inviteLink} />
-
-                {/* Direct link fallback */}
-                <div className="space-y-1.5">
-                  <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={{ fontWeight: 510 }}>
-                    Or share direct link
-                  </p>
-                  <div className="flex gap-2">
-                    <input
-                      readOnly
-                      value={inviteLink}
-                      className="flex-1 h-9 rounded-md bg-surface border border-card-border px-3 text-[12px] text-muted font-mono outline-none truncate"
-                    />
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(inviteLink);
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 2000);
-                      }}
-                      className="btn-ghost h-9 px-4 rounded-md text-[12px] shrink-0"
-                    >
-                      {copied ? "Copied ✓" : "Copy"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Negotiation panel */}
+            {/* Negotiation panel — placed above the chat so the conversation
+                box below has more room (layout fix). */}
             <div className="surface-card rounded-xl overflow-hidden">
               {negState.kind === "idle" && (
                 <>
@@ -1173,7 +1197,7 @@ export default function NegotiateRoom() {
                         };
                         setNegState({ kind: "done", proposal: {
                           id: `${deal.deal_id}-manual-${now}`, origin: "manual",
-                          buyerWallet: deal.buyer_wallet, sellerWallet: deal.seller_wallet ?? "",
+                          buyerWallet: deal.buyer_wallet ?? "", sellerWallet: deal.seller_wallet ?? "",
                           initialTerms: terms, revisions: [], status: "agreed", finalTerms: terms,
                           summary: { pros: ["Seller accepted the negotiated terms"], cons: [], keyConcessions: [], riskFlags: [], confidenceScore: 1, recommendation: "accept", recommendationReasoning: negotiatedTerms ? "Terms were updated during negotiation. Review the final values before deploying escrow." : "You accepted the original terms. Waiting for the buyer to deploy escrow." },
                           buyerBoundaries: defaultSellerBoundaries(), sellerBoundaries: defaultSellerBoundaries(),
@@ -1214,7 +1238,7 @@ export default function NegotiateRoom() {
                       proposal={{
                         id: `${deal.deal_id}-seller-agreed`,
                         origin: "manual",
-                        buyerWallet: deal.buyer_wallet,
+                        buyerWallet: deal.buyer_wallet ?? "",
                         sellerWallet: deal.seller_wallet ?? "",
                         initialTerms: dealParams,
                         revisions: [],
@@ -1380,6 +1404,50 @@ export default function NegotiateRoom() {
                 />
               )}
             </div>
+
+            {/* Shared conversation view — buyer always, seller only in non-manual mode */}
+            {!!deal.seller_wallet && !(role === "seller" && sellerView === "manual") && (
+              <ConversationView dealId={deal.deal_id} buyerView={role === "buyer"} myWallet={wallet} />
+            )}
+
+            {/* Invite counterparty (buyer only, no seller yet) */}
+            {awaitingCounterparty && deal.status === "draft" && inviteLink && (
+              <div className="surface-card rounded-xl p-5 space-y-4">
+                <div>
+                  <p className="text-[13px] text-primary" style={labelStyle}>Invite counterparty</p>
+                  <p className="text-[12px] text-muted mt-0.5">
+                    Only you and the counterparty can participate in this negotiation room.
+                  </p>
+                </div>
+
+                {/* Friend list invite */}
+                <FriendInviteSection wallet={wallet} inviteLink={inviteLink} />
+
+                {/* Direct link fallback */}
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={{ fontWeight: 510 }}>
+                    Or share direct link
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      readOnly
+                      value={inviteLink}
+                      className="flex-1 h-9 rounded-md bg-surface border border-card-border px-3 text-[12px] text-muted font-mono outline-none truncate"
+                    />
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(inviteLink);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      className="btn-ghost h-9 px-4 rounded-md text-[12px] shrink-0"
+                    >
+                      {copied ? "Copied ✓" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right: deal terms + parties */}
@@ -1423,7 +1491,7 @@ export default function NegotiateRoom() {
 
             <PartyCard
               label="Buyer"
-              wallet={deal.buyer_wallet}
+              wallet={deal.buyer_wallet ?? ""}
               isYou={wallet === deal.buyer_wallet}
               profile={wallet === deal.buyer_wallet ? null : (role === "seller" ? cpProfile : null)}
               handle={wallet === deal.buyer_wallet ? (profile?.name ?? null) : cpHandle}
@@ -1928,6 +1996,10 @@ function NegotiationResult({
   const finalTerms = proposal.finalTerms;
   const agreed = proposal.status === "agreed" && finalTerms;
   const isBuyer = role === "buyer";
+  // Terms currently on the table when nothing was auto-agreed: the last
+  // revision's proposed terms, falling back to the buyer's initial offer.
+  const latestTerms: DealParams =
+    proposal.revisions[proposal.revisions.length - 1]?.proposedTerms ?? proposal.initialTerms;
 
   return (
     <div className="p-5 space-y-5">
@@ -2053,9 +2125,39 @@ function NegotiationResult({
       )}
 
       {!agreed && (
-        <button onClick={onRenegotiate} className="btn-ghost h-9 px-4 rounded-md text-[13px]">
-          Renegotiate
-        </button>
+        <div className="space-y-2">
+          <div className="flex gap-3">
+            {/* Buyer can still accept the terms on the table even when the AI
+                recommends renegotiating (no auto-agreement was reached). */}
+            {isBuyer && (
+              <button
+                onClick={() => onAccept(latestTerms)}
+                disabled={deploying}
+                aria-busy={deploying}
+                className="btn-primary flex-1 h-10 rounded-md text-[13px] flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+              >
+                {deploying ? (
+                  <>
+                    <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round" />
+                    </svg>
+                    Deploying…
+                  </>
+                ) : (
+                  "Accept current terms & deploy"
+                )}
+              </button>
+            )}
+            <button onClick={onRenegotiate} disabled={deploying} className="btn-ghost h-9 px-4 rounded-md text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
+              Renegotiate
+            </button>
+          </div>
+          {isBuyer && deployError && (
+            <p className="text-[12px] text-danger" role="alert">
+              {deployError}
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -2106,7 +2208,7 @@ function ConversationView({ dealId, buyerView, myWallet }: { dealId: string; buy
         </div>
       )}
 
-      <div className="px-4 py-4 space-y-3 max-h-72 overflow-y-auto">
+      <div className="px-4 py-4 space-y-3 max-h-112 overflow-y-auto">
         {msgs.map((m) => {
           if (m.role === "system") {
             return (
@@ -2204,7 +2306,7 @@ function ManualNegotiationPanel({
       title: deal.title,
       totalAmount: deal.total_amount_usdc,
       milestones: (deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
-      buyerWallet: deal.buyer_wallet,
+      buyerWallet: deal.buyer_wallet ?? "",
     };
     apiFetchSafe<{ response?: string }>("/api/negotiate/manual", {
       method: "POST",
@@ -2237,7 +2339,7 @@ function ManualNegotiationPanel({
         title: deal.title,
         totalAmount: deal.total_amount_usdc,
         milestones: (deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
-        buyerWallet: deal.buyer_wallet,
+        buyerWallet: deal.buyer_wallet ?? "",
       };
       const data = await apiFetch<{ response: string; agreed?: boolean; agreedTerms?: typeof agreedTerms }>("/api/negotiate/manual", {
         method: "POST",
