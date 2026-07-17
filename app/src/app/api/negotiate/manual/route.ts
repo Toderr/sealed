@@ -41,6 +41,10 @@ export const POST = withRoute(async (request: NextRequest) => {
     messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
     isOpening?: boolean;
     sellerWallet?: string;
+    // Fully-manual mode: draft a reply ON BEHALF OF THE SELLER (to send to the
+    // buyer), rather than the buyer's agent replying. The draft is returned only
+    // — NOT persisted — for the seller to edit and send themselves.
+    draftForSeller?: boolean;
     // Client passes deal context directly so server doesn't need to re-fetch
     // (deal may only be in sessionStorage, not yet in Supabase)
     dealContext?: {
@@ -51,7 +55,7 @@ export const POST = withRoute(async (request: NextRequest) => {
     };
   };
 
-  const { dealId, messages, isOpening, sellerWallet, dealContext } = body;
+  const { dealId, messages, isOpening, sellerWallet, draftForSeller, dealContext } = body;
 
   if (!dealId) {
     throw new HttpError(400, "dealId required");
@@ -108,6 +112,41 @@ Be concise and professional. Respond in the same language the seller uses.`;
   const llm = getServerLlm();
   if (!llm) {
     throw new HttpError(500, "No LLM provider configured on the server");
+  }
+
+  // ── Fully-manual: draft a reply FOR THE SELLER ──────────────────────────────
+  // A different perspective (represent the seller, replying to the buyer) and a
+  // pure draft: no [AGREED] handling, no persistence — just return the text for
+  // the seller to edit and send.
+  if (draftForSeller) {
+    const draftSystem = `You are helping the SELLER draft their next reply in a deal negotiation with the BUYER.
+
+Deal: "${dealTitle}"
+Total value: $${totalAmount} USDC
+Payment milestones:
+${milestonesText || "  (no milestones defined yet)"}
+
+Write ONLY the seller's reply message — natural, concise, professional, in the same language as the conversation. Do not add labels, quotes, or meta-commentary; output just the message text the seller would send.`;
+    // From the seller's POV: the counterparty's (buyer's) messages are the
+    // "incoming" ones. In this transcript the seller's own lines are role "user"
+    // and the buyer's are role "assistant"; flip them so the model drafts as the
+    // seller responding to the buyer.
+    const draftMessages = messages.map((m) =>
+      m.role === "system"
+        ? { role: "user" as const, content: `Context: ${m.content}` }
+        : { role: (m.role === "user" ? "assistant" : "user") as "user" | "assistant", content: m.content }
+    );
+    if (draftMessages.length === 0) {
+      draftMessages.push({ role: "user", content: "Open the conversation with a brief, friendly message proposing to proceed with these terms." });
+    }
+    try {
+      const draft = await dispatchLlm({ ...llm, system: draftSystem, messages: draftMessages, maxTokens: 800 });
+      return json({ response: draft.trim(), agreed: false, agreedTerms: null });
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      console.error("[negotiate/manual draft] LLM call failed:", err);
+      throw new HttpError(502, friendlyLlmError(err));
+    }
   }
 
   // Opening message: agent introduces itself and summarizes the contract

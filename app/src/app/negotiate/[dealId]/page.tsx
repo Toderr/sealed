@@ -138,8 +138,12 @@ export default function NegotiateRoom() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectError, setRejectError] = useState<string | null>(null);
   const [renegotiationNotice, setRenegotiationNotice] = useState<RenegotiationNotice | null>(null);
-  // Seller's chosen negotiation mode ("choice" = not decided yet)
-  const [sellerView, setSellerView] = useState<"choice" | "manual" | "agent-waiting">("choice");
+  // Seller's chosen negotiation mode ("choice" = not decided yet).
+  //  - "manual": chat with the buyer's AI agent (it auto-replies)
+  //  - "fully-manual": human↔human chat; no auto-reply, but a button can summon
+  //     the seller's OWN agent to draft a reply to the counterparty
+  //  - "agent-waiting": full auto agent-vs-agent negotiation
+  const [sellerView, setSellerView] = useState<"choice" | "manual" | "fully-manual" | "agent-waiting">("choice");
 
   // Load (Supabase-first → sessionStorage fallback → mirror-retry) now lives in
   // useDeal's fetcher. This effect only preserves the old 10s "loading timed
@@ -1160,6 +1164,21 @@ export default function NegotiateRoom() {
                         </button>
 
                         <button
+                          onClick={() => setSellerView("fully-manual")}
+                          className="w-full flex items-start gap-3 px-4 py-3 rounded-xl border border-card-border bg-surface hover:border-accent/40 transition-colors text-left"
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent mt-0.5 shrink-0">
+                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                          </svg>
+                          <div>
+                            <p className="text-[13px] text-primary" style={labelStyle}>Manual chat</p>
+                            <p className="text-[12px] text-muted mt-0.5">
+                              You reply by hand — no auto agent. A button can draft a reply with your agent when you want.
+                            </p>
+                          </div>
+                        </button>
+
+                        <button
                           onClick={async () => {
                             if (!memory) return;
                             await apiFetchSafe(`/api/deals/${deal.deal_id}`, {
@@ -1190,11 +1209,12 @@ export default function NegotiateRoom() {
                     </div>
                   )}
 
-                  {/* ── SELLER — manual chat ── */}
-                  {role === "seller" && sellerView === "manual" && (
+                  {/* ── SELLER — manual chat (assisted or fully-manual) ── */}
+                  {role === "seller" && (sellerView === "manual" || sellerView === "fully-manual") && (
                     <ManualNegotiationPanel
                       deal={deal}
                       wallet={wallet ?? ""}
+                      mode={sellerView === "fully-manual" ? "fully-manual" : "assisted"}
                       onBack={() => setSellerView("choice")}
                       onAgree={async (negotiatedTerms?: { totalAmount: number; milestones: Array<{ description: string; amount: number }> }) => {
                         // Signal instantly to buyer's tab via localStorage
@@ -1531,12 +1551,19 @@ export default function NegotiateRoom() {
                 </p>
                 <div className="space-y-1">
                   {(deal.milestones ?? []).map((m, i) => (
-                    <div key={i} className="flex items-center justify-between text-[12px] bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded-md px-3 py-2">
-                      <span className="truncate mr-2 text-foreground">
+                    <div key={i} className="flex items-center justify-between gap-2 text-[12px] bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded-md px-3 py-2">
+                      <span className="truncate text-foreground min-w-0">
                         <span className="text-subtle mr-1.5">{i + 1}.</span>
                         {m.description}
                       </span>
-                      <span className="shrink-0 font-mono text-muted">${formatUsdc(m.amount ?? 0)}</span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        {/* Which side uploads this milestone's proof (#3). Defaults
+                            to seller when unset. */}
+                        <span className="text-[10px] uppercase tracking-[0.04em] text-subtle border border-card-border-subtle rounded px-1.5 py-0.5">
+                          proof: {m.proof_by ?? "seller"}
+                        </span>
+                        <span className="font-mono text-muted">${formatUsdc(m.amount ?? 0)}</span>
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -2341,12 +2368,18 @@ function ManualNegotiationPanel({
   wallet,
   onBack,
   onAgree,
+  mode = "assisted",
 }: {
   deal: SupabaseDeal;
   wallet: string;
   onBack?: () => void;
   onAgree: (negotiatedTerms?: NegotiatedTerms) => void;
+  // "assisted": the buyer's AI agent auto-replies to each seller message.
+  // "fully-manual": no auto-reply; the seller can summon their OWN agent to
+  // draft a reply on demand via a button.
+  mode?: "assisted" | "fully-manual";
 }) {
+  const fullyManual = mode === "fully-manual";
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -2371,8 +2404,10 @@ function ManualNegotiationPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal.deal_id]);
 
-  // Auto-trigger buyer's agent opening message when conversation is empty
+  // Auto-trigger buyer's agent opening message when conversation is empty.
+  // Skipped in fully-manual mode — no agent speaks unless the seller summons it.
   useEffect(() => {
+    if (fullyManual) return;
     if (messages.length > 0 || loading || openingFired.current) return;
     openingFired.current = true;
     setLoading(true);
@@ -2467,7 +2502,59 @@ function ManualNegotiationPanel({
 
     const updated: ChatMsg[] = [...messages, { role: "user", content }];
     setMessages(updated);
+    if (fullyManual) {
+      // Human↔human: just persist the seller's message so the buyer sees it;
+      // no agent reply unless the seller explicitly summons one.
+      void apiFetchSafe(`/api/messages`, {
+        method: "POST",
+        wallet,
+        body: { deal_id: deal.deal_id, role: "user", content, wallet },
+      }, undefined);
+      return;
+    }
     await runAgentTurn(updated);
+  }
+
+  // Fully-manual: summon the seller's OWN agent to DRAFT a reply to the
+  // conversation so far, placed in the input box for the seller to edit/send —
+  // it is NOT auto-sent. Uses the seller's own LLM config (x-llm-* headers).
+  async function draftWithAgent() {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const dealContext = {
+        title: deal.title,
+        totalAmount: deal.total_amount_usdc,
+        milestones: (deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
+        buyerWallet: deal.buyer_wallet ?? "",
+      };
+      const data = await apiFetch<{ response: string }>("/api/negotiate/manual", {
+        method: "POST",
+        wallet,
+        body: {
+          dealId: deal.deal_id,
+          messages,
+          sellerWallet: wallet,
+          dealContext,
+          draftForSeller: true,
+        },
+      });
+      // Drop the draft into the input for the seller to review/edit before send.
+      if (data.response) setInput(data.response);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "system",
+          error: true,
+          content: isAgentConfigError(err)
+            ? "Your agent isn't configured. Set it up in Agent Setup, or reply manually."
+            : "Couldn't draft a reply right now. Please try again or reply manually.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   const suggestions = [
@@ -2482,10 +2569,12 @@ function ManualNegotiationPanel({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[13px] text-primary" style={headingStyle}>
-            Chat with buyer&apos;s agent
+            {fullyManual ? "Manual chat" : "Chat with buyer's agent"}
           </p>
           <p className="text-[12px] text-muted mt-0.5">
-            Propose changes or accept the current terms directly.
+            {fullyManual
+              ? "Reply by hand. Use “Draft with my agent” for an AI-suggested reply you can edit."
+              : "Propose changes or accept the current terms directly."}
           </p>
         </div>
         {onBack && (
@@ -2569,22 +2658,37 @@ function ManualNegotiationPanel({
 
       {/* Input */}
       {!agreedByAgent && (
-        <div className="flex gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder="Type your message or counteroffer…"
-            disabled={loading}
-            className="flex-1 h-9 rounded-md bg-surface border border-card-border px-3 text-[13px] text-foreground placeholder:text-subtle outline-none focus:border-accent/50 transition-colors disabled:opacity-50"
-          />
-          <button
-            onClick={() => send()}
-            disabled={!input.trim() || loading}
-            className="btn-primary h-9 px-4 rounded-md text-[13px] disabled:opacity-40"
-          >
-            Send
-          </button>
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+              placeholder="Type your message or counteroffer…"
+              disabled={loading}
+              className="flex-1 h-9 rounded-md bg-surface border border-card-border px-3 text-[13px] text-foreground placeholder:text-subtle outline-none focus:border-accent/50 transition-colors disabled:opacity-50"
+            />
+            <button
+              onClick={() => send()}
+              disabled={!input.trim() || loading}
+              className="btn-primary h-9 px-4 rounded-md text-[13px] disabled:opacity-40"
+            >
+              Send
+            </button>
+          </div>
+          {/* Fully-manual: summon your own agent to draft a reply into the box. */}
+          {fullyManual && (
+            <button
+              onClick={draftWithAgent}
+              disabled={loading}
+              className="btn-ghost h-8 px-3 rounded-md text-[12px] flex items-center gap-1.5 disabled:opacity-40"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
+              </svg>
+              {loading ? "Drafting…" : "Draft with my agent"}
+            </button>
+          )}
         </div>
       )}
 
