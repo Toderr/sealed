@@ -2531,6 +2531,9 @@ function ManualNegotiationPanel({
       const data = await apiFetch<{ response: string }>("/api/negotiate/manual", {
         method: "POST",
         wallet,
+        // Forward the seller's OWN LLM config (profile key) — this is "draft with
+        // MY agent", so it must use the seller's key, not the server's.
+        headers: getLlmHeaders(wallet),
         body: {
           dealId: deal.deal_id,
           messages,

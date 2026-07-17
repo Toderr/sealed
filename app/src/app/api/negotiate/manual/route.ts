@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
-import { dispatchLlm, friendlyLlmError } from "@/lib/llm-dispatch";
+import { dispatchLlm, friendlyLlmError, getLlmOptsFromRequest } from "@/lib/llm-dispatch";
 import { HttpError, json, withRoute } from "@/lib/api-error";
 
 // Always use a reliable paid model for agent responses.
@@ -117,8 +117,13 @@ Be concise and professional. Respond in the same language the seller uses.`;
   // ── Fully-manual: draft a reply FOR THE SELLER ──────────────────────────────
   // A different perspective (represent the seller, replying to the buyer) and a
   // pure draft: no [AGREED] handling, no persistence — just return the text for
-  // the seller to edit and send.
+  // the seller to edit and send. Uses the SELLER's own LLM key (x-llm-* headers)
+  // first — this is "draft with MY agent" — falling back to the server env.
   if (draftForSeller) {
+    const draftLlm = getLlmOptsFromRequest(request) ?? llm;
+    if (!draftLlm) {
+      throw new HttpError(400, "No agent configured. Set up your agent in Agent Setup.");
+    }
     const draftSystem = `You are helping the SELLER draft their next reply in a deal negotiation with the BUYER.
 
 Deal: "${dealTitle}"
@@ -140,7 +145,7 @@ Write ONLY the seller's reply message — natural, concise, professional, in the
       draftMessages.push({ role: "user", content: "Open the conversation with a brief, friendly message proposing to proceed with these terms." });
     }
     try {
-      const draft = await dispatchLlm({ ...llm, system: draftSystem, messages: draftMessages, maxTokens: 800 });
+      const draft = await dispatchLlm({ ...draftLlm, system: draftSystem, messages: draftMessages, maxTokens: 800 });
       return json({ response: draft.trim(), agreed: false, agreedTerms: null });
     } catch (err) {
       if (err instanceof HttpError) throw err;
