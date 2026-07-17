@@ -81,7 +81,7 @@ export default function DealReviewPage() {
   useEffect(() => {
     const status = (dealStatus ?? localStatus ?? "").toLowerCase();
     if (!status) return;
-    const NEGOTIATION = ["draft", "created", "seller-ready", "seller-agreed", "proposed", "escalated"];
+    const NEGOTIATION = ["draft", "created", "seller-ready", "seller-agreed", "manual-chat", "proposed", "escalated"];
     router.replace(
       NEGOTIATION.includes(status)
         ? `/negotiate/${encodeURIComponent(dealId)}`

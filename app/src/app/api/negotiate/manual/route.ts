@@ -41,10 +41,10 @@ export const POST = withRoute(async (request: NextRequest) => {
     messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
     isOpening?: boolean;
     sellerWallet?: string;
-    // Fully-manual mode: draft a reply ON BEHALF OF THE SELLER (to send to the
-    // buyer), rather than the buyer's agent replying. The draft is returned only
-    // — NOT persisted — for the seller to edit and send themselves.
-    draftForSeller?: boolean;
+    // Fully-manual mode: draft a reply ON BEHALF OF THE GIVEN PARTY (to send to
+    // the counterparty), rather than the buyer's agent replying. The draft is
+    // returned only — NOT persisted — for that party to edit and send.
+    draftForParty?: "seller" | "buyer";
     // Client passes deal context directly so server doesn't need to re-fetch
     // (deal may only be in sessionStorage, not yet in Supabase)
     dealContext?: {
@@ -55,7 +55,7 @@ export const POST = withRoute(async (request: NextRequest) => {
     };
   };
 
-  const { dealId, messages, isOpening, sellerWallet, draftForSeller, dealContext } = body;
+  const { dealId, messages, isOpening, sellerWallet, draftForParty, dealContext } = body;
 
   if (!dealId) {
     throw new HttpError(400, "dealId required");
@@ -114,24 +114,26 @@ Be concise and professional. Respond in the same language the seller uses.`;
     throw new HttpError(500, "No LLM provider configured on the server");
   }
 
-  // ── Fully-manual: draft a reply FOR THE SELLER ──────────────────────────────
-  // A different perspective (represent the seller, replying to the buyer) and a
-  // pure draft: no [AGREED] handling, no persistence — just return the text for
-  // the seller to edit and send. Uses the SELLER's own LLM key (x-llm-* headers)
-  // first — this is "draft with MY agent" — falling back to the server env.
-  if (draftForSeller) {
+  // ── Fully-manual: draft a reply FOR THE GIVEN PARTY ─────────────────────────
+  // Represent the drafting party, replying to the counterparty. A pure draft: no
+  // [AGREED] handling, no persistence — just return the text for that party to
+  // edit and send. Uses the caller's OWN LLM key (x-llm-* headers) first — this
+  // is "draft with MY agent" — falling back to the server env.
+  if (draftForParty) {
     const draftLlm = getLlmOptsFromRequest(request) ?? llm;
     if (!draftLlm) {
       throw new HttpError(400, "No agent configured. Set up your agent in Agent Setup.");
     }
-    const draftSystem = `You are helping the SELLER draft their next reply in a deal negotiation with the BUYER.
+    const me = draftForParty === "buyer" ? "BUYER" : "SELLER";
+    const them = draftForParty === "buyer" ? "SELLER" : "BUYER";
+    const draftSystem = `You are helping the ${me} draft their next reply in a deal negotiation with the ${them}.
 
 Deal: "${dealTitle}"
 Total value: $${totalAmount} USDC
 Payment milestones:
 ${milestonesText || "  (no milestones defined yet)"}
 
-Write ONLY the seller's reply message — natural, concise, professional, in the same language as the conversation. Do not add labels, quotes, or meta-commentary; output just the message text the seller would send.`;
+Write ONLY the ${me.toLowerCase()}'s reply message — natural, concise, professional, in the same language as the conversation. Do not add labels, quotes, or meta-commentary; output just the message text the ${me.toLowerCase()} would send.`;
     // From the seller's POV: the counterparty's (buyer's) messages are the
     // "incoming" ones. In this transcript the seller's own lines are role "user"
     // and the buyer's are role "assistant"; flip them so the model drafts as the

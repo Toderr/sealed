@@ -16,6 +16,7 @@ const DEAL_STATUSES = new Set([
   "draft",
   "seller-ready",
   "seller-agreed",
+  "manual-chat",
   "escalated",
   "proposed",
   "funded",
@@ -109,6 +110,7 @@ const PRE_ESCROW_STATUSES = new Set([
   "draft",
   "seller-ready",
   "seller-agreed",
+  "manual-chat",
   "proposed",
   "escalated",
 ]);

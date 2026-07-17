@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS sealed_deals (
         'draft',
         'seller-ready',      -- seller chose AI agent mode
         'seller-agreed',     -- seller accepted terms manually
+        'manual-chat',       -- both parties negotiate by hand (fully-manual mode)
         'escalated',         -- renegotiation reopened for both parties
         'proposed',
         'funded',

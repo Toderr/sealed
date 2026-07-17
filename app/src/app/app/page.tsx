@@ -47,7 +47,7 @@ function inferDealStatus(deal: SupabaseDeal) {
 
 function dealHref(deal: SupabaseDeal) {
   const status = inferDealStatus(deal);
-  if (status === "draft" || status === "seller-ready" || status === "seller-agreed" || status === "proposed" || status === "escalated") {
+  if (status === "draft" || status === "seller-ready" || status === "seller-agreed" || status === "manual-chat" || status === "proposed" || status === "escalated") {
     return `/negotiate/${deal.deal_id}`;
   }
   return `/deals/${deal.deal_id}`;
@@ -1082,7 +1082,7 @@ function DealCardBold({
   // deals hold on-chain state and must not be removed.
   const canDelete =
     !!onRequestDelete &&
-    ["draft", "seller-ready", "seller-agreed", "proposed", "escalated"].includes(displayStatus);
+    ["draft", "seller-ready", "seller-agreed", "manual-chat", "proposed", "escalated"].includes(displayStatus);
 
   const statusLabel: Record<string, string> = {
     draft:          counterparty ? "Counterparty joined" : "Awaiting counterparty",

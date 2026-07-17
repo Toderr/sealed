@@ -260,7 +260,11 @@ export default function NegotiateRoom() {
             if (!prev) return updated;
             const changed =
               updated.status !== prev.status ||
-              (updated.seller_wallet ?? "") !== (prev.seller_wallet ?? "");
+              (updated.seller_wallet ?? "") !== (prev.seller_wallet ?? "") ||
+              // buyer_wallet: a buyer joining a seller-created deal from another
+              // device changes only this field — without it the seller never
+              // leaves "Waiting for counterparty".
+              (updated.buyer_wallet ?? "") !== (prev.buyer_wallet ?? "");
             return changed ? updated : prev;
           });
         }
@@ -416,6 +420,8 @@ export default function NegotiateRoom() {
     if (!deal || role !== "seller") return;
     if (deal.status === "seller-ready") setSellerView("agent-waiting");
     if (deal.status === "seller-agreed") setSellerView("manual");
+    // Fully-manual chat: restore the seller into it on refresh.
+    if (deal.status === "manual-chat" && sellerView === "choice") setSellerView("fully-manual");
     // AI negotiation concluded (buyer PATCHed "proposed"): the seller ran no
     // stream, so pull them out of the "agent-waiting" spinner and back into the
     // shared conversation + result view (bug #2). "choice" lets the result panel
@@ -877,6 +883,58 @@ export default function NegotiateRoom() {
     }
   }
 
+  // Shared "accept the manual-chat terms" handler — works for EITHER party
+  // (seller or buyer) in manual chat. Concludes to "seller-agreed" (buyer funds
+  // next), preserving proof_by, and shows the result panel. Party-agnostic:
+  // seller_wallet always comes from the deal, not the caller's wallet.
+  async function handleManualAgree(deal: SupabaseDeal, negotiatedTerms?: NegotiatedTerms) {
+    if (!deal) return;
+    try { localStorage.setItem(`sealed:seller-agreed:${deal.deal_id}`, "1"); } catch {}
+    const finalAmount = negotiatedTerms?.totalAmount ?? deal.total_amount_usdc;
+    const finalMilestones = negotiatedTerms?.milestones
+      ? negotiatedTerms.milestones.map((m, i) => {
+          const byDesc = (deal.milestones ?? []).find((dm) => dm.description === m.description);
+          const carried = byDesc?.proof_by ?? deal.milestones?.[i]?.proof_by;
+          return carried ? { ...m, proof_by: carried } : m;
+        })
+      : (deal.milestones ?? []);
+    const sellerW = deal.seller_wallet ?? "";
+    try {
+      await apiFetch(`/api/deals/${deal.deal_id}`, {
+        method: "PATCH",
+        wallet: wallet ?? "",
+        body: { status: "seller-agreed", total_amount_usdc: finalAmount, milestones: finalMilestones },
+      });
+    } catch {
+      await apiFetchSafe("/api/deals/mirror", {
+        method: "POST",
+        wallet: wallet ?? deal.buyer_wallet ?? sellerW,
+        body: {
+          deal_id: deal.deal_id, seller_wallet: sellerW, title: deal.title,
+          description: deal.description ?? "", total_amount_usdc: finalAmount,
+          milestones: finalMilestones, status: "seller-agreed",
+        },
+      }, undefined);
+    }
+    applyServerPatch((prev) => prev ? { ...prev, status: "seller-agreed", total_amount_usdc: finalAmount, milestones: finalMilestones } : prev);
+    const now = Date.now();
+    const terms: DealParams = {
+      dealId: deal.deal_id,
+      title: deal.title,
+      sellerWallet: sellerW,
+      totalAmount: finalAmount,
+      milestones: finalMilestones.map((m) => ({ description: m.description, amount: m.amount })),
+    };
+    setNegState({ kind: "done", proposal: {
+      id: `${deal.deal_id}-manual-${now}`, origin: "manual",
+      buyerWallet: deal.buyer_wallet ?? "", sellerWallet: sellerW,
+      initialTerms: terms, revisions: [], status: "agreed", finalTerms: terms,
+      summary: { pros: ["Terms accepted in manual chat"], cons: [], keyConcessions: [], riskFlags: [], confidenceScore: 1, recommendation: "accept", recommendationReasoning: negotiatedTerms ? "Terms were updated during the chat. Review the final values before deploying escrow." : "Terms accepted. The buyer deploys the escrow." },
+      buyerBoundaries: defaultSellerBoundaries(), sellerBoundaries: defaultSellerBoundaries(),
+      createdAt: now, updatedAt: now,
+    }});
+  }
+
   async function handleAcceptAndDeploy(finalTerms: DealParams) {
     if (!publicKey || !signTransaction) {
       setDeployError("Connect a wallet that can sign this transaction.");
@@ -1164,7 +1222,17 @@ export default function NegotiateRoom() {
                         </button>
 
                         <button
-                          onClick={() => setSellerView("fully-manual")}
+                          onClick={async () => {
+                            // Signal the buyer (cross-device) that we're in manual
+                            // chat so their room renders a manual panel too.
+                            await apiFetchSafe(`/api/deals/${deal.deal_id}`, {
+                              method: "PATCH",
+                              wallet: wallet ?? "",
+                              body: { status: "manual-chat" },
+                            }, undefined);
+                            applyServerPatch((prev) => prev ? { ...prev, status: "manual-chat" } : prev);
+                            setSellerView("fully-manual");
+                          }}
                           className="w-full flex items-start gap-3 px-4 py-3 rounded-xl border border-card-border bg-surface hover:border-accent/40 transition-colors text-left"
                         >
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent mt-0.5 shrink-0">
@@ -1215,69 +1283,9 @@ export default function NegotiateRoom() {
                       deal={deal}
                       wallet={wallet ?? ""}
                       mode={sellerView === "fully-manual" ? "fully-manual" : "assisted"}
+                      party="seller"
                       onBack={() => setSellerView("choice")}
-                      onAgree={async (negotiatedTerms?: { totalAmount: number; milestones: Array<{ description: string; amount: number }> }) => {
-                        // Signal instantly to buyer's tab via localStorage
-                        try {
-                          localStorage.setItem(`sealed:seller-agreed:${deal.deal_id}`, "1");
-                        } catch {}
-                        // Update Supabase. PATCH first; if the deal row is missing
-                        // (404) fall back to mirror upsert which creates-or-updates
-                        // with the agreed status in one call so the buyer's poll
-                        // and Realtime subscription can detect the change.
-                        const finalAmount = negotiatedTerms?.totalAmount ?? deal.total_amount_usdc;
-                        const finalMilestones = negotiatedTerms?.milestones ?? deal.milestones ?? [];
-                        try {
-                          await apiFetch(`/api/deals/${deal.deal_id}`, {
-                            method: "PATCH",
-                            wallet: wallet ?? "",
-                            body: {
-                              seller_wallet: wallet ?? "",
-                              status: "seller-agreed",
-                              total_amount_usdc: finalAmount,
-                              milestones: finalMilestones,
-                            },
-                          });
-                        } catch {
-                          // PATCH failed (e.g. 404) — fall back to mirror upsert.
-                          console.warn("[onAgree] PATCH failed, trying mirror fallback");
-                          await apiFetchSafe("/api/deals/mirror", {
-                            method: "POST",
-                            wallet: deal.buyer_wallet,
-                            body: {
-                              deal_id: deal.deal_id,
-                              seller_wallet: wallet ?? "",
-                              title: deal.title,
-                              description: deal.description ?? "",
-                              total_amount_usdc: finalAmount,
-                              milestones: finalMilestones,
-                              status: "seller-agreed",
-                            },
-                          }, undefined);
-                        }
-                        applyServerPatch((prev) => prev ? {
-                          ...prev,
-                          status: "seller-agreed",
-                          total_amount_usdc: finalAmount,
-                          milestones: finalMilestones,
-                        } : prev);
-                        const now = Date.now();
-                        const terms: DealParams = {
-                          dealId: deal.deal_id,
-                          title: deal.title,
-                          sellerWallet: deal.seller_wallet ?? wallet ?? "",
-                          totalAmount: negotiatedTerms?.totalAmount ?? deal.total_amount_usdc,
-                          milestones: (negotiatedTerms?.milestones ?? deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
-                        };
-                        setNegState({ kind: "done", proposal: {
-                          id: `${deal.deal_id}-manual-${now}`, origin: "manual",
-                          buyerWallet: deal.buyer_wallet ?? "", sellerWallet: deal.seller_wallet ?? "",
-                          initialTerms: terms, revisions: [], status: "agreed", finalTerms: terms,
-                          summary: { pros: ["Seller accepted the negotiated terms"], cons: [], keyConcessions: [], riskFlags: [], confidenceScore: 1, recommendation: "accept", recommendationReasoning: negotiatedTerms ? "Terms were updated during negotiation. Review the final values before deploying escrow." : "You accepted the original terms. Waiting for the buyer to deploy escrow." },
-                          buyerBoundaries: defaultSellerBoundaries(), sellerBoundaries: defaultSellerBoundaries(),
-                          createdAt: now, updatedAt: now,
-                        }});
-                      }}
+                      onAgree={(negotiatedTerms) => handleManualAgree(deal, negotiatedTerms)}
                     />
                   )}
 
@@ -1362,6 +1370,17 @@ export default function NegotiateRoom() {
                       <p className="text-[13px] text-primary" style={labelStyle}>Starting negotiation…</p>
                       <p className="text-[12px] text-muted">Seller is using their agent. Starting your agent now.</p>
                     </div>
+                  )}
+
+                  {/* ── BUYER — seller chose Manual chat: buyer's manual panel ── */}
+                  {role === "buyer" && deal.status === "manual-chat" && (
+                    <ManualNegotiationPanel
+                      deal={deal}
+                      wallet={wallet ?? ""}
+                      mode="fully-manual"
+                      party="buyer"
+                      onAgree={(negotiatedTerms) => handleManualAgree(deal, negotiatedTerms)}
+                    />
                   )}
 
                   {deal.status === "escalated" && !(role === "seller" && sellerView === "manual") && (
@@ -2359,7 +2378,7 @@ function ConversationView({ dealId, buyerView, myWallet }: { dealId: string; buy
 
 /* ── Manual negotiation panel (seller without agent) ───────────────────── */
 
-type ChatMsg = { role: "user" | "assistant" | "system"; content: string; error?: boolean };
+type ChatMsg = { role: "user" | "assistant" | "system"; content: string; error?: boolean; wallet?: string };
 
 type NegotiatedTerms = { totalAmount: number; milestones: Array<{ description: string; amount: number }> };
 
@@ -2369,15 +2388,19 @@ function ManualNegotiationPanel({
   onBack,
   onAgree,
   mode = "assisted",
+  party = "seller",
 }: {
   deal: SupabaseDeal;
   wallet: string;
   onBack?: () => void;
   onAgree: (negotiatedTerms?: NegotiatedTerms) => void;
   // "assisted": the buyer's AI agent auto-replies to each seller message.
-  // "fully-manual": no auto-reply; the seller can summon their OWN agent to
-  // draft a reply on demand via a button.
+  // "fully-manual": no auto-reply; a party can summon their OWN agent to draft a
+  // reply on demand via a button (human↔human otherwise).
   mode?: "assisted" | "fully-manual";
+  // Which side is using this panel. In fully-manual both parties get one; in
+  // assisted mode only the seller does (the buyer is the auto-replying agent).
+  party?: "seller" | "buyer";
 }) {
   const fullyManual = mode === "fully-manual";
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -2389,20 +2412,31 @@ function ManualNegotiationPanel({
   const openingFired = useRef(false);
   const prevManualMsgCount = useRef(0);
 
-  // Load existing messages from Supabase on mount
+  // Load existing messages from Supabase on mount. In fully-manual mode BOTH
+  // parties post as role "user", so we also read the message wallet to tell own
+  // vs counterparty apart; re-poll so each party sees the other's new messages.
   useEffect(() => {
-    apiFetchSafe<{ messages?: Array<{ role: string; content: string }> }>(`/api/messages?deal_id=${deal.deal_id}`, {}, { messages: [] })
-      .then((data) => {
-        const dbMsgs = data.messages ?? [];
-        if (dbMsgs.length > 0) {
-          setMessages(dbMsgs.map((m) => ({
-            role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
-            content: m.content,
-          })));
-        }
-      });
+    let cancelled = false;
+    const load = () => {
+      apiFetchSafe<{ messages?: Array<{ role: string; content: string; wallet?: string }> }>(`/api/messages?deal_id=${deal.deal_id}`, {}, { messages: [] })
+        .then((data) => {
+          if (cancelled) return;
+          const dbMsgs = data.messages ?? [];
+          if (dbMsgs.length > 0) {
+            setMessages(dbMsgs.map((m) => ({
+              role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
+              content: m.content,
+              wallet: m.wallet,
+            })));
+          }
+        });
+    };
+    load();
+    // Fully-manual is human↔human, so poll for the counterparty's messages.
+    const t = fullyManual ? setInterval(load, 4000) : null;
+    return () => { cancelled = true; if (t) clearInterval(t); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deal.deal_id]);
+  }, [deal.deal_id, fullyManual]);
 
   // Auto-trigger buyer's agent opening message when conversation is empty.
   // Skipped in fully-manual mode — no agent speaks unless the seller summons it.
@@ -2500,11 +2534,11 @@ function ManualNegotiationPanel({
     if (!content || loading) return;
     if (!text) setInput("");
 
-    const updated: ChatMsg[] = [...messages, { role: "user", content }];
+    const updated: ChatMsg[] = [...messages, { role: "user", content, wallet }];
     setMessages(updated);
     if (fullyManual) {
-      // Human↔human: just persist the seller's message so the buyer sees it;
-      // no agent reply unless the seller explicitly summons one.
+      // Human↔human: just persist this party's message so the counterparty sees
+      // it; no agent reply unless they explicitly summon one.
       void apiFetchSafe(`/api/messages`, {
         method: "POST",
         wallet,
@@ -2528,18 +2562,28 @@ function ManualNegotiationPanel({
         milestones: (deal.milestones ?? []).map((m) => ({ description: m.description, amount: m.amount })),
         buyerWallet: deal.buyer_wallet ?? "",
       };
+      // In fully-manual both parties are stored as role "user", so tag the
+      // transcript by OWNERSHIP (mine → "assistant", counterparty → "user") so
+      // the model drafts as me responding to them. (The route flips one more time
+      // for non-manual; here we've already normalized to the model's POV.)
+      const draftMessages = messages.map((m) =>
+        m.role === "system"
+          ? m
+          : { role: (m.wallet === wallet ? "user" : "assistant") as "user" | "assistant", content: m.content }
+      );
       const data = await apiFetch<{ response: string }>("/api/negotiate/manual", {
         method: "POST",
         wallet,
-        // Forward the seller's OWN LLM config (profile key) — this is "draft with
-        // MY agent", so it must use the seller's key, not the server's.
+        // Forward the caller's OWN LLM config (profile key) — this is "draft with
+        // MY agent", so it must use the user's key, not the server's.
         headers: getLlmHeaders(wallet),
         body: {
           dealId: deal.deal_id,
-          messages,
+          messages: draftMessages,
           sellerWallet: wallet,
           dealContext,
-          draftForSeller: true,
+          // Draft from the CURRENT party's perspective (seller or buyer).
+          draftForParty: party,
         },
       });
       // Drop the draft into the input for the seller to review/edit before send.
@@ -2630,19 +2674,25 @@ function ManualNegotiationPanel({
                   )}
                 </div>
               </div>
-            ) : (
-              <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            ) : (() => {
+              // Ownership: in fully-manual BOTH parties post as role "user", so
+              // distinguish by wallet (mine = right). In assisted mode fall back
+              // to role (the buyer's agent is "assistant" = left).
+              const isMine = fullyManual
+                ? (m.wallet ? m.wallet === wallet : m.role === "user")
+                : m.role === "user";
+              return (
+              <div key={i} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
                 <div
                   className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
-                    m.role === "user"
-                      ? "bg-brand text-white"
-                      : "surface-card text-foreground"
+                    isMine ? "bg-brand text-white" : "surface-card text-foreground"
                   }`}
                 >
                   <div className="whitespace-pre-wrap">{renderMarkdown(m.content)}</div>
                 </div>
               </div>
-            )
+              );
+            })()
           ))}
           {loading && (
             <div className="flex justify-start">
