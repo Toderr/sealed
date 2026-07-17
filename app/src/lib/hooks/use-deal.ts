@@ -118,6 +118,11 @@ function compareDeal(a?: DealResult, b?: DealResult): boolean {
   return (
     da.status === db.status &&
     (da.seller_wallet ?? "") === (db.seller_wallet ?? "") &&
+    // Watch buyer_wallet too: for a seller-created (inviter) deal, a buyer
+    // joining from another device changes ONLY buyer_wallet (status/seller stay
+    // put). Without this, the seller's poll would treat the row as unchanged and
+    // never leave "Waiting for counterparty".
+    (da.buyer_wallet ?? "") === (db.buyer_wallet ?? "") &&
     da.total_amount_usdc === db.total_amount_usdc &&
     JSON.stringify(da.milestones ?? []) === JSON.stringify(db.milestones ?? [])
   );

@@ -657,7 +657,7 @@ export default function ActiveDealPage() {
   const dealStatus = (deal?.status ?? "").toLowerCase();
   const isTerminal = isComplete || dealStatus === "completed" || dealStatus === "refunded";
   const isFunded = ["funded", "in_progress"].includes(dealStatus) || releasedCount > 0;
-  const isUnfunded = !isFunded && ["draft", "seller-ready", "seller-agreed", "escalated", "proposed"].includes(dealStatus);
+  const isUnfunded = !isFunded && ["draft", "seller-ready", "seller-agreed", "manual-chat", "escalated", "proposed"].includes(dealStatus);
 
   // If this deal is (or goes back to) a pre-escrow negotiation status — e.g. a
   // funded deal re-opened via renegotiate/escalate — the deal page's milestone
@@ -667,7 +667,7 @@ export default function ActiveDealPage() {
   // deal is never bounced.
   useEffect(() => {
     if (!deal) return;
-    const NEGOTIATION_STATUSES = ["draft", "seller-ready", "seller-agreed", "proposed", "escalated"];
+    const NEGOTIATION_STATUSES = ["draft", "seller-ready", "seller-agreed", "manual-chat", "proposed", "escalated"];
     if (releasedCount === 0 && NEGOTIATION_STATUSES.includes(dealStatus)) {
       router.replace(`/negotiate/${encodeURIComponent(dealId)}`);
     }
@@ -1100,9 +1100,10 @@ export default function ActiveDealPage() {
                         </div>
                       )}
 
-                      {/* Only the SELLER uploads milestone proof (#3); the buyer
-                          shares files via the chat instead. Release stays buyer-only. */}
-                      {role === "seller" && (isPending || isInReview) && i === currentMilestoneIndex && (
+                      {/* The party RESPONSIBLE for this milestone's proof uploads
+                          it (#11): seller by default, buyer when proof_by==="buyer"
+                          (e.g. "buyer confirms receipt"). Release stays buyer-only. */}
+                      {role === (m.proof_by === "buyer" ? "buyer" : "seller") && (isPending || isInReview) && i === currentMilestoneIndex && (
                         <div style={{ marginTop: 10 }}>
                           <input
                             type="file"
