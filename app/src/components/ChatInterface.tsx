@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { Paperclip, Send, Sparkles, Settings } from "lucide-react";
-import { ChatMessage, DealParams, formatUsdc } from "@/lib/types";
+import { ChatMessage, DealParams, ProofBy, formatUsdc } from "@/lib/types";
 import { SealedMark } from "@/components/SealedLogo";
 import { loadProfileFromStorage } from "@/lib/profile-store";
 import { isAgentConfigError } from "@/lib/agent-config-error";
@@ -22,12 +22,18 @@ export interface PartialDeal {
   contract_type: ContractType | null;
   title: string | null;
   total_amount: number | null;
-  milestones: Array<{ description: string; amount: number }> | null;
+  milestones: Array<{ description: string; amount: number; proof_by?: ProofBy }> | null;
 }
 
 function extractJsonBlock(text: string): string | null {
   const m = text.match(/```json\s*([\s\S]*?)```/);
   return m ? m[1].trim() : null;
+}
+
+// Coerce the LLM's per-milestone proof_by to a valid ProofBy, defaulting to
+// "seller" (today's behavior) when absent or invalid.
+function normalizeProofBy(value: unknown): ProofBy {
+  return value === "buyer" ? "buyer" : "seller";
 }
 
 function tryParseDealParams(text: string): DealParams | undefined {
@@ -50,9 +56,10 @@ function tryParseDealParams(text: string): DealParams | undefined {
         creatorRole: parsed.creator_role === "seller" ? "seller" : "buyer",
         totalAmount: parsed.total_amount,
         milestones: parsed.milestones.map(
-          (m: { description: string; amount: number }) => ({
+          (m: { description: string; amount: number; proof_by?: unknown }) => ({
             description: m.description,
             amount: m.amount,
+            proof_by: normalizeProofBy(m.proof_by),
           })
         ),
       };
@@ -73,7 +80,15 @@ function tryParsePartialDeal(text: string): PartialDeal | null {
         contract_type: parsed.contract_type ?? null,
         title: parsed.title ?? null,
         total_amount: typeof parsed.total_amount === "number" ? parsed.total_amount : null,
-        milestones: Array.isArray(parsed.milestones) ? parsed.milestones : null,
+        milestones: Array.isArray(parsed.milestones)
+          ? parsed.milestones.map(
+              (m: { description: string; amount: number; proof_by?: unknown }) => ({
+                description: m.description,
+                amount: m.amount,
+                proof_by: normalizeProofBy(m.proof_by),
+              })
+            )
+          : null,
       };
     }
   } catch {
@@ -446,7 +461,7 @@ export default function ChatInterface({
               <div className="mt-3 ml-0 max-w-[80%]">
                 <DealPreview
                   params={msg.dealParams}
-                  onConfirm={() => onDealCreated(msg.dealParams!)}
+                  onConfirm={onDealCreated}
                   disabled={!connected}
                 />
 
@@ -585,15 +600,23 @@ function DealPreview({
   disabled,
 }: {
   params: DealParams;
-  onConfirm: () => Promise<void>;
+  onConfirm: (params: DealParams) => Promise<void>;
   disabled: boolean;
 }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // Per-milestone proof responsibility, editable before the deal is created.
+  // Seeded from the AI-drafted proof_by (defaulting to "seller").
+  const [proofBy, setProofBy] = useState<ProofBy[]>(() =>
+    params.milestones.map((m) => (m.proof_by === "buyer" ? "buyer" : "seller"))
+  );
 
   async function handleConfirm() {
     setSaving(true);
-    await onConfirm();
+    await onConfirm({
+      ...params,
+      milestones: params.milestones.map((m, i) => ({ ...m, proof_by: proofBy[i] })),
+    });
     setSaving(false);
     setSaved(true);
   }
@@ -648,15 +671,30 @@ function DealPreview({
           {params.milestones.map((m, i) => (
             <div
               key={i}
-              className="flex items-center justify-between text-[12px] bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded-md px-3 py-2"
+              className="flex items-center justify-between gap-2 text-[12px] bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded-md px-3 py-2"
             >
-              <span className="truncate mr-2 text-foreground">
+              <span className="truncate mr-1 text-foreground">
                 <span className="text-subtle mr-1.5">{i + 1}.</span>
                 {m.description}
               </span>
-              <span className="shrink-0 font-mono text-muted">
-                {formatUsdc(m.amount)}
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <select
+                  value={proofBy[i]}
+                  onChange={(e) =>
+                    setProofBy((prev) =>
+                      prev.map((p, idx) => (idx === i ? (e.target.value as ProofBy) : p))
+                    )
+                  }
+                  disabled={disabled || saving || saved}
+                  title="Who uploads this milestone's proof"
+                  aria-label={`Who uploads proof for milestone ${i + 1}`}
+                  className="bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded px-1.5 py-1 text-[11px] text-muted focus:outline-none focus:border-accent/50 transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  <option value="seller">Seller proof</option>
+                  <option value="buyer">Buyer proof</option>
+                </select>
+                <span className="font-mono text-muted">{formatUsdc(m.amount)}</span>
+              </div>
             </div>
           ))}
         </div>

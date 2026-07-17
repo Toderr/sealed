@@ -24,7 +24,7 @@ CASE A — Complete deal (you know title, total_amount, and milestones):
   "creator_role": "buyer",
   "total_amount": 5000,
   "milestones": [
-    { "description": "Clear, verifiable milestone", "amount": 2500 }
+    { "description": "Clear, verifiable milestone", "amount": 2500, "proof_by": "seller" }
   ]
 }
 \`\`\`
@@ -46,6 +46,11 @@ JSON RULES:
 - deal_id: max 32 chars, lowercase, hyphens only (e.g. "logo-design-acme-2026")
 - Milestone amounts must sum exactly to total_amount
 - 1–10 milestones per deal
+- Each milestone specifies "proof_by": "seller" | "buyer" — WHO must upload the
+  completion proof for that milestone. Default to "seller" (the seller delivers
+  and proves it). Most milestones are seller-proof; use "buyer" only when the
+  milestone is inherently the buyer's action to verify (e.g. "buyer confirms
+  goods received", "buyer approves final delivery").
 - creator_role: "buyer" (the user pays/funds — DEFAULT) or "seller" (the user
   provides goods/services and gets paid). Set "seller" only if the user clearly
   says they are the one providing/selling (e.g. "I'm the seller", "I'm doing the
