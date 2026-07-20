@@ -9,7 +9,7 @@ import { SealedBackdrop } from "@/components/SealedBackdrop";
 import { NotificationMenu } from "@/components/NotificationMenu";
 import { atDisplayHandle, displayHandle } from "@/lib/user-display";
 import type { PublicProfile } from "@/lib/types";
-import { apiFetch, apiFetchSafe } from "@/lib/api-client";
+import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
 import { SelfProfilePage } from "../SelfProfilePage";
 
 type FullProfile = PublicProfile & {
@@ -47,6 +47,7 @@ export default function PublicProfilePage() {
   const [friendLoading, setFriendLoading] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [tab, setTabState] = useState<Tab>(initialTab);
+  const [reportOpen, setReportOpen] = useState(false);
 
   // Persist the selected tab to the URL (?tab=…) so it survives a refresh.
   function setTab(next: Tab) {
@@ -309,6 +310,18 @@ export default function PublicProfilePage() {
                 >
                   {linkCopied ? "Copied ✓" : "Copy profile link"}
                 </button>
+                {!isSelf && myWallet && (
+                  <button
+                    onClick={() => setReportOpen(true)}
+                    className="btn-ghost"
+                    style={{ marginTop: 8, width: "100%", height: 34, borderRadius: 9, fontSize: 12, position: "relative", cursor: "pointer", color: "var(--danger)", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><line x1="4" y1="22" x2="4" y2="15" />
+                    </svg>
+                    Report account
+                  </button>
+                )}
               </div>
 
               {/* Right: narrative */}
@@ -400,6 +413,118 @@ export default function PublicProfilePage() {
           </div>
         </div>
       )}
+
+      {reportOpen && wallet && myWallet && (
+        <ReportModal
+          reportedWallet={wallet}
+          reporterWallet={myWallet}
+          onClose={() => setReportOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Report account modal (bug #12) — file an account complaint ─────────────── */
+
+function ReportModal({
+  reportedWallet,
+  reporterWallet,
+  onClose,
+}: {
+  reportedWallet: string;
+  reporterWallet: string;
+  onClose: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    const message = reason.trim();
+    if (!message) {
+      setError("Please describe the issue.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await apiFetch("/api/complaints", {
+        method: "POST",
+        wallet: reporterWallet,
+        body: { reported_wallet: reportedWallet, category: "account", message },
+      });
+      setDone(true);
+      setTimeout(onClose, 1400);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not submit report. Try again.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 50,
+        background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="surface-card"
+        style={{ width: "100%", maxWidth: 420, borderRadius: 14, padding: 20 }}
+      >
+        {done ? (
+          <div style={{ textAlign: "center", padding: "10px 0" }}>
+            <p style={{ fontSize: 14, color: "var(--success)", fontWeight: 590, margin: 0 }}>Report submitted</p>
+            <p style={{ fontSize: 12, color: "var(--muted)", margin: "6px 0 0" }}>Our team will review this account.</p>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <p style={{ fontSize: 15, fontWeight: 590, color: "var(--primary)", margin: 0 }}>Report this account</p>
+              <button onClick={onClose} aria-label="Close" style={{ background: "none", border: 0, color: "var(--muted)", fontSize: 18, cursor: "pointer", lineHeight: 1 }}>×</button>
+            </div>
+            <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 14px", lineHeight: 1.5 }}>
+              Tell us what seems suspicious. Reports are private and reviewed by the Sealed team — filing one does not affect escrow.
+            </p>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Describe the issue (e.g. impersonation, scam attempt, fake identity)…"
+              maxLength={4000}
+              rows={4}
+              autoFocus
+              style={{
+                width: "100%", resize: "vertical", borderRadius: 9, padding: "10px 12px",
+                background: "var(--background)", border: "1px solid var(--card-border)",
+                color: "var(--foreground)", fontSize: 13, fontFamily: "inherit", lineHeight: 1.5,
+              }}
+            />
+            {error && <p style={{ fontSize: 12, color: "var(--danger)", margin: "8px 0 0" }}>{error}</p>}
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button
+                onClick={onClose}
+                className="btn-ghost"
+                style={{ flex: 1, height: 38, borderRadius: 9, fontSize: 13, cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submit}
+                disabled={submitting || !reason.trim()}
+                className="btn-primary"
+                style={{ flex: 1, height: 38, borderRadius: 9, fontSize: 13, cursor: submitting || !reason.trim() ? "not-allowed" : "pointer", opacity: submitting || !reason.trim() ? 0.6 : 1 }}
+              >
+                {submitting ? "Submitting…" : "Submit report"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

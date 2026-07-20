@@ -17,6 +17,7 @@ export const POST = withRoute(async (request) => {
     milestones,
     tx_signature,
     status: bodyStatus,
+    funded_at,
   } = body as {
     deal_id?: string;
     buyer_wallet?: string | null;
@@ -28,6 +29,7 @@ export const POST = withRoute(async (request) => {
     milestones?: Array<{ description: string; amount: number; status?: string }>;
     tx_signature?: string;
     status?: string;
+    funded_at?: string | null;
   };
 
   if (
@@ -68,7 +70,7 @@ export const POST = withRoute(async (request) => {
   // seller) to mutate it — prevents a third party from overwriting the row.
   const { data: existing } = await supabase
     .from(table("deals"))
-    .select("buyer_wallet, seller_wallet")
+    .select("buyer_wallet, seller_wallet, milestones")
     .eq("deal_id", deal_id)
     .maybeSingle();
 
@@ -80,18 +82,39 @@ export const POST = withRoute(async (request) => {
     throw new HttpError(403, "Forbidden");
   }
 
+  // Never null-clobber a slot that's already filled. A re-sync of a seller-created
+  // deal (creator_role:"seller", buyer_wallet null) must NOT wipe a buyer who has
+  // since joined — preserve the existing slot when this write doesn't provide one.
+  const finalBuyer = buyer_wallet ?? existing?.buyer_wallet ?? null;
+  const finalSeller = resolvedSeller ?? existing?.seller_wallet ?? null;
+
+  // Preserve per-milestone proof responsibility (proof_by) across re-POSTs that
+  // don't carry it — e.g. the invite-accept flow re-mirrors proof-less milestones
+  // and would otherwise wipe the assignments set at creation. Merge by index from
+  // the existing row when the incoming milestone omits proof_by.
+  const existingMs = Array.isArray(existing?.milestones) ? existing.milestones : [];
+  const finalMilestones = (milestones ?? []).map((m, i) => {
+    const incoming = m as { proof_by?: string };
+    const prior = existingMs[i] as { proof_by?: string } | undefined;
+    const proof_by = incoming.proof_by ?? prior?.proof_by;
+    return proof_by ? { ...m, proof_by } : m;
+  });
+
   const { data, error } = await supabase
     .from(table("deals"))
     .upsert(
       {
         deal_id,
-        buyer_wallet,
-        seller_wallet: resolvedSeller,
+        buyer_wallet: finalBuyer,
+        seller_wallet: finalSeller,
         title,
         description: description ?? null,
         total_amount_usdc,
-        milestones,
+        milestones: finalMilestones,
         status: bodyStatus ?? "draft",
+        // Only include funded_at when provided so a plain draft-create doesn't
+        // null out a previously-stamped funding time on upsert.
+        ...(funded_at !== undefined ? { funded_at } : {}),
       },
       { onConflict: "deal_id" }
     )

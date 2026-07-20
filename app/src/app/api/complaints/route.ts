@@ -7,13 +7,15 @@ import { HttpError, json, withRoute } from "@/lib/api-error";
 // a deal or general). GET: admin-only list for the dashboard. Mediate-only —
 // filing a complaint does not touch escrow; the team reviews and nudges.
 
-const CATEGORIES = new Set(["non_delivery", "quality", "communication", "payment", "other"]);
+const CATEGORIES = new Set(["non_delivery", "quality", "communication", "payment", "account", "other"]);
 
-// POST /api/complaints — file a complaint.
+// POST /api/complaints — file a complaint. Optionally reports an account
+// (reported_wallet + category "account") rather than only a deal.
 export const POST = withRoute(async (request) => {
   const wallet = requireWallet(request);
   const body = (await request.json()) as {
     deal_id?: string | null;
+    reported_wallet?: string | null;
     category?: string;
     message?: string;
   };
@@ -23,15 +25,27 @@ export const POST = withRoute(async (request) => {
   if (message.length > 4000) throw new HttpError(400, "message too long");
   const category = CATEGORIES.has(body.category ?? "") ? body.category : "other";
 
+  const reportedWallet = (body.reported_wallet ?? "").trim() || null;
+  if (reportedWallet && reportedWallet === wallet) {
+    throw new HttpError(400, "cannot report your own account");
+  }
+
+  // Only reference the reported_wallet column when an account is actually being
+  // reported. This keeps ordinary deal/general complaints working even if
+  // migration 008 hasn't been applied yet — only the account-report path (which
+  // needs the migration regardless) depends on the new column.
+  const row: Record<string, unknown> = {
+    deal_id: body.deal_id ?? null,
+    reporter_wallet: wallet,
+    category,
+    message,
+    status: "open",
+  };
+  if (reportedWallet) row.reported_wallet = reportedWallet;
+
   const { data, error } = await supabase
     .from(table("complaints"))
-    .insert({
-      deal_id: body.deal_id ?? null,
-      reporter_wallet: wallet,
-      category,
-      message,
-      status: "open",
-    })
+    .insert(row)
     .select()
     .single();
 
@@ -55,7 +69,10 @@ export const GET = withRoute(async (request) => {
 
   let query = supabase
     .from(table("complaints"))
-    .select("id, deal_id, reporter_wallet, category, message, status, created_at", { count: "exact" })
+    // "*" (not an explicit column list) so the admin view still loads if
+    // migration 008 hasn't added reported_wallet yet — it just won't show the
+    // reported wallet until the column exists.
+    .select("*", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
   if (statuses.length > 0) query = query.in("status", statuses);

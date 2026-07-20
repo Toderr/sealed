@@ -6,6 +6,9 @@ import {
   Transaction,
   Connection,
   SendTransactionError,
+  Keypair,
+  NONCE_ACCOUNT_LENGTH,
+  NonceAccount,
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
@@ -406,22 +409,107 @@ export async function getUsdcBalance(
 // the same recent blockhash window (~90s). After that the tx expires and a
 // fresh partial-sign round is required.
 
+/**
+ * Build + partial-sign using a DURABLE NONCE instead of a recent blockhash.
+ *
+ * A recent blockhash expires in ~90s, which made the two-party handoff fail
+ * almost every time: the counterparty co-signs minutes or hours later, and the
+ * transaction was already dead ("Blockhash not found"). A durable nonce does not
+ * expire — the partial-signed tx stays valid until the nonce is advanced — which
+ * is exactly the primitive this sign-now/submit-later ceremony needs.
+ *
+ * The initiator pays a small rent deposit (~0.0015 SOL) for the nonce account;
+ * it is reclaimed when the refund completes (see closeNonceAccount).
+ *
+ * Returns the base64 partial tx AND the nonce account pubkey (the counterparty
+ * doesn't need the latter to co-sign, but it's stored so the rent can be
+ * reclaimed and stale requests cleaned up).
+ */
 export async function buildAndPartialSign(
   connection: Connection,
   ixs: TransactionInstruction[],
   feePayer: PublicKey,
   signTransaction: (tx: Transaction) => Promise<Transaction>
-): Promise<string> {
+): Promise<{ partialTx: string; nonceAccount: string; nonce: string }> {
   if (MOCK_CHAIN) {
-    return "mock-partial-tx-blob";
+    return { partialTx: "mock-partial-tx-blob", nonceAccount: "mock-nonce", nonce: "mock-nonce-value" };
   }
+
+  // 1. Create + initialize a nonce account owned by the initiator.
+  const nonceKeypair = Keypair.generate();
+  const rent = await connection.getMinimumBalanceForRentExemption(NONCE_ACCOUNT_LENGTH);
+  const createTx = new Transaction().add(
+    SystemProgram.createAccount({
+      fromPubkey: feePayer,
+      newAccountPubkey: nonceKeypair.publicKey,
+      lamports: rent,
+      space: NONCE_ACCOUNT_LENGTH,
+      programId: SystemProgram.programId,
+    }),
+    SystemProgram.nonceInitialize({
+      noncePubkey: nonceKeypair.publicKey,
+      authorizedPubkey: feePayer,
+    })
+  );
+  createTx.feePayer = feePayer;
+  createTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+  // The new account must sign its own creation; the wallet signs as payer.
+  createTx.partialSign(nonceKeypair);
+  const signedCreate = await signTransaction(createTx);
+  const createSig = await connection.sendRawTransaction(signedCreate.serialize());
+  await connection.confirmTransaction(createSig, "confirmed");
+
+  // 2. Read the nonce value now stored in that account.
+  const nonceInfo = await connection.getAccountInfo(nonceKeypair.publicKey);
+  if (!nonceInfo) throw new Error("Nonce account was not created");
+  const nonceAccount = NonceAccount.fromAccountData(nonceInfo.data);
+
+  // 3. Build the real tx against the durable nonce. The advanceNonce instruction
+  //    MUST be first; the nonce value takes the place of a recent blockhash.
   const tx = new Transaction();
+  tx.add(
+    SystemProgram.nonceAdvance({
+      noncePubkey: nonceKeypair.publicKey,
+      authorizedPubkey: feePayer,
+    })
+  );
   ixs.forEach((ix) => tx.add(ix));
   tx.feePayer = feePayer;
-  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+  tx.recentBlockhash = nonceAccount.nonce;
+
   const partial = await signTransaction(tx);
   const bytes = partial.serialize({ requireAllSignatures: false });
-  return Buffer.from(bytes).toString("base64");
+  return {
+    partialTx: Buffer.from(bytes).toString("base64"),
+    nonceAccount: nonceKeypair.publicKey.toBase58(),
+    nonce: nonceAccount.nonce,
+  };
+}
+
+/**
+ * Reclaim the nonce account's rent once the refund is done (or abandoned).
+ * Best-effort: only the nonce authority (the initiator) can call this.
+ */
+export async function closeNonceAccount(
+  connection: Connection,
+  nonceAccountPubkey: string,
+  authority: PublicKey,
+  signTransaction: (tx: Transaction) => Promise<Transaction>
+): Promise<void> {
+  if (MOCK_CHAIN) return;
+  const tx = new Transaction().add(
+    SystemProgram.nonceWithdraw({
+      noncePubkey: new PublicKey(nonceAccountPubkey),
+      authorizedPubkey: authority,
+      toPubkey: authority,
+      lamports: await connection.getMinimumBalanceForRentExemption(NONCE_ACCOUNT_LENGTH),
+    })
+  );
+  tx.feePayer = authority;
+  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+  const signed = await signTransaction(tx);
+  const sig = await connection.sendRawTransaction(signed.serialize());
+  await connection.confirmTransaction(sig, "confirmed");
 }
 
 export async function coSignAndSend(
@@ -434,10 +522,39 @@ export async function coSignAndSend(
   }
   const bytes = Buffer.from(partialTxB64, "base64");
   const tx = Transaction.from(bytes);
+  // NOTE: do NOT refresh recentBlockhash here — it carries the durable nonce,
+  // and overwriting it would invalidate the initiator's existing signature.
   const fullySigned = await signTransaction(tx);
-  const sig = await connection.sendRawTransaction(fullySigned.serialize());
-  await connection.confirmTransaction(sig, "confirmed");
-  return sig;
+  try {
+    const sig = await connection.sendRawTransaction(fullySigned.serialize());
+    await connection.confirmTransaction(sig, "confirmed");
+    return sig;
+  } catch (err) {
+    // Surface the REAL reason. SendTransactionError carries the program logs,
+    // which say exactly what failed (missing signature, wrong account, consumed
+    // nonce, insufficient funds…) — log them rather than guessing.
+    let logs: string[] | null = null;
+    if (err instanceof SendTransactionError) {
+      try { logs = await err.getLogs(connection); } catch { /* logs unavailable */ }
+    }
+    console.error("[coSignAndSend] refund broadcast failed:", err, logs);
+
+    const msg = err instanceof Error ? err.message : String(err);
+    const joined = `${msg} ${logs?.join(" ") ?? ""}`;
+    // Only claim "no longer valid" for a genuinely consumed/advanced nonce.
+    if (/nonce|blockhash not found/i.test(joined)) {
+      throw new Error(
+        "This refund request is no longer valid (its nonce was already used) — ask the other party to start a new one."
+      );
+    }
+    if (/signature verification|missing signature|not enough signers/i.test(joined)) {
+      throw new Error("The refund transaction is missing a signature. Ask the other party to start a new request.");
+    }
+    if (/insufficient/i.test(joined)) {
+      throw new Error("Not enough SOL to cover the transaction fee.");
+    }
+    throw new Error(logs?.length ? `Refund failed: ${logs[logs.length - 1]}` : `Refund failed: ${msg}`);
+  }
 }
 
 // Helper re-exports so consumers don't need @solana/spl-token directly

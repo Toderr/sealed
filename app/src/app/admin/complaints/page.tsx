@@ -13,6 +13,7 @@ type Complaint = {
   id: string;
   deal_id: string | null;
   reporter_wallet: string;
+  reported_wallet: string | null;
   category: string;
   message: string;
   status: "open" | "reviewing" | "resolved" | "dismissed";
@@ -25,6 +26,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   quality: "Quality",
   communication: "Communication",
   payment: "Payment",
+  account: "Account report",
   other: "Other",
 };
 
@@ -49,6 +51,8 @@ export default function AdminComplaintsPage() {
   const [statuses, setStatuses] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Status-update failures surface as a dismissible banner (was alert()).
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!wallet) return;
@@ -77,9 +81,10 @@ export default function AdminComplaintsPage() {
     if (!wallet) return;
     try {
       await apiFetch("/api/complaints", { method: "PATCH", wallet, body: { id, status } });
+      setActionError(null);
       load();
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : "Update failed");
+      setActionError(e instanceof ApiError ? e.message : "Update failed");
     }
   }
 
@@ -100,6 +105,12 @@ export default function AdminComplaintsPage() {
   return (
     <PageWithRail title="Complaints" count={count} countLabel="complaint" rail={rail} onClearFilters={() => { setOffset(0); setStatuses([]); }} hasActiveFilters={hasFilters}>
       {error && <div className="bg-red-950 border border-red-800 rounded p-4 mb-4 text-sm">{error}</div>}
+      {actionError && (
+        <div className="bg-red-950 border border-red-800 rounded p-4 mb-4 text-sm flex items-start justify-between gap-3">
+          <span>{actionError}</span>
+          <button onClick={() => setActionError(null)} className="text-gray-400 hover:text-white shrink-0" aria-label="Dismiss">×</button>
+        </div>
+      )}
       {loading && <p className="text-gray-400 text-sm">Loading…</p>}
       {!loading && !error && items.length === 0 && <p className="text-gray-400 text-sm">No complaints.</p>}
 
@@ -114,6 +125,11 @@ export default function AdminComplaintsPage() {
                   {c.deal_id && (
                     <Link href={`/admin/deals/${encodeURIComponent(c.deal_id)}`} className="text-xs text-indigo-300 font-mono hover:underline">
                       {c.deal_id}
+                    </Link>
+                  )}
+                  {c.reported_wallet && (
+                    <Link href={`/profile/${c.reported_wallet}`} className="text-xs text-red-300 font-mono hover:underline">
+                      reported: {shortWallet(c.reported_wallet)}
                     </Link>
                   )}
                 </div>

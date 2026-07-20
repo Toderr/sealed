@@ -21,6 +21,7 @@ import { escrowAccountUrl } from "@/lib/explorer";
 import { MOCK_CHAIN } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
+import { retryWrite } from "@/lib/retry-write";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
 
@@ -47,7 +48,7 @@ function inferDealStatus(deal: SupabaseDeal) {
 
 function dealHref(deal: SupabaseDeal) {
   const status = inferDealStatus(deal);
-  if (status === "draft" || status === "seller-ready" || status === "seller-agreed" || status === "proposed" || status === "escalated") {
+  if (status === "draft" || status === "seller-ready" || status === "seller-agreed" || status === "manual-chat" || status === "proposed" || status === "escalated") {
     return `/negotiate/${deal.deal_id}`;
   }
   return `/deals/${deal.deal_id}`;
@@ -190,6 +191,9 @@ function HomeContent() {
       description: m.description,
       amount: m.amount,
       status: "Pending",
+      // Who uploads this milestone's proof (off-chain only). Defaults to
+      // "seller"; omit when unset to keep the current behavior/shape.
+      ...(m.proof_by ? { proof_by: m.proof_by } : {}),
     }));
     const description = params.milestones.map((m) => m.description).join(" | ");
 
@@ -202,6 +206,9 @@ function HomeContent() {
       total_amount_usdc: params.totalAmount,
       milestones,
       status: "draft",
+      // Stamped so a 404 on a JUST-created deal is treated as "not synced yet"
+      // (retry) rather than "deleted" (purge) — see fetchDeal in use-deal.ts.
+      created_at: new Date().toISOString(),
     };
     try {
       sessionStorage.setItem(`deal:${params.dealId}`, JSON.stringify(draftDeal));
@@ -209,21 +216,32 @@ function HomeContent() {
       // sessionStorage unavailable
     }
 
-    apiFetchSafe("/api/deals/mirror", {
-      method: "POST",
-      wallet: me, // creator owns the row; mirror binds it to whichever slot they hold
-      body: {
-        deal_id: params.dealId,
-        creator_role: role,
-        buyer_wallet,
-        seller_wallet,
-        title: dealTitle,
-        description,
-        total_amount_usdc: params.totalAmount,
-        milestones,
-        status: "draft",
-      },
-    }, undefined);
+    // AWAIT the mirror write before navigating. Previously this was
+    // fire-and-forget, so the negotiation room could GET the deal before the row
+    // existed → a 404 "Deal not found" (which then purged the local draft,
+    // making it permanent). Retried for transient blips; on hard failure we keep
+    // the user here with their draft intact instead of stranding them.
+    const synced = await retryWrite(() =>
+      apiFetch("/api/deals/mirror", {
+        method: "POST",
+        wallet: me, // creator owns the row; mirror binds it to whichever slot they hold
+        body: {
+          deal_id: params.dealId,
+          creator_role: role,
+          buyer_wallet,
+          seller_wallet,
+          title: dealTitle,
+          description,
+          total_amount_usdc: params.totalAmount,
+          milestones,
+          status: "draft",
+        },
+      })
+    );
+    if (!synced) {
+      toast.show({ variant: "error", title: "Couldn't save the deal — please try again." });
+      return;
+    }
 
     router.push(`/negotiate/${params.dealId}`);
   }
@@ -803,6 +821,7 @@ function DealDetailPanelBody({
 }) {
   const { publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
+  const toast = useToast();
   // Local milestone state so upload/release reflect immediately in the panel
   // (the board's panelDeal is a snapshot). Mirrors deals/[id]'s pattern.
   const [milestones, setMilestones] = useState<PanelMilestone[]>(deal.milestones ?? []);
@@ -815,7 +834,9 @@ function DealDetailPanelBody({
     : deal.buyer_wallet === myWallet ? "buyer"
     : deal.seller_wallet === myWallet ? "seller"
     : "observer";
-  const shortBuyer = `${deal.buyer_wallet.slice(0, 4)}…${deal.buyer_wallet.slice(-4)}`;
+  const shortBuyer = deal.buyer_wallet
+    ? `${deal.buyer_wallet.slice(0, 4)}…${deal.buyer_wallet.slice(-4)}`
+    : "—";
   const shortSeller = deal.seller_wallet
     ? `${deal.seller_wallet.slice(0, 4)}…${deal.seller_wallet.slice(-4)}`
     : "Awaiting counterparty";
@@ -855,7 +876,7 @@ function DealDetailPanelBody({
           headers: { "x-wallet": myWallet, "x-deal-id": deal.deal_id, "x-milestone-index": String(index) },
         });
       } catch (e) {
-        alert(e instanceof ApiError ? e.message : "Upload failed");
+        toast.show({ variant: "error", title: e instanceof ApiError ? e.message : "Upload failed" });
         return;
       }
       const updated = milestones.map((m, i) => (i === index ? { ...m, status: "In Review" } : m));
@@ -898,7 +919,7 @@ function DealDetailPanelBody({
       );
     } catch (err) {
       console.error("Release failed:", err);
-      alert("Failed to release payment. Check console for details.");
+      toast.show({ variant: "error", title: "Failed to release payment. Check console for details." });
     } finally {
       setBusy(null);
     }
@@ -1077,7 +1098,7 @@ function DealCardBold({
   // deals hold on-chain state and must not be removed.
   const canDelete =
     !!onRequestDelete &&
-    ["draft", "seller-ready", "seller-agreed", "proposed", "escalated"].includes(displayStatus);
+    ["draft", "seller-ready", "seller-agreed", "manual-chat", "proposed", "escalated"].includes(displayStatus);
 
   const statusLabel: Record<string, string> = {
     draft:          counterparty ? "Counterparty joined" : "Awaiting counterparty",

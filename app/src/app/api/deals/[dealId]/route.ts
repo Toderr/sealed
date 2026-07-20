@@ -9,12 +9,14 @@ type DealMilestone = {
   amount: number;
   status?: string;
   release_tx?: string;
+  proof_by?: "seller" | "buyer";
 };
 
 const DEAL_STATUSES = new Set([
   "draft",
   "seller-ready",
   "seller-agreed",
+  "manual-chat",
   "escalated",
   "proposed",
   "funded",
@@ -32,6 +34,7 @@ const PATCH_FIELDS = new Set([
   "title",
   "description",
   "total_amount_usdc",
+  "funded_at",
 ]);
 
 function normalizeDealStatus(status: unknown): string | null {
@@ -65,6 +68,11 @@ function sanitizeMilestones(value: unknown): DealMilestone[] | null {
     if (typeof milestone.status === "string") next.status = milestone.status;
     // Preserve the on-chain release tx signature (N3/N8) so it survives PATCH.
     if (typeof milestone.release_tx === "string") next.release_tx = milestone.release_tx;
+    // Preserve who's responsible for uploading this milestone's proof (#11) so
+    // it isn't stripped on every milestone PATCH.
+    if (milestone.proof_by === "seller" || milestone.proof_by === "buyer") {
+      next.proof_by = milestone.proof_by;
+    }
     milestones.push(next);
   }
 
@@ -102,6 +110,7 @@ const PRE_ESCROW_STATUSES = new Set([
   "draft",
   "seller-ready",
   "seller-agreed",
+  "manual-chat",
   "proposed",
   "escalated",
 ]);
@@ -257,6 +266,13 @@ export const PATCH = withRoute<{ params: Promise<{ dealId: string }> }>(
       throw new HttpError(400, "Invalid total amount");
     }
     patch.total_amount_usdc = body.total_amount_usdc;
+  }
+
+  if (body.funded_at !== undefined) {
+    if (body.funded_at !== null && typeof body.funded_at !== "string") {
+      throw new HttpError(400, "Invalid funded_at");
+    }
+    patch.funded_at = body.funded_at;
   }
 
   const nextMilestones =

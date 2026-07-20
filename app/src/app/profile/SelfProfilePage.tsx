@@ -7,6 +7,7 @@ import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { SealedMark } from "@/components/SealedLogo";
 import { NotificationMenu } from "@/components/NotificationMenu";
 import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   useProfileStore,
   encodeInvite,
@@ -1562,6 +1563,9 @@ function AgentSetupTab({ wallet }: { wallet: string }) {
   });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  // Template pending delete confirmation (replaces window.confirm).
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deletingTemplate, setDeletingTemplate] = useState(false);
 
   // fetchTemplates intentionally owns the loading lifecycle for this tab.
   /* eslint-disable react-hooks/exhaustive-deps */
@@ -1616,12 +1620,17 @@ function AgentSetupTab({ wallet }: { wallet: string }) {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this template?")) return;
-    await apiFetchSafe("/api/agent-templates", {
-      method: "DELETE",
-      body: { id, wallet },
-    }, undefined);
-    fetchTemplates();
+    setDeletingTemplate(true);
+    try {
+      await apiFetchSafe("/api/agent-templates", {
+        method: "DELETE",
+        body: { id, wallet },
+      }, undefined);
+      setDeleteId(null);
+      fetchTemplates();
+    } finally {
+      setDeletingTemplate(false);
+    }
   }
 
   return (
@@ -1694,7 +1703,7 @@ function AgentSetupTab({ wallet }: { wallet: string }) {
                   </button>
                 )}
                 <button
-                  onClick={() => handleDelete(t.id)}
+                  onClick={() => setDeleteId(t.id)}
                   className="text-[11px] px-2.5 h-7 rounded border border-card-border text-muted hover:text-danger hover:border-danger/40 transition-colors"
                 >
                   Delete
@@ -1802,6 +1811,18 @@ function AgentSetupTab({ wallet }: { wallet: string }) {
           New Template
         </button>
       )}
+
+      <ConfirmDialog
+        open={deleteId !== null}
+        title="Delete this template?"
+        body="Your agent will no longer be able to negotiate with these settings. This can't be undone."
+        confirmLabel="Delete template"
+        danger
+        busy={deletingTemplate}
+        busyLabel="Deleting…"
+        onCancel={() => setDeleteId(null)}
+        onConfirm={() => { if (deleteId) void handleDelete(deleteId); }}
+      />
     </div>
   );
 }

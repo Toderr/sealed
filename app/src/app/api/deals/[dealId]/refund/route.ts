@@ -32,7 +32,7 @@ export const GET = withRoute<Ctx>(async (request, { params }) => {
 
   const { data } = await supabase
     .from(table("refund_requests"))
-    .select("deal_id, requested_by, partial_tx, blockhash, status, created_at")
+    .select("*")
     .eq("deal_id", dealId)
     .eq("status", "pending")
     .maybeSingle();
@@ -46,7 +46,11 @@ export const POST = withRoute<Ctx>(async (request, { params }) => {
   const { dealId } = await params;
   await assertParty(dealId, wallet);
 
-  const body = (await request.json()) as { partial_tx?: string; blockhash?: string };
+  const body = (await request.json()) as {
+    partial_tx?: string;
+    blockhash?: string;
+    nonce_account?: string;
+  };
   if (!body.partial_tx || typeof body.partial_tx !== "string") {
     throw new HttpError(400, "partial_tx required");
   }
@@ -58,7 +62,10 @@ export const POST = withRoute<Ctx>(async (request, { params }) => {
         deal_id: dealId,
         requested_by: wallet,
         partial_tx: body.partial_tx,
+        // With durable nonces `blockhash` holds the nonce VALUE, and
+        // nonce_account the account that issued it (needed to reclaim rent).
         blockhash: body.blockhash ?? null,
+        ...(body.nonce_account ? { nonce_account: body.nonce_account } : {}),
         status: "pending",
         updated_at: new Date().toISOString(),
       },

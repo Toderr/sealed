@@ -30,9 +30,21 @@ import { useApi, POLL_MS } from "@/lib/swr";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
+import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Link from "next/link";
 
 import WalletMultiButton from "@/components/AppWalletButton";
+
+// Inactivity timeout for the buyer's unilateral reclaim, mirroring the on-chain
+// program's TIMEOUT_SECONDS (30 days). Used to compute/display the unlock date.
+const TIMEOUT_SECONDS = 30 * 24 * 60 * 60;
+
+// Product upload cap. Matches the server MAX_SIZE; guards each upload entry point
+// client-side so the user gets a clear message + Drive-link hint instead of a
+// raw 413. (On Vercel the effective body cap is lower ~4.5 MB — see the upload
+// route; large files should move to a direct-to-Storage signed upload.)
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 type Milestone = { description: string; amount: number; status?: string };
 type RefundRequest = {
@@ -40,6 +52,9 @@ type RefundRequest = {
   requested_by: string;
   partial_tx: string;
   blockhash: string | null;
+  // Present only for durable-nonce requests. A request without it predates the
+  // expiry fix and can't be co-signed (its blockhash is long dead).
+  nonce_account?: string | null;
   status: string;
   created_at: string;
 };
@@ -80,6 +95,7 @@ export default function ActiveDealPage() {
   const { publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
   const wallet = publicKey?.toBase58() ?? null;
+  const toast = useToast();
 
   // Polled deal data via SWR (refreshInterval replaces the old 4s setInterval).
   const dealQuery = useApi<{ deal?: SupabaseDeal; error?: string }>(
@@ -122,6 +138,10 @@ export default function ActiveDealPage() {
 
   const [chatInput, setChatInput] = useState("");
   const [uploading, setUploading] = useState<number | null>(null);
+  // Link/text proof (an alternative to a file upload for the current milestone).
+  const [linkProofOpen, setLinkProofOpen] = useState<number | null>(null);
+  const [linkProofValue, setLinkProofValue] = useState("");
+  const [submittingLink, setSubmittingLink] = useState(false);
   const [approvingIndex, setApprovingIndex] = useState<number | null>(null);
   const [sendingMsg, setSendingMsg] = useState(false);
   const [openingProof, setOpeningProof] = useState<string | null>(null);
@@ -129,6 +149,16 @@ export default function ActiveDealPage() {
   const [showSealedModal, setShowSealedModal] = useState(false);
   const [confirmModal, setConfirmModal] = useState<number | null>(null);
   const [refunding, setRefunding] = useState(false);
+  // Replaces the four native confirm() gates (timeout reclaim, cancel deal,
+  // request mutual refund, co-sign refund). confirm() is synchronous; a modal is
+  // not — so the action is parked here and run from the dialog's Confirm button.
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    body: string;
+    confirmLabel: string;
+    danger?: boolean;
+    run: () => void | Promise<void>;
+  } | null>(null);
   const [changesModal, setChangesModal] = useState<number | null>(null);
   const [changesNote, setChangesNote] = useState("");
   const [requestingChanges, setRequestingChanges] = useState(false);
@@ -180,7 +210,7 @@ export default function ActiveDealPage() {
         `/api/upload/signed?key=${encodeURIComponent(storageKey)}`, {}, {}
       );
       if (data.url) window.open(data.url, "_blank", "noopener,noreferrer");
-      else alert("Could not open file. Please try again.");
+      else toast.show({ variant: "error", title: "Could not open file. Please try again." });
     } finally {
       setOpeningProof(null);
     }
@@ -210,6 +240,12 @@ export default function ActiveDealPage() {
 
   async function handleUploadProof(file: File, milestoneIndex: number) {
     if (!wallet) return;
+    // Guard the 25 MB product cap client-side so the user gets a clear message
+    // (and the Drive-link hint) instead of a raw 413 (#10).
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.show({ variant: "error", title: "That file is over 25 MB. Please share a Google Drive link instead (use “paste a link / text”)." });
+      return;
+    }
     setUploading(milestoneIndex);
     try {
       const form = new FormData();
@@ -221,7 +257,7 @@ export default function ActiveDealPage() {
           headers: { "x-wallet": wallet, "x-deal-id": dealId, "x-milestone-index": String(milestoneIndex) },
         });
       } catch (e) {
-        alert(e instanceof ApiError ? e.message : "Upload failed");
+        toast.show({ variant: "error", title: e instanceof ApiError ? e.message : "Upload failed" });
         return;
       }
       const updated = milestones.map((m, i) =>
@@ -236,6 +272,57 @@ export default function ActiveDealPage() {
       await refreshAll();
     } finally {
       setUploading(null);
+    }
+  }
+
+  // Submit milestone proof as a link or block of text instead of a file.
+  async function handleSubmitLink(milestoneIndex: number) {
+    if (!wallet) return;
+    const raw = linkProofValue.trim();
+    if (!raw) return;
+    // Anything that parses as an http/https URL is sent as a link; otherwise
+    // it's treated as text proof.
+    let isUrl = false;
+    try {
+      const u = new URL(raw);
+      isUrl = u.protocol === "http:" || u.protocol === "https:";
+    } catch {
+      isUrl = false;
+    }
+    setSubmittingLink(true);
+    try {
+      try {
+        await apiFetch("/api/deliverables/link", {
+          method: "POST",
+          wallet,
+          body: {
+            deal_id: dealId,
+            milestone_index: milestoneIndex,
+            ...(isUrl ? { url: raw } : { text: raw }),
+          },
+        });
+      } catch (e) {
+        toast.show({ variant: "error", title: e instanceof ApiError ? e.message : "Failed to submit proof" });
+        return;
+      }
+      // The proof row is already saved server-side. Update the milestone status
+      // + thread best-effort: if these fail, the proof still exists, so don't
+      // error out — just close the form and refresh.
+      const updated = milestones.map((m, i) =>
+        i === milestoneIndex ? { ...m, status: "In Review" } : m
+      );
+      try {
+        await patchMilestones(updated);
+        const tail = role === "buyer" ? "Awaiting your review & release." : "Awaiting buyer review.";
+        await postMessage(`🔗 Proof submitted for Milestone ${milestoneIndex + 1}: **${milestones[milestoneIndex].description}**. ${tail}`);
+      } catch (e) {
+        console.error("Link proof saved, but status/message update failed:", e);
+      }
+      setLinkProofValue("");
+      setLinkProofOpen(null);
+      await refreshAll();
+    } finally {
+      setSubmittingLink(false);
     }
   }
 
@@ -283,11 +370,16 @@ export default function ActiveDealPage() {
       );
       await refreshAll();
       if (!synced) {
-        alert("Payment released on-chain ✓ — but syncing the status is taking a moment. It'll update shortly; no need to release again.");
+        toast.show({
+          variant: "success",
+          title: "Payment released on-chain ✓",
+          description: "Syncing the status is taking a moment. It'll update shortly; no need to release again.",
+          duration: 9000,
+        });
       }
     } catch (err) {
       console.error("Release failed:", err);
-      alert("Failed to release payment. Check console for details.");
+      toast.show({ variant: "error", title: "Failed to release payment. Check console for details." });
     } finally {
       setApprovingIndex(null);
     }
@@ -313,7 +405,7 @@ export default function ActiveDealPage() {
       await refreshAll();
     } catch (err) {
       console.error("Request changes failed:", err);
-      alert("Could not request changes. Please try again.");
+      toast.show({ variant: "error", title: "Could not request changes. Please try again." });
     } finally {
       setRequestingChanges(false);
     }
@@ -330,9 +422,19 @@ export default function ActiveDealPage() {
   // Buyer-only unilateral refund after the 30-day funding timeout — the escape
   // hatch for a ghosting seller. One signature (buyer). On-chain the instruction
   // also closes the escrow vault (rent → buyer). Mirrors handleApprove's shape.
-  async function handleTimeoutRefund() {
+  function handleTimeoutRefund() {
     if (!publicKey || !signTransaction || role !== "buyer") return;
-    if (!confirm("Reclaim your escrowed funds? This ends the deal. Only available after the inactivity timeout.")) return;
+    setPendingConfirm({
+      title: "Reclaim your escrowed funds?",
+      body: "This ends the deal. Only available after the inactivity timeout.",
+      confirmLabel: "Reclaim funds",
+      danger: true,
+      run: doTimeoutRefund,
+    });
+  }
+
+  async function doTimeoutRefund() {
+    if (!publicKey || !signTransaction || role !== "buyer") return;
     setRefunding(true);
     try {
       const ix = await buildBuyerTimeoutRefundIx(publicKey, dealId);
@@ -348,9 +450,34 @@ export default function ActiveDealPage() {
       await refreshAll();
     } catch (err) {
       console.error("Timeout refund failed:", err);
-      alert(err instanceof Error && /Timeout/i.test(err.message)
-        ? "The inactivity timeout hasn't elapsed yet."
-        : "Refund failed. Check console for details.");
+      if (err instanceof Error && /Timeout/i.test(err.message)) {
+        // The 30-day inactivity timeout is anchored to the on-chain deal.funded_at.
+        // The mirror now stores funded_at (set at funding); fall back to updated_at
+        // for older deals created before that column existed. Surface the computed
+        // unlock date so the buyer knows when reclaim becomes possible, instead of
+        // a bare "hasn't elapsed yet".
+        // Prefer funded_at (the true funding time). updated_at is only an
+        // approximation — it's bumped by later edits, so mark the date "approx"
+        // when that's all we have, rather than stating a precise (possibly wrong)
+        // unlock date. The chain is authoritative either way.
+        const exact = !!deal?.funded_at;
+        const fundedRaw = deal?.funded_at ?? deal?.updated_at ?? null;
+        const fundedAt = fundedRaw ? new Date(fundedRaw) : null;
+        if (fundedAt && !isNaN(fundedAt.getTime())) {
+          const unlock = new Date(fundedAt.getTime() + TIMEOUT_SECONDS * 1000);
+          toast.show({
+            variant: "error",
+            title: exact
+              ? `You can reclaim these funds after ${unlock.toLocaleDateString()} (30 days after funding). It hasn't elapsed yet.`
+              : `The 30-day inactivity window hasn't elapsed yet — reclaim unlocks roughly ${unlock.toLocaleDateString()} (approximate; measured 30 days after funding).`,
+            duration: 9000,
+          });
+        } else {
+          toast.show({ variant: "error", title: "You can reclaim these funds 30 days after the deal was funded. That window hasn't elapsed yet.", duration: 9000 });
+        }
+      } else {
+        toast.show({ variant: "error", title: "Refund failed. Check console for details." });
+      }
     } finally {
       setRefunding(false);
     }
@@ -359,9 +486,19 @@ export default function ActiveDealPage() {
   // Buyer-only cancel of a not-yet-funded deal — closes the on-chain deal +
   // vault (rent → buyer) and marks the mirror refunded. Real chain call, not a
   // local no-op.
-  async function handleCancelDeal() {
+  function handleCancelDeal() {
     if (!publicKey || !signTransaction || role !== "buyer") return;
-    if (!confirm("Cancel this deal? It hasn't been funded, so nothing is escrowed.")) return;
+    setPendingConfirm({
+      title: "Cancel this deal?",
+      body: "It hasn't been funded, so nothing is escrowed.",
+      confirmLabel: "Cancel deal",
+      danger: true,
+      run: doCancelDeal,
+    });
+  }
+
+  async function doCancelDeal() {
+    if (!publicKey || !signTransaction || role !== "buyer") return;
     setRefunding(true);
     try {
       const ix = await buildCancelDealIx(publicKey, dealId);
@@ -377,7 +514,7 @@ export default function ActiveDealPage() {
       await refreshAll();
     } catch (err) {
       console.error("Cancel failed:", err);
-      alert("Cancel failed. Check console for details.");
+      toast.show({ variant: "error", title: "Cancel failed. Check console for details." });
     } finally {
       setRefunding(false);
     }
@@ -385,25 +522,62 @@ export default function ActiveDealPage() {
 
   // Mutual refund, step 1: the initiator (buyer or seller) builds the refund tx,
   // partial-signs it, and stores it on the relay for the counterparty to co-sign.
-  async function handleRequestRefund() {
+  function handleRequestRefund() {
     if (!publicKey || !signTransaction || role === "observer" || !deal?.buyer_wallet || !deal?.seller_wallet) return;
-    if (!confirm("Request a mutual refund? The other party must also sign. Unreleased escrow returns to the buyer.")) return;
+    setPendingConfirm({
+      title: "Request a mutual refund?",
+      body: "The other party must also sign. Unreleased escrow returns to the buyer.",
+      confirmLabel: "Request refund",
+      danger: true,
+      run: doRequestRefund,
+    });
+  }
+
+  async function doRequestRefund() {
+    if (!publicKey || !signTransaction || role === "observer" || !deal?.buyer_wallet || !deal?.seller_wallet) return;
     setRefunding(true);
     try {
       const buyer = new PublicKey(deal.buyer_wallet);
       const seller = new PublicKey(deal.seller_wallet);
       const ix = await buildRefundIx(buyer, seller, dealId);
-      const partialTxB64 = await buildAndPartialSign(connection, [ix], publicKey, signTransaction);
+      // Durable-nonce based: the partial tx stays valid until the counterparty
+      // co-signs, however long that takes (a recent blockhash expired in ~90s,
+      // so the handoff almost always failed with "Blockhash not found").
+      const { partialTx, nonceAccount, nonce } = await buildAndPartialSign(
+        connection, [ix], publicKey, signTransaction
+      );
       await apiFetch(`/api/deals/${dealId}/refund`, {
         method: "POST",
         wallet: wallet ?? "",
-        body: { partial_tx: partialTxB64 },
+        body: { partial_tx: partialTx, blockhash: nonce, nonce_account: nonceAccount },
       });
       await postMessage(`↩️ ${role === "buyer" ? "Buyer" : "Seller"} requested a mutual refund. Awaiting the other party's signature.`);
       await refreshAll();
     } catch (err) {
       console.error("Refund request failed:", err);
-      alert("Could not start the refund. Check console for details.");
+      const msg = err instanceof Error ? err.message : String(err ?? "");
+      // Wallet rejection / user cancelled the signature — not an error, just a
+      // cancellation. Phantom/Solflare surface this as a message containing
+      // "reject"/"denied", or an object with code 4001.
+      // Solana wallet-adapter wraps the provider error in `.error`, so the 4001
+      // "user rejected" code lives at err.error.code, not err.code.
+      const e = err as { code?: number; error?: { code?: number } } | null;
+      const code = e?.code ?? e?.error?.code;
+      // Only treat it as a user cancellation on the wallet's explicit signal:
+      // the standard 4001 code, or a tight "user rejected/denied" phrase. A loose
+      // match on "cancel"/"reject" wrongly swallowed real network/abort errors as
+      // "you declined" (which they weren't).
+      const userCancelled = code === 4001 || /user (rejected|denied)|rejected the request/i.test(msg);
+      if (userCancelled) {
+        // A deliberate decline isn't a failure — surface it as info, not error.
+        toast.show({ variant: "info", title: "Refund cancelled — you declined the signature." });
+      } else if (err instanceof ApiError && err.status === 403) {
+        toast.show({ variant: "error", title: "Only the buyer or seller on this deal can start a refund." });
+      } else if (/blockhash|fetch|timeout|network|failed to fetch|aborted/i.test(msg)) {
+        toast.show({ variant: "error", title: "Couldn't reach the network. Check your connection and try again." });
+      } else {
+        toast.show({ variant: "error", title: "Couldn't start the refund. Please try again." });
+      }
     } finally {
       setRefunding(false);
     }
@@ -412,10 +586,34 @@ export default function ActiveDealPage() {
   // Mutual refund, step 2: the counterparty co-signs the stored partial tx and
   // broadcasts it. On success the mirror is marked refunded and (for the buyer)
   // the vault rent is reclaimed via close_deal.
-  async function handleCoSignRefund() {
+  function handleCoSignRefund() {
     const req = refundReqQuery.data?.request;
     if (!publicKey || !signTransaction || !req) return;
-    if (!confirm("Approve and submit the mutual refund? Unreleased escrow returns to the buyer and the deal ends.")) return;
+    setPendingConfirm({
+      title: "Approve and submit the mutual refund?",
+      body: "Unreleased escrow returns to the buyer and the deal ends.",
+      confirmLabel: "Approve refund",
+      danger: true,
+      run: doCoSignRefund,
+    });
+  }
+
+  async function doCoSignRefund() {
+    const req = refundReqQuery.data?.request;
+    if (!publicKey || !signTransaction || !req) return;
+    // Legacy request: created before refunds moved to durable nonces, so it
+    // carries an expired recent blockhash and can NEVER be co-signed. Clear it
+    // and tell the initiator to start again rather than failing cryptically.
+    if (!MOCK_CHAIN && !req.nonce_account) {
+      await apiFetchSafe(`/api/deals/${dealId}/refund`, { method: "DELETE", wallet: wallet ?? "" }, undefined);
+      await refundReqQuery.mutate?.();
+      toast.show({
+        variant: "error",
+        title: "This refund request has expired",
+        description: "It was created before the expiry fix. Ask the other party to request the refund again.",
+      });
+      return;
+    }
     setRefunding(true);
     try {
       const sig = await coSignAndSend(connection, req.partial_tx, signTransaction);
@@ -442,7 +640,13 @@ export default function ActiveDealPage() {
       await refreshAll();
     } catch (err) {
       console.error("Co-sign refund failed:", err);
-      alert("Could not complete the refund (the request may have expired — try again).");
+      // Show the REAL reason — coSignAndSend already maps Solana's program logs
+      // to a specific message (consumed nonce / missing signature / insufficient
+      // funds / the failing log line). Don't overwrite it with a guess.
+      toast.show({
+        variant: "error",
+        title: err instanceof Error ? err.message : "Could not complete the refund.",
+      });
     } finally {
       setRefunding(false);
     }
@@ -468,7 +672,7 @@ export default function ActiveDealPage() {
       setReportDone(true);
       setReportMessage("");
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "Could not submit. Please try again.");
+      toast.show({ variant: "error", title: err instanceof ApiError ? err.message : "Could not submit. Please try again." });
     } finally {
       setReportSubmitting(false);
     }
@@ -492,6 +696,10 @@ export default function ActiveDealPage() {
   // storage key so it renders inline. Buyers use this instead of proof upload.
   async function handleChatAttach(file: File) {
     if (!wallet || sendingMsg) return;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.show({ variant: "error", title: "That image is over 25 MB. Please attach a smaller one." });
+      return;
+    }
     setSendingMsg(true);
     try {
       const form = new FormData();
@@ -505,7 +713,7 @@ export default function ActiveDealPage() {
         });
         key = res.storage_key;
       } catch (e) {
-        alert(e instanceof ApiError ? e.message : "Image upload failed");
+        toast.show({ variant: "error", title: e instanceof ApiError ? e.message : "Image upload failed" });
         return;
       }
       if (key) {
@@ -538,7 +746,7 @@ export default function ActiveDealPage() {
   const dealStatus = (deal?.status ?? "").toLowerCase();
   const isTerminal = isComplete || dealStatus === "completed" || dealStatus === "refunded";
   const isFunded = ["funded", "in_progress"].includes(dealStatus) || releasedCount > 0;
-  const isUnfunded = !isFunded && ["draft", "seller-ready", "seller-agreed", "escalated", "proposed"].includes(dealStatus);
+  const isUnfunded = !isFunded && ["draft", "seller-ready", "seller-agreed", "manual-chat", "escalated", "proposed"].includes(dealStatus);
 
   // If this deal is (or goes back to) a pre-escrow negotiation status — e.g. a
   // funded deal re-opened via renegotiate/escalate — the deal page's milestone
@@ -548,7 +756,7 @@ export default function ActiveDealPage() {
   // deal is never bounced.
   useEffect(() => {
     if (!deal) return;
-    const NEGOTIATION_STATUSES = ["draft", "seller-ready", "seller-agreed", "proposed", "escalated"];
+    const NEGOTIATION_STATUSES = ["draft", "seller-ready", "seller-agreed", "manual-chat", "proposed", "escalated"];
     if (releasedCount === 0 && NEGOTIATION_STATUSES.includes(dealStatus)) {
       router.replace(`/negotiate/${encodeURIComponent(dealId)}`);
     }
@@ -841,6 +1049,7 @@ export default function ActiveDealPage() {
                           {isReleased && <MiniPill tone="success">Released</MiniPill>}
                           {isInReview && <MiniPill tone="warning">Awaiting confirm</MiniPill>}
                           {isPending && i !== currentMilestoneIndex && <MiniPill tone="muted">Pending</MiniPill>}
+                          {m.proof_by && <MiniPill tone="muted">proof: {m.proof_by}</MiniPill>}
                         </div>
                         <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510, fontVariantNumeric: "tabular-nums", fontFamily: "ui-monospace, monospace", flexShrink: 0 }}>
                           ${m.amount.toLocaleString()}
@@ -867,36 +1076,80 @@ export default function ActiveDealPage() {
                           <p style={{ fontSize: 11, color: "var(--muted)", fontWeight: 510, margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                             Delivery proof
                           </p>
-                          {proofs.map((proof) => (
-                            <button
-                              key={proof.id}
-                              onClick={() => openProof(proof.storage_key)}
-                              disabled={openingProof === proof.storage_key}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 10,
-                                width: "100%",
-                                padding: "8px 10px",
-                                borderRadius: 7,
-                                background: "var(--surface)",
-                                border: "1px solid var(--card-border)",
-                                cursor: "pointer",
-                                textAlign: "left",
-                              }}
-                            >
-                              <div style={{ width: 28, height: 28, borderRadius: 6, background: "rgba(113,112,255,0.1)", color: "var(--accent)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
-                                </svg>
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <p style={{ fontSize: 12, color: "var(--primary)", margin: 0, fontWeight: 510, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proof.filename}</p>
-                                <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>{(proof.size_bytes / 1024).toFixed(1)} KB</p>
-                              </div>
-                              <span className="btn-ghost" style={{ height: 24, padding: "0 8px", borderRadius: 4, fontSize: 11, display: "inline-flex", alignItems: "center" }}>Open</span>
-                            </button>
-                          ))}
+                          {proofs.map((proof) => {
+                            // Link/text proofs (no stored file) render inline
+                            // rather than routing through the signed-file opener.
+                            if (proof.content_type === "text/uri-list") {
+                              return (
+                                <a
+                                  key={proof.id}
+                                  href={proof.storage_key}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    display: "flex", alignItems: "center", gap: 10, width: "100%",
+                                    padding: "8px 10px", borderRadius: 7, background: "var(--surface)",
+                                    border: "1px solid var(--card-border)", textDecoration: "none",
+                                  }}
+                                >
+                                  <div style={{ width: 28, height: 28, borderRadius: 6, background: "rgba(113,112,255,0.1)", color: "var(--accent)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                    </svg>
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <p style={{ fontSize: 12, color: "var(--accent)", margin: 0, fontWeight: 510, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proof.filename}</p>
+                                    <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>Link</p>
+                                  </div>
+                                  <span className="btn-ghost" style={{ height: 24, padding: "0 8px", borderRadius: 4, fontSize: 11, display: "inline-flex", alignItems: "center" }}>Open</span>
+                                </a>
+                              );
+                            }
+                            if (proof.content_type === "text/plain") {
+                              return (
+                                <div
+                                  key={proof.id}
+                                  style={{
+                                    padding: "8px 10px", borderRadius: 7, background: "var(--surface)",
+                                    border: "1px solid var(--card-border)",
+                                  }}
+                                >
+                                  <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 4px", fontWeight: 510 }}>Text proof</p>
+                                  <p style={{ fontSize: 12, color: "var(--primary)", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{proof.storage_key}</p>
+                                </div>
+                              );
+                            }
+                            return (
+                              <button
+                                key={proof.id}
+                                onClick={() => openProof(proof.storage_key)}
+                                disabled={openingProof === proof.storage_key}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 10,
+                                  width: "100%",
+                                  padding: "8px 10px",
+                                  borderRadius: 7,
+                                  background: "var(--surface)",
+                                  border: "1px solid var(--card-border)",
+                                  cursor: "pointer",
+                                  textAlign: "left",
+                                }}
+                              >
+                                <div style={{ width: 28, height: 28, borderRadius: 6, background: "rgba(113,112,255,0.1)", color: "var(--accent)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+                                  </svg>
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <p style={{ fontSize: 12, color: "var(--primary)", margin: 0, fontWeight: 510, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proof.filename}</p>
+                                  <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>{(proof.size_bytes / 1024).toFixed(1)} KB</p>
+                                </div>
+                                <span className="btn-ghost" style={{ height: 24, padding: "0 8px", borderRadius: 4, fontSize: 11, display: "inline-flex", alignItems: "center" }}>Open</span>
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
 
@@ -936,13 +1189,14 @@ export default function ActiveDealPage() {
                         </div>
                       )}
 
-                      {/* Only the SELLER uploads milestone proof (#3); the buyer
-                          shares files via the chat instead. Release stays buyer-only. */}
-                      {role === "seller" && (isPending || isInReview) && i === currentMilestoneIndex && (
+                      {/* The party RESPONSIBLE for this milestone's proof uploads
+                          it (#11): seller by default, buyer when proof_by==="buyer"
+                          (e.g. "buyer confirms receipt"). Release stays buyer-only. */}
+                      {role === (m.proof_by === "buyer" ? "buyer" : "seller") && (isPending || isInReview) && i === currentMilestoneIndex && (
                         <div style={{ marginTop: 10 }}>
                           <input
                             type="file"
-                            accept=".pdf,.png,.jpg,.jpeg,.docx"
+                            accept=".pdf,.png,.jpg,.jpeg,.docx,.pptx,.xlsx,.md"
                             ref={(el) => { fileInputRefs.current[i] = el; }}
                             className="hidden"
                             onChange={(e) => {
@@ -952,24 +1206,67 @@ export default function ActiveDealPage() {
                             }}
                             style={{ display: "none" }}
                           />
-                          <button
-                            onClick={() => fileInputRefs.current[i]?.click()}
-                            disabled={uploading === i}
-                            className="btn-ghost"
-                            style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 6, fontSize: 12, cursor: "pointer" }}
-                          >
-                            {uploading === i ? (
-                              <>
-                                <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round" /></svg>
-                                Uploading…
-                              </>
-                            ) : (
-                              <>
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-                                {isInReview ? "Re-upload proof" : "Upload proof"}
-                              </>
-                            )}
-                          </button>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              onClick={() => fileInputRefs.current[i]?.click()}
+                              disabled={uploading === i}
+                              className="btn-ghost"
+                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 6, fontSize: 12, cursor: "pointer" }}
+                            >
+                              {uploading === i ? (
+                                <>
+                                  <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.22-8.56" strokeLinecap="round" /></svg>
+                                  Uploading…
+                                </>
+                              ) : (
+                                <>
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                                  {isInReview ? "Re-upload proof" : "Upload proof"}
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => { setLinkProofOpen(linkProofOpen === i ? null : i); setLinkProofValue(""); }}
+                              className="btn-ghost"
+                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 6, fontSize: 12, cursor: "pointer" }}
+                            >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                              or paste a link / text
+                            </button>
+                          </div>
+                          {linkProofOpen === i && (
+                            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                              <textarea
+                                value={linkProofValue}
+                                onChange={(e) => setLinkProofValue(e.target.value)}
+                                placeholder="Paste a link (https://…) or type your proof"
+                                rows={2}
+                                style={{
+                                  width: "100%", resize: "vertical", padding: "8px 10px", borderRadius: 6,
+                                  background: "var(--surface)", border: "1px solid var(--card-border)",
+                                  color: "var(--foreground)", fontSize: 12, fontFamily: "inherit",
+                                }}
+                              />
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button
+                                  onClick={() => handleSubmitLink(i)}
+                                  disabled={submittingLink || !linkProofValue.trim()}
+                                  className="btn-primary"
+                                  style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}
+                                >
+                                  {submittingLink ? "Submitting…" : "Submit proof"}
+                                </button>
+                                <button
+                                  onClick={() => { setLinkProofOpen(null); setLinkProofValue(""); }}
+                                  disabled={submittingLink}
+                                  className="btn-ghost"
+                                  style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12 }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -987,7 +1284,7 @@ export default function ActiveDealPage() {
               <div style={{ marginTop: 12 }}>
                 <PartyRow
                   label="Buyer"
-                  wallet={deal.buyer_wallet}
+                  wallet={deal.buyer_wallet ?? ""}
                   isYou={wallet === deal.buyer_wallet}
                 />
                 <div style={{ height: 10 }} />
@@ -1095,12 +1392,32 @@ export default function ActiveDealPage() {
                       <p style={{ fontSize: 10, color: "var(--accent)", margin: "0 0 6px", fontWeight: 510, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                         Review Milestone {currentMilestoneIndex + 1}
                       </p>
-                      {proofs.map((p) => (
-                        <button key={p.id} onClick={() => openProof(p.storage_key)} disabled={openingProof === p.storage_key}
-                          style={{ fontSize: 11, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-                          📎 {p.filename}
-                        </button>
-                      ))}
+                      {proofs.map((p) => {
+                        // Link/text proofs store the URL/text in storage_key (not a
+                        // storage path), so they must NOT go through openProof (which
+                        // builds a signed Storage URL and would fail). Render inline.
+                        if (p.content_type === "text/uri-list") {
+                          return (
+                            <a key={p.id} href={p.storage_key} target="_blank" rel="noopener noreferrer"
+                              style={{ display: "block", fontSize: 11, color: "var(--accent)", overflowWrap: "anywhere" }}>
+                              🔗 {p.filename}
+                            </a>
+                          );
+                        }
+                        if (p.content_type === "text/plain") {
+                          return (
+                            <p key={p.id} style={{ fontSize: 11, color: "var(--primary)", margin: "2px 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                              📝 {p.storage_key}
+                            </p>
+                          );
+                        }
+                        return (
+                          <button key={p.id} onClick={() => openProof(p.storage_key)} disabled={openingProof === p.storage_key}
+                            style={{ display: "block", fontSize: 11, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                            📎 {p.filename}
+                          </button>
+                        );
+                      })}
                     </div>
                   ) : null;
                 })()}
@@ -1252,7 +1569,7 @@ export default function ActiveDealPage() {
                   {MOCK_CHAIN && role === "buyer" && isFunded && (
                     <button
                       className="btn-ghost"
-                      onClick={() => { mockEscrow.timeWarp(dealId); alert("Dev: funding backdated past the timeout. You can now reclaim funds."); }}
+                      onClick={() => { mockEscrow.timeWarp(dealId); toast.show({ variant: "info", title: "Dev: funding backdated past the timeout. You can now reclaim funds." }); }}
                       style={{ height: 28, borderRadius: 6, fontSize: 11, opacity: 0.7 }}
                     >
                       ⏩ Dev: skip timeout
@@ -1278,6 +1595,24 @@ export default function ActiveDealPage() {
           </div>
         </div>
       </div>
+
+      {/* Blocking confirmations (formerly window.confirm): timeout reclaim,
+          cancel deal, request mutual refund, co-sign mutual refund. */}
+      <ConfirmDialog
+        open={pendingConfirm !== null}
+        title={pendingConfirm?.title ?? ""}
+        body={pendingConfirm?.body}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        danger={pendingConfirm?.danger}
+        busy={refunding}
+        busyLabel="Working…"
+        onCancel={() => setPendingConfirm(null)}
+        onConfirm={() => {
+          const action = pendingConfirm?.run;
+          setPendingConfirm(null);
+          void action?.();
+        }}
+      />
 
       {/* Request-changes modal (buyer, In Review) */}
       {changesModal !== null && (

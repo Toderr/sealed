@@ -20,6 +20,12 @@ import { POLL_MS } from "@/lib/swr";
 
 type DealResult = { deal: SupabaseDeal | null; error?: string };
 
+// How long a locally-created draft is considered "might not have synced yet".
+// Within this window a 404 means "the mirror write hasn't landed" (serve local +
+// re-sync) rather than "deleted" (purge). Generous enough to cover a slow or
+// retried mirror POST, short enough that a genuinely deleted deal still clears.
+const FRESH_DRAFT_MS = 2 * 60 * 1000; // 2 minutes
+
 function readSessionDeal(dealId: string): SupabaseDeal | null {
   try {
     const raw = sessionStorage.getItem(`deal:${dealId}`);
@@ -30,16 +36,34 @@ function readSessionDeal(dealId: string): SupabaseDeal | null {
 
 // Re-push a sessionStorage deal to Supabase so counterparties on other devices
 // can load it. Best-effort; mirrors the old retryMirrorSync side effect.
+//
+// Works for seller-created deals too: those have no buyer_wallet yet, so we
+// authenticate the mirror write with whichever slot IS filled (the creator)
+// and pass creator_role so the route binds them to the right slot rather than
+// defaulting them to the buyer. Previously this bailed when buyer_wallet was
+// empty, so a seller-created deal never re-synced (Round 6, #1).
 function retryMirrorSync(local: SupabaseDeal) {
-  if (!local.buyer_wallet) return;
+  // Use truthiness, not ??: a seller-created draft is stored with buyer_wallet:""
+  // (empty string, not null), and "" ?? x === "" would wrongly pick the empty
+  // buyer and bail. Fall through to the seller slot when the buyer slot is blank.
+  const creatorWallet = local.buyer_wallet || local.seller_wallet;
+  if (!creatorWallet) return;
+  const creatorRole: "buyer" | "seller" = local.buyer_wallet ? "buyer" : "seller";
+  // Only re-push the CREATOR's own slot, never the (stale) counterparty slot.
+  // The counterparty joins via the authoritative accept-invite flow — resending
+  // a stale counterparty from sessionStorage could resurrect one the server just
+  // cleared (e.g. after reject-and-recycle). The mirror route preserves an
+  // existing filled counterparty slot, so omitting it here is safe.
   apiFetchSafe(
     "/api/deals/mirror",
     {
       method: "POST",
-      wallet: local.buyer_wallet,
+      wallet: creatorWallet,
       body: {
         deal_id: local.deal_id,
-        seller_wallet: local.seller_wallet ?? null,
+        buyer_wallet: creatorRole === "buyer" ? local.buyer_wallet : null,
+        seller_wallet: creatorRole === "seller" ? local.seller_wallet : null,
+        creator_role: creatorRole,
         title: local.title,
         description: local.description ?? null,
         total_amount_usdc: local.total_amount_usdc,
@@ -70,7 +94,19 @@ async function fetchDeal([, dealId]: readonly [string, string]): Promise<DealRes
     // on the other party's device). Purge our local copy so it can't resurrect
     // and stops showing here.
     if (err instanceof ApiError && err.status === 404) {
-      purgeDealLocally(dealId, readSessionDeal(dealId)?.buyer_wallet ?? null);
+      const sess = readSessionDeal(dealId);
+      // EXCEPTION: a JUST-created draft that hasn't synced yet also 404s. Purging
+      // it would destroy the only copy and make the deal permanently unopenable
+      // ("deal not found" right after creating). For a young local draft, treat
+      // the 404 as "not synced yet": serve the local copy and re-push it.
+      const createdAt = sess?.created_at ? Date.parse(sess.created_at) : NaN;
+      const isFreshDraft =
+        !!sess && Number.isFinite(createdAt) && Date.now() - createdAt < FRESH_DRAFT_MS;
+      if (isFreshDraft && sess) {
+        retryMirrorSync(sess);
+        return { deal: sess };
+      }
+      purgeDealLocally(dealId, sess?.buyer_wallet ?? sess?.seller_wallet ?? null);
       return { deal: null, error: "Deal not found" };
     }
     // Transient/network error (couldn't reach the server): fall back to the
@@ -99,6 +135,11 @@ function compareDeal(a?: DealResult, b?: DealResult): boolean {
   return (
     da.status === db.status &&
     (da.seller_wallet ?? "") === (db.seller_wallet ?? "") &&
+    // Watch buyer_wallet too: for a seller-created (inviter) deal, a buyer
+    // joining from another device changes ONLY buyer_wallet (status/seller stay
+    // put). Without this, the seller's poll would treat the row as unchanged and
+    // never leave "Waiting for counterparty".
+    (da.buyer_wallet ?? "") === (db.buyer_wallet ?? "") &&
     da.total_amount_usdc === db.total_amount_usdc &&
     JSON.stringify(da.milestones ?? []) === JSON.stringify(db.milestones ?? [])
   );

@@ -3,19 +3,63 @@ import { requireWallet } from "@/lib/auth";
 import { HttpError, json, withRoute } from "@/lib/api-error";
 import { randomUUID } from "crypto";
 
-const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
+// Node runtime — image re-encode (sharp) + pdf-parse need Node APIs, and the
+// edge runtime has a tighter body limit. NOTE: on Vercel serverless the request
+// body is hard-capped at ~4.5 MB regardless of this route's own MAX_SIZE. For
+// files up to the 25 MB product limit, large uploads must go DIRECT to Supabase
+// Storage via a signed upload URL (see /api/upload/sign) rather than through
+// this route. This route stays the path for small files + server-side scanning.
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
-// Magic bytes for allowed file types
+const MAX_SIZE = 25 * 1024 * 1024; // 25 MB (product cap; larger → Drive link)
+
+// Magic bytes for allowed file types. Office formats (docx/pptx/xlsx) are all
+// ZIP containers, so they share the PK\x03\x04 signature — the extension is
+// carried through from the client filename for those. zip/exe and other
+// executable/archive types are intentionally NOT accepted.
+const OOXML_ZIP = [0x50, 0x4b, 0x03, 0x04];
 const MAGIC_MAP: { mime: string; bytes: number[]; ext: string }[] = [
   { mime: "application/pdf", bytes: [0x25, 0x50, 0x44, 0x46], ext: "pdf" },
-  { mime: "application/vnd.openxmlformats-officedocument", bytes: [0x50, 0x4b, 0x03, 0x04], ext: "docx" },
+  { mime: "application/vnd.openxmlformats-officedocument", bytes: OOXML_ZIP, ext: "docx" },
   { mime: "image/png", bytes: [0x89, 0x50, 0x4e, 0x47], ext: "png" },
   { mime: "image/jpeg", bytes: [0xff, 0xd8, 0xff], ext: "jpg" },
 ];
 
-function detectType(buf: Buffer): { mime: string; ext: string } | null {
-  for (const { mime, bytes, ext } of MAGIC_MAP) {
-    if (bytes.every((b, i) => buf[i] === b)) return { mime, ext };
+// Extensions the client may declare for allowed types. Markdown is plain text
+// (no reliable magic bytes) so it's validated by extension only; the OOXML
+// family shares the zip signature so the concrete ext comes from the filename.
+const EXT_MIME: Record<string, string> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  md: "text/markdown",
+};
+const OOXML_EXTS = new Set(["docx", "pptx", "xlsx"]);
+
+function extOf(filename: string): string {
+  const dot = filename.lastIndexOf(".");
+  return dot >= 0 ? filename.slice(dot + 1).toLowerCase() : "";
+}
+
+// Validate a file's real bytes against its declared extension. Returns the
+// resolved {mime, ext} or null if the content doesn't match an allowed type.
+function detectType(buf: Buffer, filename: string): { mime: string; ext: string } | null {
+  const ext = extOf(filename);
+  // Markdown: no magic bytes — accept by extension, treat as text.
+  if (ext === "md") return { mime: "text/markdown", ext: "md" };
+  // OOXML (docx/pptx/xlsx): all zip-signed; trust the declared ext once the
+  // zip signature checks out, so a .pptx isn't stored/served as .docx.
+  if (OOXML_EXTS.has(ext) && OOXML_ZIP.every((b, i) => buf[i] === b)) {
+    return { mime: EXT_MIME[ext], ext };
+  }
+  // Everything else: match by magic bytes.
+  for (const { mime, bytes, ext: mapExt } of MAGIC_MAP) {
+    if (bytes.every((b, i) => buf[i] === b)) return { mime, ext: mapExt };
   }
   return null;
 }
@@ -43,16 +87,35 @@ export const POST = withRoute(async (request) => {
   }
 
   if (file.size > MAX_SIZE) {
-    throw new HttpError(413, "File exceeds 10 MB limit");
+    throw new HttpError(413, "File exceeds the 25 MB limit. Share a Google Drive link instead.");
+  }
+
+  // Authorize milestone-proof uploads: only a party to the deal may upload,
+  // because Step 5 below DELETES prior proof for the milestone — otherwise any
+  // wallet could wipe/replace a counterparty's proof. Skipped for the
+  // "standalone" bucket and chat attachments (not milestone proof).
+  if (dealId !== "standalone" && !isChatAttachment) {
+    const { data: dealRow } = await supabase
+      .from(table("deals"))
+      .select("buyer_wallet, seller_wallet")
+      .eq("deal_id", dealId)
+      .maybeSingle();
+    if (!dealRow) throw new HttpError(404, "Deal not found");
+    if (dealRow.buyer_wallet !== walletHeader && dealRow.seller_wallet !== walletHeader) {
+      throw new HttpError(403, "Only a party to this deal can upload proof");
+    }
   }
 
   const arrayBuffer = await file.arrayBuffer();
   let buf = Buffer.from(arrayBuffer as ArrayBuffer);
 
-  // Step 1: Magic bytes validation
-  const detected = detectType(buf);
+  // Step 1: Content validation (magic bytes / declared extension)
+  const detected = detectType(buf, file.name);
   if (!detected) {
-    throw new HttpError(415, "File type not allowed. Accepted: PDF, DOCX, PNG, JPG");
+    throw new HttpError(
+      415,
+      "File type not allowed. Accepted: images (PNG, JPG), PDF, DOCX, PPTX, XLSX, MD. (No zip/exe.)"
+    );
   }
   // Chat attachments are images only.
   if (isChatAttachment && detected.mime !== "image/png" && detected.mime !== "image/jpeg") {
@@ -69,14 +132,26 @@ export const POST = withRoute(async (request) => {
     }
   }
 
-  // Step 3: Validate PDF is parseable
+  // Step 3: Validate PDF is parseable.
+  // pdf-parse v2 exports a PDFParse CLASS (v1's callable default is gone) —
+  // calling the module directly always threw, so every PDF was rejected with
+  // "PDF could not be validated".
   if (detected.mime === "application/pdf") {
+    let parser: { getText: () => Promise<unknown>; destroy: () => Promise<void> } | null = null;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<unknown>;
-      await pdfParse(buf);
-    } catch {
+      const { PDFParse } = (await import("pdf-parse")) as unknown as {
+        PDFParse: new (opts: { data: Uint8Array }) => {
+          getText: () => Promise<unknown>;
+          destroy: () => Promise<void>;
+        };
+      };
+      parser = new PDFParse({ data: new Uint8Array(buf) });
+      await parser.getText();
+    } catch (err) {
+      console.error("[upload] PDF validation failed:", err);
       throw new HttpError(422, "PDF could not be validated");
+    } finally {
+      try { await parser?.destroy(); } catch { /* best-effort cleanup */ }
     }
   }
 
