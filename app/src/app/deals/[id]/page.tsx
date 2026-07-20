@@ -640,7 +640,13 @@ export default function ActiveDealPage() {
       await refreshAll();
     } catch (err) {
       console.error("Co-sign refund failed:", err);
-      toast.show({ variant: "error", title: "Could not complete the refund (the request may have expired — try again)." });
+      // Show the REAL reason — coSignAndSend already maps Solana's program logs
+      // to a specific message (consumed nonce / missing signature / insufficient
+      // funds / the failing log line). Don't overwrite it with a guess.
+      toast.show({
+        variant: "error",
+        title: err instanceof Error ? err.message : "Could not complete the refund.",
+      });
     } finally {
       setRefunding(false);
     }
