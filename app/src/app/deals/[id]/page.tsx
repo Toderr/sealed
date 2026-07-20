@@ -52,6 +52,9 @@ type RefundRequest = {
   requested_by: string;
   partial_tx: string;
   blockhash: string | null;
+  // Present only for durable-nonce requests. A request without it predates the
+  // expiry fix and can't be co-signed (its blockhash is long dead).
+  nonce_account?: string | null;
   status: string;
   created_at: string;
 };
@@ -598,6 +601,19 @@ export default function ActiveDealPage() {
   async function doCoSignRefund() {
     const req = refundReqQuery.data?.request;
     if (!publicKey || !signTransaction || !req) return;
+    // Legacy request: created before refunds moved to durable nonces, so it
+    // carries an expired recent blockhash and can NEVER be co-signed. Clear it
+    // and tell the initiator to start again rather than failing cryptically.
+    if (!MOCK_CHAIN && !req.nonce_account) {
+      await apiFetchSafe(`/api/deals/${dealId}/refund`, { method: "DELETE", wallet: wallet ?? "" }, undefined);
+      await refundReqQuery.mutate?.();
+      toast.show({
+        variant: "error",
+        title: "This refund request has expired",
+        description: "It was created before the expiry fix. Ask the other party to request the refund again.",
+      });
+      return;
+    }
     setRefunding(true);
     try {
       const sig = await coSignAndSend(connection, req.partial_tx, signTransaction);

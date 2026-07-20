@@ -530,13 +530,30 @@ export async function coSignAndSend(
     await connection.confirmTransaction(sig, "confirmed");
     return sig;
   } catch (err) {
-    // A consumed/advanced nonce means this request was already used (or the
-    // initiator cancelled it) — surface that plainly instead of a raw RPC error.
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/blockhash not found|nonce/i.test(msg)) {
-      throw new Error("This refund request is no longer valid — ask the other party to start a new one.");
+    // Surface the REAL reason. SendTransactionError carries the program logs,
+    // which say exactly what failed (missing signature, wrong account, consumed
+    // nonce, insufficient funds…) — log them rather than guessing.
+    let logs: string[] | null = null;
+    if (err instanceof SendTransactionError) {
+      try { logs = await err.getLogs(connection); } catch { /* logs unavailable */ }
     }
-    throw err;
+    console.error("[coSignAndSend] refund broadcast failed:", err, logs);
+
+    const msg = err instanceof Error ? err.message : String(err);
+    const joined = `${msg} ${logs?.join(" ") ?? ""}`;
+    // Only claim "no longer valid" for a genuinely consumed/advanced nonce.
+    if (/nonce|blockhash not found/i.test(joined)) {
+      throw new Error(
+        "This refund request is no longer valid (its nonce was already used) — ask the other party to start a new one."
+      );
+    }
+    if (/signature verification|missing signature|not enough signers/i.test(joined)) {
+      throw new Error("The refund transaction is missing a signature. Ask the other party to start a new request.");
+    }
+    if (/insufficient/i.test(joined)) {
+      throw new Error("Not enough SOL to cover the transaction fee.");
+    }
+    throw new Error(logs?.length ? `Refund failed: ${logs[logs.length - 1]}` : `Refund failed: ${msg}`);
   }
 }
 
