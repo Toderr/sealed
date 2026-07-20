@@ -132,14 +132,26 @@ export const POST = withRoute(async (request) => {
     }
   }
 
-  // Step 3: Validate PDF is parseable
+  // Step 3: Validate PDF is parseable.
+  // pdf-parse v2 exports a PDFParse CLASS (v1's callable default is gone) —
+  // calling the module directly always threw, so every PDF was rejected with
+  // "PDF could not be validated".
   if (detected.mime === "application/pdf") {
+    let parser: { getText: () => Promise<unknown>; destroy: () => Promise<void> } | null = null;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<unknown>;
-      await pdfParse(buf);
-    } catch {
+      const { PDFParse } = (await import("pdf-parse")) as unknown as {
+        PDFParse: new (opts: { data: Uint8Array }) => {
+          getText: () => Promise<unknown>;
+          destroy: () => Promise<void>;
+        };
+      };
+      parser = new PDFParse({ data: new Uint8Array(buf) });
+      await parser.getText();
+    } catch (err) {
+      console.error("[upload] PDF validation failed:", err);
       throw new HttpError(422, "PDF could not be validated");
+    } finally {
+      try { await parser?.destroy(); } catch { /* best-effort cleanup */ }
     }
   }
 
