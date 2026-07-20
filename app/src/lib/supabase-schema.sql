@@ -209,7 +209,8 @@ CREATE TABLE IF NOT EXISTS sealed_refund_requests (
     deal_id        TEXT PRIMARY KEY,        -- one active request per deal
     requested_by   TEXT NOT NULL,           -- wallet that initiated + partial-signed
     partial_tx     TEXT NOT NULL,           -- base64 partially-signed refund tx
-    blockhash      TEXT,                    -- recent blockhash (tx expires ~90s)
+    blockhash      TEXT,                    -- durable-nonce VALUE (does not expire)
+    nonce_account  TEXT,                    -- nonce account that issued it (rent reclaim)
     status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','completed','cancelled')),
     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()

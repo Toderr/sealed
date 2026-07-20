@@ -537,11 +537,16 @@ export default function ActiveDealPage() {
       const buyer = new PublicKey(deal.buyer_wallet);
       const seller = new PublicKey(deal.seller_wallet);
       const ix = await buildRefundIx(buyer, seller, dealId);
-      const partialTxB64 = await buildAndPartialSign(connection, [ix], publicKey, signTransaction);
+      // Durable-nonce based: the partial tx stays valid until the counterparty
+      // co-signs, however long that takes (a recent blockhash expired in ~90s,
+      // so the handoff almost always failed with "Blockhash not found").
+      const { partialTx, nonceAccount, nonce } = await buildAndPartialSign(
+        connection, [ix], publicKey, signTransaction
+      );
       await apiFetch(`/api/deals/${dealId}/refund`, {
         method: "POST",
         wallet: wallet ?? "",
-        body: { partial_tx: partialTxB64 },
+        body: { partial_tx: partialTx, blockhash: nonce, nonce_account: nonceAccount },
       });
       await postMessage(`↩️ ${role === "buyer" ? "Buyer" : "Seller"} requested a mutual refund. Awaiting the other party's signature.`);
       await refreshAll();

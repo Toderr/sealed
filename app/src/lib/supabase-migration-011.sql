@@ -16,11 +16,14 @@ CREATE TABLE IF NOT EXISTS sealed_refund_requests (
     deal_id        TEXT PRIMARY KEY,
     requested_by   TEXT NOT NULL,
     partial_tx     TEXT NOT NULL,
-    blockhash      TEXT,
+    blockhash      TEXT,                    -- durable-nonce VALUE (was a recent blockhash)
+    nonce_account  TEXT,                    -- nonce account that issued it (rent reclaim)
     status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','completed','cancelled')),
     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- If the table already existed without it:
+ALTER TABLE sealed_refund_requests ADD COLUMN IF NOT EXISTS nonce_account TEXT;
 
 -- User-reported problems / account reports (see migration 008).
 CREATE TABLE IF NOT EXISTS sealed_complaints (

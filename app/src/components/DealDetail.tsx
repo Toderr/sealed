@@ -1121,11 +1121,10 @@ function RefundPanel({
     });
     try {
       const ix = await buildRefundIx(deal.buyer, deal.seller, deal.dealId);
-      const blockhash = MOCK_CHAIN
-        ? "mock-blockhash"
-        : (await connection.getLatestBlockhash()).blockhash;
-      // feePayer = whichever side initiates (either works, both sign anyway)
-      const partialTxB64 = await buildAndPartialSign(
+      // feePayer = whichever side initiates (either works, both sign anyway).
+      // Durable-nonce based, so the partial tx doesn't expire before the
+      // counterparty co-signs; `nonce` replaces the old recent blockhash.
+      const { partialTx: partialTxB64, nonce: blockhash } = await buildAndPartialSign(
         connection,
         [ix],
         publicKey,

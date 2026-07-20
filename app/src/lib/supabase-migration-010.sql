@@ -13,8 +13,11 @@ CREATE TABLE IF NOT EXISTS sealed_refund_requests (
     deal_id        TEXT PRIMARY KEY,        -- one active request per deal
     requested_by   TEXT NOT NULL,           -- wallet that initiated + partial-signed
     partial_tx     TEXT NOT NULL,           -- base64 partially-signed refund tx
-    blockhash      TEXT,                    -- recent blockhash (tx expires ~90s)
+    blockhash      TEXT,                    -- durable-nonce VALUE (does not expire)
+    nonce_account  TEXT,                    -- the nonce account (to reclaim its rent)
     status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','completed','cancelled')),
     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- If an earlier version of the table already exists:
+ALTER TABLE sealed_refund_requests ADD COLUMN IF NOT EXISTS nonce_account TEXT;
