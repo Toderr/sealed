@@ -7,6 +7,7 @@ import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { useAppConnection as useConnection } from "@/lib/use-app-connection";
 import { SealedMark } from "@/components/SealedLogo";
 import { NotificationMenu } from "@/components/NotificationMenu";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useBusinessMemory } from "@/memory/localstorage-store";
 import { getLlmHeaders } from "@/lib/llm-headers";
 import { isAgentConfigError } from "@/lib/agent-config-error";
@@ -2107,18 +2108,19 @@ function NegotiationResult({
   const latestBy = lastRevision?.onBehalfOf; // "buyer" | "seller" | undefined
   const latestFromSeller = latestBy === "seller";
 
+  // Blocking confirmation before funding escrow at un-agreed terms. Modal state
+  // rather than window.confirm — the action runs from the dialog's Confirm.
+  const [acceptOpen, setAcceptOpen] = useState(false);
+  const acceptAmount = latestTerms.totalAmount.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const acceptWhose = latestFromSeller
+    ? "the seller's last counter-offer — this was NOT a settled agreement"
+    : "your last offer";
+
   function confirmAccept() {
-    const amount = latestTerms.totalAmount.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-    const whose = latestFromSeller
-      ? "the seller's last counter-offer — this was NOT a settled agreement"
-      : "your last offer";
-    const ok = window.confirm(
-      `Deploy escrow at $${amount} USDC?\n\nThese are ${whose}. Escrow will be funded for this exact amount and split across ${latestTerms.milestones.length} milestone(s).\n\nContinue?`
-    );
-    if (ok) onAccept(latestTerms);
+    setAcceptOpen(true);
   }
 
   return (
@@ -2279,6 +2281,25 @@ function NegotiationResult({
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={acceptOpen}
+        title={`Deploy escrow at $${acceptAmount} USDC?`}
+        body={
+          <>
+            <p style={{ margin: "0 0 10px" }}>
+              These are {acceptWhose}. Escrow will be funded for this exact amount and split across{" "}
+              {latestTerms.milestones.length} milestone(s).
+            </p>
+            <p style={{ margin: 0 }}>Continue?</p>
+          </>
+        }
+        confirmLabel="Deploy escrow"
+        busy={deploying}
+        busyLabel="Deploying…"
+        onCancel={() => setAcceptOpen(false)}
+        onConfirm={() => { setAcceptOpen(false); onAccept(latestTerms); }}
+      />
     </div>
   );
 }

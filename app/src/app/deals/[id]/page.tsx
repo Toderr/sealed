@@ -30,6 +30,8 @@ import { useApi, POLL_MS } from "@/lib/swr";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
+import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Link from "next/link";
 
 import WalletMultiButton from "@/components/AppWalletButton";
@@ -90,6 +92,7 @@ export default function ActiveDealPage() {
   const { publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
   const wallet = publicKey?.toBase58() ?? null;
+  const toast = useToast();
 
   // Polled deal data via SWR (refreshInterval replaces the old 4s setInterval).
   const dealQuery = useApi<{ deal?: SupabaseDeal; error?: string }>(
@@ -143,6 +146,16 @@ export default function ActiveDealPage() {
   const [showSealedModal, setShowSealedModal] = useState(false);
   const [confirmModal, setConfirmModal] = useState<number | null>(null);
   const [refunding, setRefunding] = useState(false);
+  // Replaces the four native confirm() gates (timeout reclaim, cancel deal,
+  // request mutual refund, co-sign refund). confirm() is synchronous; a modal is
+  // not — so the action is parked here and run from the dialog's Confirm button.
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    body: string;
+    confirmLabel: string;
+    danger?: boolean;
+    run: () => void | Promise<void>;
+  } | null>(null);
   const [changesModal, setChangesModal] = useState<number | null>(null);
   const [changesNote, setChangesNote] = useState("");
   const [requestingChanges, setRequestingChanges] = useState(false);
@@ -194,7 +207,7 @@ export default function ActiveDealPage() {
         `/api/upload/signed?key=${encodeURIComponent(storageKey)}`, {}, {}
       );
       if (data.url) window.open(data.url, "_blank", "noopener,noreferrer");
-      else alert("Could not open file. Please try again.");
+      else toast.show({ variant: "error", title: "Could not open file. Please try again." });
     } finally {
       setOpeningProof(null);
     }
@@ -227,7 +240,7 @@ export default function ActiveDealPage() {
     // Guard the 25 MB product cap client-side so the user gets a clear message
     // (and the Drive-link hint) instead of a raw 413 (#10).
     if (file.size > MAX_UPLOAD_BYTES) {
-      alert("That file is over 25 MB. Please share a Google Drive link instead (use “paste a link / text”).");
+      toast.show({ variant: "error", title: "That file is over 25 MB. Please share a Google Drive link instead (use “paste a link / text”)." });
       return;
     }
     setUploading(milestoneIndex);
@@ -241,7 +254,7 @@ export default function ActiveDealPage() {
           headers: { "x-wallet": wallet, "x-deal-id": dealId, "x-milestone-index": String(milestoneIndex) },
         });
       } catch (e) {
-        alert(e instanceof ApiError ? e.message : "Upload failed");
+        toast.show({ variant: "error", title: e instanceof ApiError ? e.message : "Upload failed" });
         return;
       }
       const updated = milestones.map((m, i) =>
@@ -286,7 +299,7 @@ export default function ActiveDealPage() {
           },
         });
       } catch (e) {
-        alert(e instanceof ApiError ? e.message : "Failed to submit proof");
+        toast.show({ variant: "error", title: e instanceof ApiError ? e.message : "Failed to submit proof" });
         return;
       }
       // The proof row is already saved server-side. Update the milestone status
@@ -354,11 +367,16 @@ export default function ActiveDealPage() {
       );
       await refreshAll();
       if (!synced) {
-        alert("Payment released on-chain ✓ — but syncing the status is taking a moment. It'll update shortly; no need to release again.");
+        toast.show({
+          variant: "success",
+          title: "Payment released on-chain ✓",
+          description: "Syncing the status is taking a moment. It'll update shortly; no need to release again.",
+          duration: 9000,
+        });
       }
     } catch (err) {
       console.error("Release failed:", err);
-      alert("Failed to release payment. Check console for details.");
+      toast.show({ variant: "error", title: "Failed to release payment. Check console for details." });
     } finally {
       setApprovingIndex(null);
     }
@@ -384,7 +402,7 @@ export default function ActiveDealPage() {
       await refreshAll();
     } catch (err) {
       console.error("Request changes failed:", err);
-      alert("Could not request changes. Please try again.");
+      toast.show({ variant: "error", title: "Could not request changes. Please try again." });
     } finally {
       setRequestingChanges(false);
     }
@@ -401,9 +419,19 @@ export default function ActiveDealPage() {
   // Buyer-only unilateral refund after the 30-day funding timeout — the escape
   // hatch for a ghosting seller. One signature (buyer). On-chain the instruction
   // also closes the escrow vault (rent → buyer). Mirrors handleApprove's shape.
-  async function handleTimeoutRefund() {
+  function handleTimeoutRefund() {
     if (!publicKey || !signTransaction || role !== "buyer") return;
-    if (!confirm("Reclaim your escrowed funds? This ends the deal. Only available after the inactivity timeout.")) return;
+    setPendingConfirm({
+      title: "Reclaim your escrowed funds?",
+      body: "This ends the deal. Only available after the inactivity timeout.",
+      confirmLabel: "Reclaim funds",
+      danger: true,
+      run: doTimeoutRefund,
+    });
+  }
+
+  async function doTimeoutRefund() {
+    if (!publicKey || !signTransaction || role !== "buyer") return;
     setRefunding(true);
     try {
       const ix = await buildBuyerTimeoutRefundIx(publicKey, dealId);
@@ -434,16 +462,18 @@ export default function ActiveDealPage() {
         const fundedAt = fundedRaw ? new Date(fundedRaw) : null;
         if (fundedAt && !isNaN(fundedAt.getTime())) {
           const unlock = new Date(fundedAt.getTime() + TIMEOUT_SECONDS * 1000);
-          alert(
-            exact
+          toast.show({
+            variant: "error",
+            title: exact
               ? `You can reclaim these funds after ${unlock.toLocaleDateString()} (30 days after funding). It hasn't elapsed yet.`
-              : `The 30-day inactivity window hasn't elapsed yet — reclaim unlocks roughly ${unlock.toLocaleDateString()} (approximate; measured 30 days after funding).`
-          );
+              : `The 30-day inactivity window hasn't elapsed yet — reclaim unlocks roughly ${unlock.toLocaleDateString()} (approximate; measured 30 days after funding).`,
+            duration: 9000,
+          });
         } else {
-          alert("You can reclaim these funds 30 days after the deal was funded. That window hasn't elapsed yet.");
+          toast.show({ variant: "error", title: "You can reclaim these funds 30 days after the deal was funded. That window hasn't elapsed yet.", duration: 9000 });
         }
       } else {
-        alert("Refund failed. Check console for details.");
+        toast.show({ variant: "error", title: "Refund failed. Check console for details." });
       }
     } finally {
       setRefunding(false);
@@ -453,9 +483,19 @@ export default function ActiveDealPage() {
   // Buyer-only cancel of a not-yet-funded deal — closes the on-chain deal +
   // vault (rent → buyer) and marks the mirror refunded. Real chain call, not a
   // local no-op.
-  async function handleCancelDeal() {
+  function handleCancelDeal() {
     if (!publicKey || !signTransaction || role !== "buyer") return;
-    if (!confirm("Cancel this deal? It hasn't been funded, so nothing is escrowed.")) return;
+    setPendingConfirm({
+      title: "Cancel this deal?",
+      body: "It hasn't been funded, so nothing is escrowed.",
+      confirmLabel: "Cancel deal",
+      danger: true,
+      run: doCancelDeal,
+    });
+  }
+
+  async function doCancelDeal() {
+    if (!publicKey || !signTransaction || role !== "buyer") return;
     setRefunding(true);
     try {
       const ix = await buildCancelDealIx(publicKey, dealId);
@@ -471,7 +511,7 @@ export default function ActiveDealPage() {
       await refreshAll();
     } catch (err) {
       console.error("Cancel failed:", err);
-      alert("Cancel failed. Check console for details.");
+      toast.show({ variant: "error", title: "Cancel failed. Check console for details." });
     } finally {
       setRefunding(false);
     }
@@ -479,9 +519,19 @@ export default function ActiveDealPage() {
 
   // Mutual refund, step 1: the initiator (buyer or seller) builds the refund tx,
   // partial-signs it, and stores it on the relay for the counterparty to co-sign.
-  async function handleRequestRefund() {
+  function handleRequestRefund() {
     if (!publicKey || !signTransaction || role === "observer" || !deal?.buyer_wallet || !deal?.seller_wallet) return;
-    if (!confirm("Request a mutual refund? The other party must also sign. Unreleased escrow returns to the buyer.")) return;
+    setPendingConfirm({
+      title: "Request a mutual refund?",
+      body: "The other party must also sign. Unreleased escrow returns to the buyer.",
+      confirmLabel: "Request refund",
+      danger: true,
+      run: doRequestRefund,
+    });
+  }
+
+  async function doRequestRefund() {
+    if (!publicKey || !signTransaction || role === "observer" || !deal?.buyer_wallet || !deal?.seller_wallet) return;
     setRefunding(true);
     try {
       const buyer = new PublicKey(deal.buyer_wallet);
@@ -511,13 +561,14 @@ export default function ActiveDealPage() {
       // "you declined" (which they weren't).
       const userCancelled = code === 4001 || /user (rejected|denied)|rejected the request/i.test(msg);
       if (userCancelled) {
-        alert("Refund cancelled — you declined the signature.");
+        // A deliberate decline isn't a failure — surface it as info, not error.
+        toast.show({ variant: "info", title: "Refund cancelled — you declined the signature." });
       } else if (err instanceof ApiError && err.status === 403) {
-        alert("Only the buyer or seller on this deal can start a refund.");
+        toast.show({ variant: "error", title: "Only the buyer or seller on this deal can start a refund." });
       } else if (/blockhash|fetch|timeout|network|failed to fetch|aborted/i.test(msg)) {
-        alert("Couldn't reach the network. Check your connection and try again.");
+        toast.show({ variant: "error", title: "Couldn't reach the network. Check your connection and try again." });
       } else {
-        alert("Couldn't start the refund. Please try again.");
+        toast.show({ variant: "error", title: "Couldn't start the refund. Please try again." });
       }
     } finally {
       setRefunding(false);
@@ -527,10 +578,21 @@ export default function ActiveDealPage() {
   // Mutual refund, step 2: the counterparty co-signs the stored partial tx and
   // broadcasts it. On success the mirror is marked refunded and (for the buyer)
   // the vault rent is reclaimed via close_deal.
-  async function handleCoSignRefund() {
+  function handleCoSignRefund() {
     const req = refundReqQuery.data?.request;
     if (!publicKey || !signTransaction || !req) return;
-    if (!confirm("Approve and submit the mutual refund? Unreleased escrow returns to the buyer and the deal ends.")) return;
+    setPendingConfirm({
+      title: "Approve and submit the mutual refund?",
+      body: "Unreleased escrow returns to the buyer and the deal ends.",
+      confirmLabel: "Approve refund",
+      danger: true,
+      run: doCoSignRefund,
+    });
+  }
+
+  async function doCoSignRefund() {
+    const req = refundReqQuery.data?.request;
+    if (!publicKey || !signTransaction || !req) return;
     setRefunding(true);
     try {
       const sig = await coSignAndSend(connection, req.partial_tx, signTransaction);
@@ -557,7 +619,7 @@ export default function ActiveDealPage() {
       await refreshAll();
     } catch (err) {
       console.error("Co-sign refund failed:", err);
-      alert("Could not complete the refund (the request may have expired — try again).");
+      toast.show({ variant: "error", title: "Could not complete the refund (the request may have expired — try again)." });
     } finally {
       setRefunding(false);
     }
@@ -583,7 +645,7 @@ export default function ActiveDealPage() {
       setReportDone(true);
       setReportMessage("");
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "Could not submit. Please try again.");
+      toast.show({ variant: "error", title: err instanceof ApiError ? err.message : "Could not submit. Please try again." });
     } finally {
       setReportSubmitting(false);
     }
@@ -608,7 +670,7 @@ export default function ActiveDealPage() {
   async function handleChatAttach(file: File) {
     if (!wallet || sendingMsg) return;
     if (file.size > MAX_UPLOAD_BYTES) {
-      alert("That image is over 25 MB. Please attach a smaller one.");
+      toast.show({ variant: "error", title: "That image is over 25 MB. Please attach a smaller one." });
       return;
     }
     setSendingMsg(true);
@@ -624,7 +686,7 @@ export default function ActiveDealPage() {
         });
         key = res.storage_key;
       } catch (e) {
-        alert(e instanceof ApiError ? e.message : "Image upload failed");
+        toast.show({ variant: "error", title: e instanceof ApiError ? e.message : "Image upload failed" });
         return;
       }
       if (key) {
@@ -1480,7 +1542,7 @@ export default function ActiveDealPage() {
                   {MOCK_CHAIN && role === "buyer" && isFunded && (
                     <button
                       className="btn-ghost"
-                      onClick={() => { mockEscrow.timeWarp(dealId); alert("Dev: funding backdated past the timeout. You can now reclaim funds."); }}
+                      onClick={() => { mockEscrow.timeWarp(dealId); toast.show({ variant: "info", title: "Dev: funding backdated past the timeout. You can now reclaim funds." }); }}
                       style={{ height: 28, borderRadius: 6, fontSize: 11, opacity: 0.7 }}
                     >
                       ⏩ Dev: skip timeout
@@ -1506,6 +1568,24 @@ export default function ActiveDealPage() {
           </div>
         </div>
       </div>
+
+      {/* Blocking confirmations (formerly window.confirm): timeout reclaim,
+          cancel deal, request mutual refund, co-sign mutual refund. */}
+      <ConfirmDialog
+        open={pendingConfirm !== null}
+        title={pendingConfirm?.title ?? ""}
+        body={pendingConfirm?.body}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        danger={pendingConfirm?.danger}
+        busy={refunding}
+        busyLabel="Working…"
+        onCancel={() => setPendingConfirm(null)}
+        onConfirm={() => {
+          const action = pendingConfirm?.run;
+          setPendingConfirm(null);
+          void action?.();
+        }}
+      />
 
       {/* Request-changes modal (buyer, In Review) */}
       {changesModal !== null && (

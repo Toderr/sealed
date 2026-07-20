@@ -18,6 +18,8 @@ export default function AdminKycPage() {
   const [items, setItems] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Approve/reject failures surface as a dismissible banner (was alert()).
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const wallet = publicKey?.toBase58();
 
@@ -53,9 +55,10 @@ export default function AdminKycPage() {
         body: { target_wallet: target, decision },
       });
     } catch (e) {
-      alert(`Failed: ${e instanceof ApiError ? e.message : "error"}`);
+      setActionError(`Failed: ${e instanceof ApiError ? e.message : "error"}`);
       return;
     }
+    setActionError(null);
     fetchSubmissions();
   }
 
@@ -82,6 +85,13 @@ export default function AdminKycPage() {
         {error && (
           <div className="bg-red-950 border border-red-800 rounded p-4 mb-4">
             {error}
+          </div>
+        )}
+
+        {actionError && (
+          <div className="bg-red-950 border border-red-800 rounded p-4 mb-4 flex items-start justify-between gap-3">
+            <span>{actionError}</span>
+            <button onClick={() => setActionError(null)} className="text-gray-400 hover:text-white shrink-0" aria-label="Dismiss">×</button>
           </div>
         )}
 

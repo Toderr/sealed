@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAppWallet as useWallet } from "@/lib/use-app-wallet";
 import { SealedMark } from "@/components/SealedLogo";
+import { useToast } from "@/components/Toast";
 import { decodeInvite, type InvitePayload, useProfileStore } from "@/lib/profile-store";
 import { atDisplayHandle } from "@/lib/user-display";
 
@@ -36,6 +37,7 @@ export default function InvitePage() {
   const params = useParams();
   const { publicKey } = useWallet();
   const router = useRouter();
+  const toast = useToast();
   const [accepted, setAccepted] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [nameError, setNameError] = useState("");
@@ -159,7 +161,7 @@ export default function InvitePage() {
 
     if (!isUsableWallet(inviter)) {
       setAccepted(false);
-      alert("This invite link was generated with an incomplete inviter wallet. Ask the inviter to copy a fresh link.");
+      toast.show({ variant: "error", title: "This invite link was generated with an incomplete inviter wallet. Ask the inviter to copy a fresh link.", duration: 9000 });
       return;
     }
 
@@ -169,7 +171,7 @@ export default function InvitePage() {
     // inviter can be the seller, so guard it explicitly.
     if (me === inviter) {
       setAccepted(false);
-      alert("You can't accept your own invite. Send this link to the other party.");
+      toast.show({ variant: "error", title: "You can't accept your own invite. Send this link to the other party.", duration: 9000 });
       return;
     }
 
