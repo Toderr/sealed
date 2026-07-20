@@ -20,6 +20,12 @@ import { POLL_MS } from "@/lib/swr";
 
 type DealResult = { deal: SupabaseDeal | null; error?: string };
 
+// How long a locally-created draft is considered "might not have synced yet".
+// Within this window a 404 means "the mirror write hasn't landed" (serve local +
+// re-sync) rather than "deleted" (purge). Generous enough to cover a slow or
+// retried mirror POST, short enough that a genuinely deleted deal still clears.
+const FRESH_DRAFT_MS = 2 * 60 * 1000; // 2 minutes
+
 function readSessionDeal(dealId: string): SupabaseDeal | null {
   try {
     const raw = sessionStorage.getItem(`deal:${dealId}`);
@@ -89,6 +95,17 @@ async function fetchDeal([, dealId]: readonly [string, string]): Promise<DealRes
     // and stops showing here.
     if (err instanceof ApiError && err.status === 404) {
       const sess = readSessionDeal(dealId);
+      // EXCEPTION: a JUST-created draft that hasn't synced yet also 404s. Purging
+      // it would destroy the only copy and make the deal permanently unopenable
+      // ("deal not found" right after creating). For a young local draft, treat
+      // the 404 as "not synced yet": serve the local copy and re-push it.
+      const createdAt = sess?.created_at ? Date.parse(sess.created_at) : NaN;
+      const isFreshDraft =
+        !!sess && Number.isFinite(createdAt) && Date.now() - createdAt < FRESH_DRAFT_MS;
+      if (isFreshDraft && sess) {
+        retryMirrorSync(sess);
+        return { deal: sess };
+      }
       purgeDealLocally(dealId, sess?.buyer_wallet ?? sess?.seller_wallet ?? null);
       return { deal: null, error: "Deal not found" };
     }

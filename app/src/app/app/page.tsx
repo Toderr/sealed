@@ -21,6 +21,7 @@ import { escrowAccountUrl } from "@/lib/explorer";
 import { MOCK_CHAIN } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
+import { retryWrite } from "@/lib/retry-write";
 import { SealedMark } from "@/components/SealedLogo";
 import { SealedBackdrop } from "@/components/SealedBackdrop";
 
@@ -205,6 +206,9 @@ function HomeContent() {
       total_amount_usdc: params.totalAmount,
       milestones,
       status: "draft",
+      // Stamped so a 404 on a JUST-created deal is treated as "not synced yet"
+      // (retry) rather than "deleted" (purge) — see fetchDeal in use-deal.ts.
+      created_at: new Date().toISOString(),
     };
     try {
       sessionStorage.setItem(`deal:${params.dealId}`, JSON.stringify(draftDeal));
@@ -212,21 +216,32 @@ function HomeContent() {
       // sessionStorage unavailable
     }
 
-    apiFetchSafe("/api/deals/mirror", {
-      method: "POST",
-      wallet: me, // creator owns the row; mirror binds it to whichever slot they hold
-      body: {
-        deal_id: params.dealId,
-        creator_role: role,
-        buyer_wallet,
-        seller_wallet,
-        title: dealTitle,
-        description,
-        total_amount_usdc: params.totalAmount,
-        milestones,
-        status: "draft",
-      },
-    }, undefined);
+    // AWAIT the mirror write before navigating. Previously this was
+    // fire-and-forget, so the negotiation room could GET the deal before the row
+    // existed → a 404 "Deal not found" (which then purged the local draft,
+    // making it permanent). Retried for transient blips; on hard failure we keep
+    // the user here with their draft intact instead of stranding them.
+    const synced = await retryWrite(() =>
+      apiFetch("/api/deals/mirror", {
+        method: "POST",
+        wallet: me, // creator owns the row; mirror binds it to whichever slot they hold
+        body: {
+          deal_id: params.dealId,
+          creator_role: role,
+          buyer_wallet,
+          seller_wallet,
+          title: dealTitle,
+          description,
+          total_amount_usdc: params.totalAmount,
+          milestones,
+          status: "draft",
+        },
+      })
+    );
+    if (!synced) {
+      toast.show({ variant: "error", title: "Couldn't save the deal — please try again." });
+      return;
+    }
 
     router.push(`/negotiate/${params.dealId}`);
   }
@@ -806,6 +821,7 @@ function DealDetailPanelBody({
 }) {
   const { publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
+  const toast = useToast();
   // Local milestone state so upload/release reflect immediately in the panel
   // (the board's panelDeal is a snapshot). Mirrors deals/[id]'s pattern.
   const [milestones, setMilestones] = useState<PanelMilestone[]>(deal.milestones ?? []);
@@ -860,7 +876,7 @@ function DealDetailPanelBody({
           headers: { "x-wallet": myWallet, "x-deal-id": deal.deal_id, "x-milestone-index": String(index) },
         });
       } catch (e) {
-        alert(e instanceof ApiError ? e.message : "Upload failed");
+        toast.show({ variant: "error", title: e instanceof ApiError ? e.message : "Upload failed" });
         return;
       }
       const updated = milestones.map((m, i) => (i === index ? { ...m, status: "In Review" } : m));
@@ -903,7 +919,7 @@ function DealDetailPanelBody({
       );
     } catch (err) {
       console.error("Release failed:", err);
-      alert("Failed to release payment. Check console for details.");
+      toast.show({ variant: "error", title: "Failed to release payment. Check console for details." });
     } finally {
       setBusy(null);
     }
