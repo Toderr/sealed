@@ -3,7 +3,7 @@ import { requireWallet } from "@/lib/auth";
 import { HttpError, json, withRoute } from "@/lib/api-error";
 import { randomUUID } from "crypto";
 
-// Node runtime — image re-encode (sharp) + pdf-parse need Node APIs, and the
+// Node runtime — the image re-encode (sharp) needs Node APIs, and the
 // edge runtime has a tighter body limit. NOTE: on Vercel serverless the request
 // body is hard-capped at ~4.5 MB regardless of this route's own MAX_SIZE. For
 // files up to the 25 MB product limit, large uploads must go DIRECT to Supabase
@@ -132,26 +132,24 @@ export const POST = withRoute(async (request) => {
     }
   }
 
-  // Step 3: Validate PDF is parseable.
-  // pdf-parse v2 exports a PDFParse CLASS (v1's callable default is gone) —
-  // calling the module directly always threw, so every PDF was rejected with
-  // "PDF could not be validated".
+  // Step 3: Structural sanity check for PDFs.
+  //
+  // This used to run a FULL pdf-parse text extraction, which rejected every
+  // real PDF: pdf-parse v1's callable default was gone in v2, and the v2 class
+  // pulls in pdfjs + a worker that doesn't initialise cleanly in this runtime.
+  // The deep parse bought almost nothing anyway — Step 1 already verified the
+  // %PDF magic bytes — so validate structure directly instead: a well-formed
+  // PDF declares a version in its header and ends with an EOF marker. No
+  // dependency, no worker, can't fail spuriously on a valid file.
   if (detected.mime === "application/pdf") {
-    let parser: { getText: () => Promise<unknown>; destroy: () => Promise<void> } | null = null;
-    try {
-      const { PDFParse } = (await import("pdf-parse")) as unknown as {
-        PDFParse: new (opts: { data: Uint8Array }) => {
-          getText: () => Promise<unknown>;
-          destroy: () => Promise<void>;
-        };
-      };
-      parser = new PDFParse({ data: new Uint8Array(buf) });
-      await parser.getText();
-    } catch (err) {
-      console.error("[upload] PDF validation failed:", err);
-      throw new HttpError(422, "PDF could not be validated");
-    } finally {
-      try { await parser?.destroy(); } catch { /* best-effort cleanup */ }
+    const header = buf.subarray(0, 8).toString("latin1"); // e.g. "%PDF-1.7"
+    const validHeader = /^%PDF-\d\.\d/.test(header);
+    // %%EOF is the last marker; allow trailing whitespace/newlines some writers add.
+    const tail = buf.subarray(Math.max(0, buf.length - 1024)).toString("latin1");
+    const hasEof = tail.includes("%%EOF");
+    if (!validHeader || !hasEof) {
+      console.error("[upload] PDF structure check failed", { validHeader, hasEof, header });
+      throw new HttpError(422, "That PDF looks corrupted or incomplete. Try re-exporting it.");
     }
   }
 
