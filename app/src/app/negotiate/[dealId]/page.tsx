@@ -1285,7 +1285,22 @@ export default function NegotiateRoom() {
                       wallet={wallet ?? ""}
                       mode={sellerView === "fully-manual" ? "fully-manual" : "assisted"}
                       party="seller"
-                      onBack={() => setSellerView("choice")}
+                      onRenegotiate={() => setRenegotiateOpen(true)}
+                      onBack={async () => {
+                        // Going back must also clear the shared status. Manual
+                        // chat sets the deal to "manual-chat"; resetting only the
+                        // local view left the restore effect to immediately put
+                        // us back, so Back appeared to do nothing (R7 #1).
+                        if (deal.status === "manual-chat") {
+                          applyServerPatch((prev) => (prev ? { ...prev, status: "draft" } : prev));
+                          await apiFetchSafe(`/api/deals/${deal.deal_id}`, {
+                            method: "PATCH",
+                            wallet: wallet ?? "",
+                            body: { status: "draft" },
+                          }, undefined);
+                        }
+                        setSellerView("choice");
+                      }}
                       onAgree={(negotiatedTerms) => handleManualAgree(deal, negotiatedTerms)}
                     />
                   )}
@@ -1380,6 +1395,7 @@ export default function NegotiateRoom() {
                       wallet={wallet ?? ""}
                       mode="fully-manual"
                       party="buyer"
+                      onRenegotiate={() => setRenegotiateOpen(true)}
                       onAgree={(negotiatedTerms) => handleManualAgree(deal, negotiatedTerms)}
                     />
                   )}
@@ -1466,7 +1482,7 @@ export default function NegotiateRoom() {
                         Not now
                       </button>
                       <Link
-                        href={wallet ? `/profile/${wallet}?tab=agent` : "/profile"}
+                        href={wallet ? `/profile/${wallet}?tab=settings` : "/profile"}
                         className="btn-primary h-9 px-4 rounded-md text-[13px] inline-flex items-center gap-1.5"
                         style={{ textDecoration: "none" }}
                       >
@@ -2408,6 +2424,7 @@ function ManualNegotiationPanel({
   wallet,
   onBack,
   onAgree,
+  onRenegotiate,
   mode = "assisted",
   party = "seller",
 }: {
@@ -2415,6 +2432,10 @@ function ManualNegotiationPanel({
   wallet: string;
   onBack?: () => void;
   onAgree: (negotiatedTerms?: NegotiatedTerms) => void;
+  /** Reopen the terms for renegotiation. Available to BOTH parties — previously
+   *  only the buyer's result panel offered this, so a seller who wanted to
+   *  revise had no way to ask (R7 #2). */
+  onRenegotiate?: () => void;
   // "assisted": the buyer's AI agent auto-replies to each seller message.
   // "fully-manual": no auto-reply; a party can summon their OWN agent to draft a
   // reply on demand via a button (human↔human otherwise).
@@ -2738,7 +2759,7 @@ function ManualNegotiationPanel({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-              placeholder="Type your message or counteroffer…"
+              placeholder={messages.length === 0 ? "Type your message…" : "Type your message or counteroffer…"}
               disabled={loading}
               className="flex-1 h-9 rounded-md bg-surface border border-card-border px-3 text-[13px] text-foreground placeholder:text-subtle outline-none focus:border-accent/50 transition-colors disabled:opacity-50"
             />
@@ -2821,12 +2842,24 @@ function ManualNegotiationPanel({
         }
 
         return (
-          <button
-            onClick={() => onAgree(agreedTerms ?? undefined)}
-            className="btn-primary h-10 px-6 rounded-md text-[13px] w-full"
-          >
-            {agreedByAgent ? "Confirm agreement ✓" : "Accept current terms as-is"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => onAgree(agreedTerms ?? undefined)}
+              className="btn-primary h-10 px-6 rounded-md text-[13px] flex-1"
+            >
+              {agreedByAgent ? "Confirm agreement ✓" : "Accept current terms as-is"}
+            </button>
+            {/* Either party can reopen the terms from the chat (R7 #2) — the
+                seller previously had no renegotiate entry point at all. */}
+            {onRenegotiate && (
+              <button
+                onClick={onRenegotiate}
+                className="btn-ghost h-10 px-4 rounded-md text-[13px] shrink-0"
+              >
+                Renegotiate
+              </button>
+            )}
+          </div>
         );
       })()}
     </div>
