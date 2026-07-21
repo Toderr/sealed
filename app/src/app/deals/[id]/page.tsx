@@ -511,13 +511,26 @@ export default function ActiveDealPage() {
   // recent blockhash dies in ~90s and the counterparty signs much later.
   function handleApproveRefund() {
     if (!publicKey || !signTransaction || role === "observer" || !deal?.buyer_wallet) return;
-    setPendingConfirm({
-      title: "Approve a mutual refund?",
-      body: "Unreleased escrow returns to the buyer once both parties approve.",
-      confirmLabel: "Approve refund",
-      danger: true,
-      run: doApproveRefund,
-    });
+    // Word it for what this click actually does: the FIRST party proposes the
+    // refund, the SECOND agrees to one already on the table.
+    const counterparty = role === "buyer" ? "seller" : "buyer";
+    setPendingConfirm(
+      theirRefundApproved
+        ? {
+            title: "Approve the mutual refund?",
+            body: `The ${counterparty} already approved. Approving now returns the unreleased escrow to the buyer immediately.`,
+            confirmLabel: "Approve refund",
+            danger: true,
+            run: doApproveRefund,
+          }
+        : {
+            title: "Request a mutual refund?",
+            body: `This asks the ${counterparty} to end the deal early. No funds move until they also approve.`,
+            confirmLabel: "Request refund",
+            danger: true,
+            run: doApproveRefund,
+          }
+    );
   }
 
   async function doApproveRefund() {
@@ -1513,9 +1526,13 @@ export default function ActiveDealPage() {
                         </div>
                       ) : (
                         <>
-                          {theirRefundApproved && (
+                          {theirRefundApproved ? (
                             <p style={{ fontSize: 11, color: "var(--muted)", margin: 0, lineHeight: 1.5 }}>
-                              The {role === "buyer" ? "seller" : "buyer"} approved a mutual refund. Approve to return unreleased escrow to the buyer.
+                              The {role === "buyer" ? "seller" : "buyer"} requested a mutual refund. Approving returns the unreleased escrow to the buyer.
+                            </p>
+                          ) : (
+                            <p style={{ fontSize: 11, color: "var(--muted)", margin: 0, lineHeight: 1.5 }}>
+                              Ask to end this deal early. The {role === "buyer" ? "seller" : "buyer"} must agree before any funds move.
                             </p>
                           )}
                           <button
@@ -1524,7 +1541,12 @@ export default function ActiveDealPage() {
                             onClick={handleApproveRefund}
                             style={{ height: 34, borderRadius: 7, fontSize: 12 }}
                           >
-                            {refunding ? "Approving…" : "Approve refund"}
+                            {/* First mover PROPOSES; the second party AGREES. Calling
+                                both "Approve refund" made the initiator think they
+                                were approving something that didn't exist yet. */}
+                            {refunding
+                              ? (theirRefundApproved ? "Approving…" : "Requesting…")
+                              : (theirRefundApproved ? "Approve refund" : "Request refund")}
                           </button>
                         </>
                       )}
