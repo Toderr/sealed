@@ -311,6 +311,122 @@ export async function buildRefundIx(
   });
 }
 
+/**
+ * Two-step mutual refund: the caller approves in their OWN transaction.
+ * The refund executes automatically on the call that completes the pair.
+ *
+ * Replaces the old buildRefundIx ceremony, which needed buyer AND seller to sign
+ * one shared transaction — impossible in practice because a recent blockhash
+ * expires in ~90s while the counterparty signs much later.
+ *
+ * `buyer` is the deal's buyer (the refund destination), NOT necessarily the
+ * caller — either party may approve.
+ */
+export async function buildApproveRefundIx(
+  signer: PublicKey,
+  buyer: PublicKey,
+  dealId: string
+): Promise<TransactionInstruction> {
+  if (MOCK_CHAIN) return mockIx(signer);
+  const [dealPDA] = findDealPDA(dealId);
+  const [escrowVault] = findEscrowVaultPDA(dealId);
+  const mint = getUsdcMint();
+  const buyerATA = await getAssociatedTokenAddress(mint, buyer);
+
+  const disc = await sha256Discriminator("approve_refund");
+
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: signer, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+      { pubkey: escrowVault, isSigner: false, isWritable: true },
+      { pubkey: buyerATA, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: disc,
+  });
+}
+
+/**
+ * On-chain refund state for a deal — the authoritative answer to "did my
+ * approve_refund complete the pair, or am I still waiting on the counterparty?"
+ */
+export interface DealRefundState {
+  status: "created" | "funded" | "in_progress" | "completed" | "refunded" | "disputed";
+  buyerRefundOk: boolean;
+  sellerRefundOk: boolean;
+}
+
+const DEAL_STATUSES = ["created", "funded", "in_progress", "completed", "refunded", "disputed"] as const;
+
+/**
+ * Read + Borsh-decode the Deal PDA far enough to recover `status`,
+ * `buyer_refund_ok` and `seller_refund_ok`.
+ *
+ * We hand-walk the layout instead of pulling in Anchor's IDL coder: the fields
+ * we need sit after a variable-length `Vec<Milestone>`, but everything before
+ * them is fixed-size or length-prefixed, so a forward scan is exact and cheap.
+ *
+ * Layout (Anchor account, little-endian):
+ *   8   discriminator
+ *   4+N deal_id (borsh String)
+ *   32   buyer | 32 seller | 32 mint | 32 escrow_token_account
+ *   8   total_amount | 8 funded_amount | 8 released_amount
+ *   1   status (enum variant index)
+ *   4   milestones length, then per milestone:
+ *         4+N description, 8 amount, 1 status,
+ *         1 confirmed_by option (+32 if Some),
+ *         1 confirmed_at option (+8 if Some)
+ *   8   created_at | 8 funded_at | 8 updated_at
+ *   2   fee_bps | 32 treasury | 1 buyer_fee_paid
+ *   1   buyer_refund_ok | 1 seller_refund_ok | 1 bump
+ *
+ * Returns null when the account is gone (a completed refund closes the deal PDA)
+ * or can't be decoded — callers must treat null as "unknown", not "not refunded".
+ */
+export async function fetchDealRefundState(
+  connection: Connection,
+  dealId: string
+): Promise<DealRefundState | null> {
+  if (MOCK_CHAIN) return null;
+  const [dealPDA] = findDealPDA(dealId);
+  const info = await connection.getAccountInfo(dealPDA);
+  if (!info) return null;
+  try {
+    const buf = Buffer.from(info.data);
+    let o = 8; // skip the Anchor discriminator
+    const strLen = buf.readUInt32LE(o);
+    o += 4 + strLen; // deal_id
+    o += 32 * 4; // buyer, seller, mint, escrow_token_account
+    o += 8 * 3; // total_amount, funded_amount, released_amount
+    const statusIdx = buf.readUInt8(o);
+    o += 1;
+    const milestoneCount = buf.readUInt32LE(o);
+    o += 4;
+    for (let i = 0; i < milestoneCount; i++) {
+      const descLen = buf.readUInt32LE(o);
+      o += 4 + descLen; // description
+      o += 8; // amount
+      o += 1; // status
+      o += buf.readUInt8(o) === 1 ? 33 : 1; // confirmed_by: Option<Pubkey>
+      o += buf.readUInt8(o) === 1 ? 9 : 1; // confirmed_at: Option<i64>
+    }
+    o += 8 * 3; // created_at, funded_at, updated_at
+    o += 2; // fee_bps
+    o += 32; // treasury
+    o += 1; // buyer_fee_paid
+    const buyerRefundOk = buf.readUInt8(o) === 1;
+    const sellerRefundOk = buf.readUInt8(o + 1) === 1;
+    const status = DEAL_STATUSES[statusIdx];
+    if (!status) return null;
+    return { status, buyerRefundOk, sellerRefundOk };
+  } catch (err) {
+    console.warn("[fetchDealRefundState] could not decode deal account:", err);
+    return null;
+  }
+}
+
 // --- ATA helper ---
 
 // Idempotent create-ATA ix, safe to include unconditionally. On-chain program
