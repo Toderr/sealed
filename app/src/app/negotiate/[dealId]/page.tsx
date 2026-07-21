@@ -22,7 +22,7 @@ import {
   formatUsdc,
   usdcToLamports,
 } from "@/lib/types";
-import type { Deal, SupabaseDeal } from "@/lib/types";
+import type { Deal, SupabaseDeal, SupabaseMilestone } from "@/lib/types";
 import { labelStyle, headingStyle } from "@/lib/typography";
 import type { Proposal, Revision } from "@/negotiation/types";
 import { defaultSellerBoundaries } from "@/negotiation/types";
@@ -82,6 +82,43 @@ function dealStatusLabel(status: string) {
   return labels[status] ?? status;
 }
 
+// Statuses where escrow is not yet on-chain, so terms may still change. Mirrors
+// PRE_ESCROW_STATUSES in api/deals/[dealId]/route.ts — that server list is
+// authoritative; this one only decides whether to show the UI.
+const PRE_ESCROW_UI_STATUSES = new Set([
+  "draft",
+  "seller-ready",
+  "seller-agreed",
+  "manual-chat",
+  "proposed",
+  "escalated",
+]);
+
+/** The newest terms proposal that hasn't been accepted or rejected yet, or null.
+ *  Resolutions are messages too, so "live" means: latest proposal, with no
+ *  resolution after it. */
+function liveProposalFromMessages(
+  messages: DbMsg[]
+): { terms: ProposedTerms; proposedBy: string | null } | null {
+  let latest: { terms: ProposedTerms; proposedBy: string | null } | null = null;
+  for (const m of messages) {
+    const type = m.metadata?.type;
+    if (type === "terms_proposal") {
+      const terms = m.metadata?.terms as ProposedTerms | undefined;
+      // Ignore malformed proposals rather than rendering an empty diff.
+      if (terms && typeof terms.totalAmount === "number" && Array.isArray(terms.milestones)) {
+        latest = {
+          terms,
+          proposedBy: typeof m.metadata?.proposed_by === "string" ? m.metadata.proposed_by : m.wallet ?? null,
+        };
+      }
+    } else if (type === "terms_resolution") {
+      latest = null;
+    }
+  }
+  return latest;
+}
+
 function renegotiationNoticeFromMessages(messages: DbMsg[]): RenegotiationNotice | null {
   const requestMessages = messages.filter(
     (message) => message.metadata?.type === "renegotiation_request"
@@ -139,6 +176,10 @@ export default function NegotiateRoom() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectError, setRejectError] = useState<string | null>(null);
   const [renegotiationNotice, setRenegotiationNotice] = useState<RenegotiationNotice | null>(null);
+  // Milestone editor (#9): open state + in-flight guard for propose/accept.
+  const [editingTerms, setEditingTerms] = useState(false);
+  const [termsBusy, setTermsBusy] = useState(false);
+  const [termsError, setTermsError] = useState<string | null>(null);
   // Seller's chosen negotiation mode ("choice" = not decided yet).
   //  - "manual": chat with the buyer's AI agent (it auto-replies)
   //  - "fully-manual": human↔human chat; no auto-reply, but a button can summon
@@ -558,6 +599,104 @@ export default function NegotiateRoom() {
         })),
       }
     : { dealId: "", sellerWallet: "", totalAmount: 0, milestones: [] };
+
+  // ── Milestone editor (#9) ────────────────────────────────────────────────
+  //
+  // Terms are editable only while escrow is still off-chain. The server
+  // enforces this too (PATCH rejects term changes outside PRE_ESCROW_STATUSES
+  // with 409) — the x-wallet header is unsigned, so UI gating alone wouldn't
+  // hold. Observers never edit.
+  const termsEditable =
+    !!deal && role !== "observer" && PRE_ESCROW_UI_STATUSES.has(deal.status);
+
+  // Poll messages for the live proposal. Same cadence and endpoint as the
+  // escalation notice; keyed off termsEditable so we stop once terms lock.
+  const proposalMessages = useApi<{ messages?: DbMsg[] }>(
+    termsEditable && dealId ? `/api/messages?deal_id=${dealId}` : null,
+    null,
+    { refreshInterval: POLL_MS }
+  );
+  const refetchProposal = proposalMessages.mutate;
+  const liveProposal = useMemo(
+    () => liveProposalFromMessages(proposalMessages.data?.messages ?? []),
+    [proposalMessages.data]
+  );
+
+  const proposeTerms = useCallback(async (terms: ProposedTerms) => {
+    if (!deal || !wallet) return;
+    setTermsBusy(true);
+    setTermsError(null);
+    try {
+      // A proposal is only a message — the deal row is untouched until the
+      // counterparty accepts. Nothing to roll back if this fails.
+      await apiFetch("/api/messages", {
+        method: "POST",
+        wallet,
+        body: {
+          deal_id: deal.deal_id,
+          role: "user",
+          wallet,
+          content: "Proposed new terms",
+          metadata: { type: "terms_proposal", proposed_by: wallet, terms },
+        },
+      });
+      setEditingTerms(false);
+      await refetchProposal();
+    } catch (error) {
+      setTermsError(error instanceof Error ? error.message : "Could not send the proposal.");
+    } finally {
+      setTermsBusy(false);
+    }
+  }, [deal, wallet, refetchProposal]);
+
+  const resolveProposal = useCallback(async (accept: boolean) => {
+    if (!deal || !wallet || !liveProposal) return;
+    setTermsBusy(true);
+    setTermsError(null);
+    try {
+      if (accept) {
+        // Apply first: if the PATCH is rejected (409 locked, 400 unbalanced)
+        // we must NOT record an acceptance that never took effect.
+        await patchDeal(
+          {
+            total_amount_usdc: liveProposal.terms.totalAmount,
+            milestones: liveProposal.terms.milestones.map((m) => ({
+              description: m.description,
+              amount: m.amount,
+            })),
+          },
+          async () => {
+            await apiFetch(`/api/deals/${deal.deal_id}`, {
+              method: "PATCH",
+              wallet,
+              body: {
+                total_amount_usdc: liveProposal.terms.totalAmount,
+                milestones: liveProposal.terms.milestones,
+              },
+            });
+          }
+        );
+      }
+      await apiFetch("/api/messages", {
+        method: "POST",
+        wallet,
+        body: {
+          deal_id: deal.deal_id,
+          role: "user",
+          wallet,
+          content: accept ? "Accepted the proposed terms" : "Rejected the proposed terms",
+          metadata: { type: "terms_resolution", accepted: accept, resolved_by: wallet },
+        },
+      });
+      await refetchProposal();
+    } catch (error) {
+      setTermsError(
+        error instanceof Error ? error.message : "Could not apply the proposed terms."
+      );
+    } finally {
+      setTermsBusy(false);
+    }
+  }, [deal, wallet, liveProposal, patchDeal, refetchProposal]);
 
   const markDealEscalated = useCallback(async (requestText: string) => {
     if (!deal || !wallet) return false;
@@ -1566,9 +1705,45 @@ export default function NegotiateRoom() {
                 </div>
               </div>
             )}
-            {/* Deal terms */}
+            {/* Terms proposal — either side's pending edit, awaiting approval (#9) */}
+            {liveProposal && !editingTerms && (
+              <TermsProposalCard
+                proposal={liveProposal.terms}
+                current={deal}
+                mine={liveProposal.proposedBy === wallet}
+                busy={termsBusy}
+                onAccept={() => void resolveProposal(true)}
+                onReject={() => void resolveProposal(false)}
+              />
+            )}
+
+            {termsError && (
+              <p className="text-[12px] text-danger px-1">{termsError}</p>
+            )}
+
+            {/* Milestone editor (#9) */}
+            {editingTerms ? (
+              <MilestoneEditor
+                deal={deal}
+                submitting={termsBusy}
+                onCancel={() => { setEditingTerms(false); setTermsError(null); }}
+                onPropose={(terms) => void proposeTerms(terms)}
+              />
+            ) : (
             <div className="surface-card rounded-xl p-5 space-y-4">
-              <p className="text-[13px] text-primary" style={labelStyle}>Deal terms</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[13px] text-primary" style={labelStyle}>Deal terms</p>
+                {/* Hidden while a proposal is pending — two competing edits
+                    would race, and the last PATCH would silently win. */}
+                {termsEditable && !liveProposal && (
+                  <button
+                    onClick={() => { setEditingTerms(true); setTermsError(null); }}
+                    className="text-[12px] text-accent hover:text-accent-hover transition-colors"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>Total value</p>
@@ -1609,6 +1784,7 @@ export default function NegotiateRoom() {
                 </div>
               </div>
             </div>
+            )}
 
             <PartyCard
               label="Buyer"
@@ -1870,6 +2046,260 @@ function RenegotiateModal({
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/* ── Milestone editor (#9) ─────────────────────────────────────────────────
+ *
+ * Direct manipulation of terms during negotiation. Edits are a PROPOSAL, not a
+ * write: the counterparty sees the diff and accepts or rejects. Neither side
+ * can unilaterally rewrite terms the other already agreed to.
+ *
+ * The proposal rides on sealed_messages.metadata rather than a new table — it
+ * gives us the counterparty's view, ordering, and an audit trail for free, and
+ * needs no migration. The newest message with metadata.kind === "terms-proposal"
+ * and no later resolution is the live one.
+ */
+
+type ProposedTerms = { totalAmount: number; milestones: Array<{ description: string; amount: number }> };
+
+/** A milestone row while being edited: amounts are strings so a half-typed
+ *  "1." or "" doesn't collapse to 0 or NaN under the user's cursor. */
+type DraftMilestone = { description: string; amount: string };
+
+function toDraft(milestones: SupabaseMilestone[]): DraftMilestone[] {
+  return (milestones ?? []).map((m) => ({
+    description: m.description ?? "",
+    amount: String(m.amount ?? ""),
+  }));
+}
+
+function MilestoneEditor({
+  deal,
+  onCancel,
+  onPropose,
+  submitting,
+}: {
+  deal: SupabaseDeal;
+  onCancel: () => void;
+  onPropose: (terms: ProposedTerms) => void;
+  submitting: boolean;
+}) {
+  const [rows, setRows] = useState<DraftMilestone[]>(() => toDraft(deal.milestones ?? []));
+  const [totalInput, setTotalInput] = useState(() => String(deal.total_amount_usdc ?? ""));
+
+  const total = parseFloat(totalInput) || 0;
+  const allocated = rows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  const remaining = Math.round((total - allocated) * 100) / 100;
+  const balanced = Math.abs(remaining) < 0.005;
+
+  const blank = rows.some((r) => !r.description.trim());
+  // The server enforces the same sum rule (a mismatch is rejected with 400), so
+  // block here rather than let the user submit into a guaranteed failure.
+  const canPropose = rows.length > 0 && !blank && balanced && total > 0 && !submitting;
+
+  const update = (i: number, key: keyof DraftMilestone, v: string) =>
+    setRows((prev) => prev.map((r, j) => (j === i ? { ...r, [key]: v } : r)));
+
+  const distributeEvenly = () => {
+    if (rows.length === 0 || total <= 0) return;
+    const each = Math.floor((total / rows.length) * 100) / 100;
+    // Give the rounding remainder to the last row so the sum lands exactly on
+    // the total instead of a cent short.
+    const last = Math.round((total - each * (rows.length - 1)) * 100) / 100;
+    setRows((prev) => prev.map((r, i) => ({ ...r, amount: String(i === prev.length - 1 ? last : each) })));
+  };
+
+  return (
+    <div className="surface-card rounded-xl p-5 space-y-4">
+      <div>
+        <p className="text-[13px] text-primary" style={labelStyle}>Edit terms</p>
+        <p className="text-[12px] text-muted mt-0.5">
+          Changes are sent to the other party for approval — nothing updates until they accept.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <p className="text-[11px] text-muted uppercase tracking-[0.06em]" style={labelStyle}>Total value (USDC)</p>
+        <input
+          type="number"
+          value={totalInput}
+          onChange={(e) => setTotalInput(e.target.value)}
+          className="w-32 bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-3 py-2 text-[13px] text-foreground focus:outline-none focus:border-accent/50 transition-colors"
+        />
+      </div>
+
+      <div className="space-y-2">
+        {rows.map((r, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <span className="text-[11px] text-subtle w-4 text-center shrink-0">{i + 1}</span>
+            <input
+              type="text"
+              value={r.description}
+              onChange={(e) => update(i, "description", e.target.value)}
+              placeholder="Milestone description"
+              className="flex-1 min-w-0 bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-3 py-2 text-[13px] text-foreground placeholder:text-subtle focus:outline-none focus:border-accent/50 transition-colors"
+            />
+            <input
+              type="number"
+              value={r.amount}
+              onChange={(e) => update(i, "amount", e.target.value)}
+              placeholder="USDC"
+              className="w-24 shrink-0 bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-3 py-2 text-[13px] text-foreground placeholder:text-subtle focus:outline-none focus:border-accent/50 transition-colors"
+            />
+            {rows.length > 1 && (
+              <button
+                onClick={() => setRows((prev) => prev.filter((_, j) => j !== i))}
+                className="text-subtle hover:text-danger transition-colors shrink-0"
+                aria-label={`Remove milestone ${i + 1}`}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M1 1l10 10M11 1L1 11" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setRows((prev) => [...prev, { description: "", amount: "" }])}
+            disabled={rows.length >= 10}
+            className="text-[12px] text-accent hover:text-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+          >
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M6 1v10M1 6h10" />
+            </svg>
+            Add milestone
+          </button>
+          {!balanced && rows.length > 0 && total > 0 && (
+            <button onClick={distributeEvenly} className="text-[12px] text-muted hover:text-foreground transition-colors">
+              Split evenly
+            </button>
+          )}
+        </div>
+        <span className={`text-[12px] ${balanced ? "text-success" : "text-warning"}`} style={labelStyle}>
+          {balanced
+            ? "✓ Total balanced"
+            : remaining > 0
+            ? `${remaining} USDC unallocated`
+            : `${Math.abs(remaining)} USDC over`}
+        </span>
+      </div>
+
+      {blank && (
+        <p className="text-[12px] text-warning">Every milestone needs a description.</p>
+      )}
+
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          onClick={() =>
+            onPropose({
+              totalAmount: total,
+              milestones: rows.map((r) => ({
+                description: r.description.trim(),
+                amount: Math.round((parseFloat(r.amount) || 0) * 100) / 100,
+              })),
+            })
+          }
+          disabled={!canPropose}
+          className="btn-primary h-9 px-4 rounded-md text-[13px] disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {submitting ? "Sending…" : "Propose changes"}
+        </button>
+        <button onClick={onCancel} disabled={submitting} className="btn-ghost h-9 px-4 rounded-md text-[13px]">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The counterparty's view of an incoming proposal: what changed, accept/reject. */
+function TermsProposalCard({
+  proposal,
+  current,
+  mine,
+  onAccept,
+  onReject,
+  busy,
+}: {
+  proposal: ProposedTerms;
+  current: SupabaseDeal;
+  mine: boolean;
+  onAccept: () => void;
+  onReject: () => void;
+  busy: boolean;
+}) {
+  const before = current.milestones ?? [];
+  const after = proposal.milestones;
+  const totalChanged = Math.abs((current.total_amount_usdc ?? 0) - proposal.totalAmount) > 0.005;
+
+  return (
+    <div className="rounded-lg border border-accent/30 bg-accent/5 p-4 space-y-3">
+      <div>
+        <p className="text-[12px] text-accent uppercase tracking-[0.06em]" style={{ fontWeight: 510 }}>
+          {mine ? "Changes proposed — awaiting their approval" : "Changes proposed"}
+        </p>
+        <p className="text-[12.5px] text-foreground mt-1">
+          {mine
+            ? "You proposed new terms. They apply once the other party accepts."
+            : "The other party proposed new terms. Review the changes below."}
+        </p>
+      </div>
+
+      {totalChanged && (
+        <p className="text-[12.5px] text-foreground">
+          Total{" "}
+          <span className="text-muted line-through">${formatUsdc(current.total_amount_usdc ?? 0)}</span>{" "}
+          → <b>${formatUsdc(proposal.totalAmount)}</b>
+        </p>
+      )}
+
+      <div className="space-y-1">
+        {after.map((m, i) => {
+          const prev = before[i];
+          const isNew = !prev;
+          const descChanged = !isNew && prev.description !== m.description;
+          const amtChanged = !isNew && Math.abs((prev.amount ?? 0) - m.amount) > 0.005;
+          return (
+            <div
+              key={i}
+              className="flex items-center justify-between gap-2 text-[12px] bg-[rgba(255,255,255,0.02)] border border-card-border-subtle rounded-md px-3 py-2"
+            >
+              <span className="truncate min-w-0 text-foreground">
+                <span className="text-subtle mr-1.5">{i + 1}.</span>
+                {m.description}
+                {isNew && <span className="text-accent ml-2 text-[10px] uppercase">new</span>}
+                {descChanged && <span className="text-warning ml-2 text-[10px] uppercase">edited</span>}
+              </span>
+              <span className="font-mono shrink-0">
+                {amtChanged && <span className="text-muted line-through mr-1.5">${formatUsdc(prev.amount ?? 0)}</span>}
+                <span className={amtChanged ? "text-warning" : "text-muted"}>${formatUsdc(m.amount)}</span>
+              </span>
+            </div>
+          );
+        })}
+        {before.length > after.length && (
+          <p className="text-[12px] text-danger">
+            {before.length - after.length} milestone{before.length - after.length === 1 ? "" : "s"} removed
+          </p>
+        )}
+      </div>
+
+      {!mine && (
+        <div className="flex gap-2 pt-1">
+          <button onClick={onAccept} disabled={busy} className="btn-primary h-9 px-4 rounded-md text-[13px] disabled:opacity-40">
+            {busy ? "Applying…" : "Accept changes"}
+          </button>
+          <button onClick={onReject} disabled={busy} className="btn-ghost h-9 px-4 rounded-md text-[13px] disabled:opacity-40">
+            Reject
+          </button>
+        </div>
+      )}
     </div>
   );
 }
