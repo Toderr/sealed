@@ -689,7 +689,11 @@ export default function ActiveDealPage() {
   // refund actions. "Funded" = escrow holds money (funded/in_progress or any
   // milestone released); "unfunded" draft deals can be cancelled instead.
   const dealStatus = (deal?.status ?? "").toLowerCase();
-  const isTerminal = isComplete || dealStatus === "completed" || dealStatus === "refunded";
+  // A refunded deal is finished: escrow was returned, nothing is releasable and
+  // no more proof can be submitted. Tracked separately from "completed" so the
+  // UI can say which ending it was.
+  const isRefunded = dealStatus === "refunded";
+  const isTerminal = isComplete || dealStatus === "completed" || isRefunded;
   const isFunded = ["funded", "in_progress"].includes(dealStatus) || releasedCount > 0;
   const isUnfunded = !isFunded && ["draft", "seller-ready", "seller-agreed", "manual-chat", "escalated", "proposed"].includes(dealStatus);
 
@@ -957,10 +961,23 @@ export default function ActiveDealPage() {
 
         {/* Stat strip */}
         <div className="surface-card grid grid-cols-2 gap-y-4 gap-x-0 sm:grid-cols-4" style={{ borderRadius: 12, padding: 16, marginBottom: 16 }}>
-          <StatBlock first label="Total value" value={`$${totalValue.toLocaleString()}`} sub="USDC" />
-          <StatBlock label="Released" value={`$${releasedValue.toLocaleString()}`} sub={`${releasedCount} of ${milestones.length} milestones`} accent="success" />
+          <StatBlock first label="Total value" value={`$${totalValue.toLocaleString()}`} sub={isRefunded ? "USDC · returned to buyer" : "USDC"} />
+          <StatBlock
+            label="Released"
+            value={`$${releasedValue.toLocaleString()}`}
+            sub={isRefunded
+              ? `${releasedCount} released · rest refunded`
+              : `${releasedCount} of ${milestones.length} milestones`}
+            accent={isRefunded ? undefined : "success"}
+          />
           <StatBlock label="Counterparty" value={counterpartyName} sub={`You as ${role}`} />
-          <StatBlock last label="Status" value={isComplete ? "Completed" : "In progress"} sub="Buyer confirms releases" accent={isComplete ? "success" : "warning"} />
+          <StatBlock
+            last
+            label="Status"
+            value={isRefunded ? "Refunded" : isComplete ? "Completed" : "In progress"}
+            sub={isRefunded ? "Escrow returned to buyer" : "Buyer confirms releases"}
+            accent={isRefunded ? "danger" : isComplete ? "success" : "warning"}
+          />
         </div>
 
         {/* Two-column main. minmax(0, …) tracks (not bare fr) so a long unbroken
@@ -982,7 +999,9 @@ export default function ActiveDealPage() {
                 const isReleased = m.status === "Released";
                 const isInReview = m.status === "In Review";
                 const isPending = !m.status || m.status === "Pending";
-                const isActive = isInReview || (isPending && i === currentMilestoneIndex);
+                // Nothing is "active" on a closed deal — don't highlight a
+                // milestone as the current one after a refund.
+                const isActive = !isTerminal && (isInReview || (isPending && i === currentMilestoneIndex));
                 const proofs = deliverables.filter((d) => d.milestone_index === i);
                 const isFirst = i === 0;
                 const isLast = i === milestones.length - 1;
@@ -1032,9 +1051,18 @@ export default function ActiveDealPage() {
                           <span style={{ fontSize: 11, color: "var(--subtle)", fontWeight: 510, flexShrink: 0 }}>M{i + 1}</span>
                           <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.description}</span>
                           {isReleased && <MiniPill tone="success">Released</MiniPill>}
-                          {isInReview && <MiniPill tone="warning">Awaiting confirm</MiniPill>}
-                          {isPending && i !== currentMilestoneIndex && <MiniPill tone="muted">Pending</MiniPill>}
-                          {m.proof_by && <MiniPill tone="muted">proof: {m.proof_by}</MiniPill>}
+                          {/* On a refunded deal nothing is still "pending" or
+                              "awaiting confirm" — those milestones were cancelled
+                              and their funds went back to the buyer. */}
+                          {isRefunded && !isReleased ? (
+                            <MiniPill tone="muted">Refunded</MiniPill>
+                          ) : (
+                            <>
+                              {isInReview && <MiniPill tone="warning">Awaiting confirm</MiniPill>}
+                              {isPending && i !== currentMilestoneIndex && <MiniPill tone="muted">Pending</MiniPill>}
+                            </>
+                          )}
+                          {m.proof_by && !isRefunded && <MiniPill tone="muted">proof: {m.proof_by}</MiniPill>}
                         </div>
                         <span style={{ fontSize: 13, color: "var(--primary)", fontWeight: 510, fontVariantNumeric: "tabular-nums", fontFamily: "ui-monospace, monospace", flexShrink: 0 }}>
                           ${m.amount.toLocaleString()}
@@ -1138,8 +1166,9 @@ export default function ActiveDealPage() {
                         </div>
                       )}
 
-                      {/* Buyer: confirm CTA */}
-                      {role === "buyer" && isInReview && (
+                      {/* Buyer: confirm CTA. Hidden once the deal is terminal —
+                          a refunded/completed deal has nothing left to release. */}
+                      {!isTerminal && role === "buyer" && isInReview && (
                         <div className="anim-fade-up" style={{ marginTop: 12, display: "flex", gap: 8 }}>
                           <button
                             className="btn-ghost"
@@ -1177,7 +1206,7 @@ export default function ActiveDealPage() {
                       {/* The party RESPONSIBLE for this milestone's proof uploads
                           it (#11): seller by default, buyer when proof_by==="buyer"
                           (e.g. "buyer confirms receipt"). Release stays buyer-only. */}
-                      {role === (m.proof_by === "buyer" ? "buyer" : "seller") && (isPending || isInReview) && i === currentMilestoneIndex && (
+                      {!isTerminal && role === (m.proof_by === "buyer" ? "buyer" : "seller") && (isPending || isInReview) && i === currentMilestoneIndex && (
                         <div style={{ marginTop: 10 }}>
                           <input
                             type="file"
@@ -1478,6 +1507,23 @@ export default function ActiveDealPage() {
               </p>
             </div>
 
+            {/* Refunded — replace the actions panel with a clear closing state so
+                the page doesn't still read like an open deal. */}
+            {isRefunded && (
+              <div className="surface-card" style={{ borderRadius: 12, padding: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--danger)" }}>
+                    <polyline points="9 14 4 9 9 4" />
+                    <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+                  </svg>
+                  <p style={{ fontSize: 13, color: "var(--primary)", fontWeight: 590, margin: 0 }}>Deal refunded</p>
+                </div>
+                <p style={{ fontSize: 11, color: "var(--muted)", margin: 0, lineHeight: 1.5 }}>
+                  Both parties approved a mutual refund. The unreleased escrow was returned to the buyer and this deal is closed — no further proof, releases or refunds are possible.
+                </p>
+              </div>
+            )}
+
             {/* Refund / dispute — shown to the two parties on non-terminal deals */}
             {role !== "observer" && !isTerminal && (
               <div className="surface-card" style={{ borderRadius: 12, padding: 16 }}>
@@ -1499,8 +1545,9 @@ export default function ActiveDealPage() {
                     </button>
                   )}
 
-                  {/* Buyer + funded → timeout refund (ghost-seller escape hatch) */}
-                  {role === "buyer" && isFunded && (
+                  {/* Buyer + funded → timeout refund (ghost-seller escape hatch).
+                      Not offered once the deal is terminal — escrow is empty. */}
+                  {!isTerminal && role === "buyer" && isFunded && (
                     <button
                       className="btn-ghost"
                       disabled={refunding}
@@ -1515,8 +1562,8 @@ export default function ActiveDealPage() {
                   {/* Mutual refund — two-step approval. Either party approves in
                       their own transaction; the escrow returns to the buyer on the
                       approval that completes the pair. Only meaningful once escrow
-                      actually holds funds. */}
-                  {isFunded && (
+                      actually holds funds AND the deal hasn't already ended. */}
+                  {!isTerminal && isFunded && (
                     <>
                       {myRefundApproved ? (
                         <div style={{ padding: "10px 12px", borderRadius: 8, background: "rgba(245,166,35,0.06)", border: "1px solid rgba(245,166,35,0.25)" }}>
@@ -1688,8 +1735,12 @@ function ExternalLinkIcon() {
   );
 }
 
-function StatBlock({ label, value, sub, accent, first, last }: { label: string; value: string; sub: string; accent?: "success" | "warning"; first?: boolean; last?: boolean }) {
-  const color = accent === "success" ? "var(--success)" : accent === "warning" ? "var(--warning)" : "var(--primary)";
+function StatBlock({ label, value, sub, accent, first, last }: { label: string; value: string; sub: string; accent?: "success" | "warning" | "danger"; first?: boolean; last?: boolean }) {
+  const color =
+    accent === "success" ? "var(--success)"
+    : accent === "warning" ? "var(--warning)"
+    : accent === "danger" ? "var(--danger)"
+    : "var(--primary)";
   // On mobile the strip wraps to 2×2, so the single-row divider + asymmetric
   // first/last padding would land mid-grid — use plain per-cell padding there.
   // At ≥sm it's one 4-wide row again: first cell flush-left, last flush-right,
