@@ -225,11 +225,15 @@ async function fetchCounterpartyProfileMap(wallets: string[]) {
   return Object.fromEntries(entries.filter(Boolean) as Array<readonly [string, CounterpartyProfile]>);
 }
 
-type SelfProfileTab = "overview" | "agent" | "reviews" | "friends" | "settings";
+type SelfProfileTab = "overview" | "reviews" | "friends" | "settings";
 
 function readRequestedTab(searchParams: { get(name: string): string | null }): SelfProfileTab {
   const tab = searchParams.get("tab");
-  return tab === "agent" || tab === "reviews" || tab === "friends" || tab === "settings" ? tab : "overview";
+  // Agent Setup moved under Settings (#12) — keep existing ?tab=agent links
+  // working by resolving them to the Settings tab instead of dropping to
+  // Overview.
+  if (tab === "agent") return "settings";
+  return tab === "reviews" || tab === "friends" || tab === "settings" ? tab : "overview";
 }
 
 export function SelfProfilePage() {
@@ -491,7 +495,7 @@ export function SelfProfilePageContent() {
     profile.llmConfig?.mode === "x402" ? profile.llmConfig.balance : null;
 
   return (
-    <Shell activeTab={activeTab}>
+    <Shell>
       <div className="flex-1 overflow-auto">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
           <div className="flex flex-col lg:flex-row gap-6">
@@ -577,7 +581,7 @@ export function SelfProfilePageContent() {
                     </div>
                   ) : (
                     <Link
-                      href={`/profile/${wallet}?tab=agent`}
+                      href={`/profile/${wallet}?tab=settings`}
                       className="text-[12px] text-warning hover:text-accent transition-colors"
                     >
                       No LLM configured — set up now →
@@ -585,7 +589,7 @@ export function SelfProfilePageContent() {
                   )}
                   {profile.llmConfig?.mode === "x402" && (
                     <Link
-                      href={`/profile/${wallet}?tab=agent`}
+                      href={`/profile/${wallet}?tab=settings`}
                       className="flex items-center gap-1 text-[11px] text-muted hover:text-accent transition-colors"
                     >
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -616,9 +620,10 @@ export function SelfProfilePageContent() {
                 <VerifiedAccountBanner />
               )}
 
-              {/* Tab bar */}
+              {/* Tab bar — "Agent Setup" is no longer its own tab (#12); its
+                  content now lives under Settings. */}
               <div className="flex gap-0.5 border-b border-card-border-subtle">
-                {(["overview", "agent", "reviews", "friends", "settings"] as const).map((tab) => (
+                {(["overview", "reviews", "friends", "settings"] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => selectTab(tab)}
@@ -629,7 +634,7 @@ export function SelfProfilePageContent() {
                     }`}
                     style={{ fontWeight: activeTab === tab ? 590 : 400 }}
                   >
-                    {tab === "agent" ? "Agent Setup" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
                   </button>
                 ))}
               </div>
@@ -721,16 +726,13 @@ export function SelfProfilePageContent() {
                 </>
               )}
 
-              {/* Agent Setup tab */}
-              {activeTab === "agent" && <AgentSetupTab wallet={wallet} />}
-
               {/* Reviews tab (N7) — your own reviews, reachable from your profile */}
               {activeTab === "reviews" && <SelfReviewsTab wallet={wallet} />}
 
               {/* Friends tab */}
               {activeTab === "friends" && <FriendsTab wallet={wallet} />}
 
-              {/* Settings tab */}
+              {/* Settings tab — now hosts Agent Setup too (#12) */}
               {activeTab === "settings" && <SettingsTab wallet={wallet} />}
             </main>
           </div>
@@ -769,26 +771,19 @@ export function SelfProfilePageContent() {
 /* Shell                                                                */
 /* ------------------------------------------------------------------ */
 
-function Shell({
-  children,
-  activeTab = "overview",
-}: {
-  children: React.ReactNode;
-  activeTab?: SelfProfileTab;
-}) {
+function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <ProfileHeader activeTab={activeTab} />
+      <ProfileHeader />
       <div className="flex-1 flex flex-col">{children}</div>
     </div>
   );
 }
 
-function ProfileHeader({ activeTab }: { activeTab: SelfProfileTab }) {
+function ProfileHeader() {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
   const profileHref = wallet ? `/profile/${wallet}` : "/profile";
-  const agentHref = wallet ? `/profile/${wallet}?tab=agent` : "/profile";
 
   return (
     <header className="flex items-center justify-between px-4 sm:px-6 h-14 border-b border-card-border-subtle bg-panel">
@@ -805,10 +800,9 @@ function ProfileHeader({ activeTab }: { activeTab: SelfProfileTab }) {
           </NavLink>
           {/* "New Deal" removed from the nav here — the profile deals section
               already has a "+ New deal" button, so this was redundant (#7). */}
-          <NavLink href={agentHref} active={activeTab === "agent"}>
-            Agent
-          </NavLink>
-          <NavLink href={profileHref} active={activeTab !== "agent"}>
+          {/* "Agent" removed from the nav (#13) — agent setup now lives under
+              Profile → Settings. */}
+          <NavLink href={profileHref} active>
             Profile
           </NavLink>
         </nav>
@@ -1983,6 +1977,9 @@ function SettingsTab({ wallet }: { wallet: string }) {
     deal_accepted: true,
     deal_declined: true,
     new_deal_invite: true,
+    renegotiation_escalated: true,
+    friend_request: true,
+    friend_request_accepted: true,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -2038,12 +2035,27 @@ function SettingsTab({ wallet }: { wallet: string }) {
     deal_accepted: "Deal accepted by counterparty",
     deal_declined: "Deal declined by counterparty",
     new_deal_invite: "New deal invite received",
+    renegotiation_escalated: "Renegotiation escalated",
+    friend_request: "New friend request",
+    friend_request_accepted: "Friend request accepted",
   };
 
-  if (loading) return <div className="text-[13px] text-muted">Loading settings…</div>;
+  // Only the notification/email cards below depend on the fetch — render agent
+  // setup immediately so it isn't gated behind this tab's loading state.
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <AgentSetupTab wallet={wallet} />
+        <div className="text-[13px] text-muted">Loading settings…</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      {/* Agent setup — moved here from its own top-level tab (#12). */}
+      <AgentSetupTab wallet={wallet} />
+
       {/* Email section */}
       <div className="surface-card rounded-xl p-5 space-y-4">
         <div>
@@ -2124,7 +2136,7 @@ function SettingsTab({ wallet }: { wallet: string }) {
             <label key={key} className="flex items-center justify-between gap-4 cursor-pointer">
               <span className="text-[13px] text-foreground">{NOTIFY_LABELS[key]}</span>
               <Toggle
-                checked={notifyPrefs[key]}
+                checked={notifyPrefs[key] ?? false}
                 onChange={(v) => setNotifyPrefs({ ...notifyPrefs, [key]: v })}
                 label={NOTIFY_LABELS[key]}
               />

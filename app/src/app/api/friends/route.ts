@@ -1,6 +1,7 @@
 import { supabase, table } from "@/lib/supabase";
 import { getPublicProfile, getUserByHandle } from "@/lib/sealed-users";
 import { requireWallet } from "@/lib/auth";
+import { queueNotification } from "@/lib/notify";
 import { HttpError, json, withRoute, isMissingTableError } from "@/lib/api-error";
 
 type FriendRow = {
@@ -14,6 +15,36 @@ type FriendRow = {
 async function enrichRow(row: FriendRow, cpWallet: string) {
   const profile = await getPublicProfile(cpWallet).catch(() => null);
   return { ...row, counterpartyWallet: cpWallet, profile };
+}
+
+/** Best-effort friend notification. A queue failure must never fail the friend
+ *  request itself — the row is already written by the time we get here.
+ *  Mirrors the deal PATCH handler's renegotiation_escalated call. */
+async function notifyFriendEvent(
+  recipientWallet: string,
+  senderWallet: string,
+  eventType: "friend_request" | "friend_request_accepted"
+) {
+  try {
+    const sender = await getPublicProfile(senderWallet).catch(() => null);
+    const senderName =
+      sender?.display_name?.trim() ||
+      (sender?.handle ? `@${sender.handle}` : null) ||
+      `${senderWallet.slice(0, 4)}…${senderWallet.slice(-4)}`;
+
+    const message =
+      eventType === "friend_request"
+        ? `${senderName} sent you a friend request.`
+        : `${senderName} accepted your friend request.`;
+
+    await queueNotification(recipientWallet, eventType, {
+      from_wallet: senderWallet,
+      message,
+      href: `/profile/${senderWallet}`,
+    });
+  } catch (error) {
+    console.error(`Failed to queue ${eventType} notification`, error);
+  }
 }
 
 export const GET = withRoute(async (req) => {
@@ -83,6 +114,9 @@ export const POST = withRoute(async (req) => {
       .from(table("friends"))
       .update({ status: "accepted" })
       .eq("id", reverse.id);
+    // Their pending request just became a friendship — tell them it was accepted
+    // rather than sending a "friend request" back to the original requester.
+    await notifyFriendEvent(friendWalletValue, wallet, "friend_request_accepted");
     return json({ ok: true, status: "accepted" });
   }
 
@@ -121,5 +155,10 @@ export const POST = withRoute(async (req) => {
     }
     throw new HttpError(500, error.message);
   }
+
+  // Best-effort: the request row is committed above, so a notify failure is
+  // logged and swallowed rather than surfaced as a failed friend request.
+  await notifyFriendEvent(friendWalletValue, wallet, "friend_request");
+
   return json({ ok: true, status: "pending", id: data.id });
 });

@@ -45,6 +45,7 @@ const TIMEOUT_SECONDS = 30 * 24 * 60 * 60;
 // route; large files should move to a direct-to-Storage signed upload.)
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
+type FriendStatus = "none" | "friends" | "outgoing" | "incoming" | "self";
 type Milestone = { description: string; amount: number; status?: string };
 type DbMsg = {
   id: string;
@@ -173,6 +174,61 @@ export default function ActiveDealPage() {
   // the rules of hooks; safe when deal is still null.
   const counterpartyWallet = role === "buyer" ? deal?.seller_wallet : deal?.buyer_wallet;
   const counterpartyName = useDisplayName(counterpartyWallet || null);
+
+  // Friendship state with the counterparty (#16). Mirrors the public profile
+  // page: /api/friends/status?with=<wallet> returns
+  // "none" | "friends" | "outgoing" | "incoming" | "self".
+  const [friendStatus, setFriendStatus] = useState<FriendStatus | null>(null);
+  const [friendLoading, setFriendLoading] = useState(false);
+
+  // Only meaningful for a real counterparty — never for yourself or an observer.
+  const canAddFriend =
+    role !== "observer" && !!wallet && !!counterpartyWallet && counterpartyWallet !== wallet;
+
+  useEffect(() => {
+    if (!canAddFriend) {
+      setFriendStatus(null);
+      return;
+    }
+    let cancelled = false;
+    apiFetchSafe<{ status?: FriendStatus }>(
+      `/api/friends/status?with=${counterpartyWallet}`,
+      { wallet: wallet ?? "" },
+      {}
+    ).then((d) => {
+      if (!cancelled && d.status) setFriendStatus(d.status);
+    });
+    return () => { cancelled = true; };
+  }, [canAddFriend, counterpartyWallet, wallet]);
+
+  async function handleAddFriend() {
+    if (!canAddFriend || !counterpartyWallet || friendStatus !== "none") return;
+    setFriendLoading(true);
+    try {
+      const d = await apiFetch<{ status?: string }>("/api/friends", {
+        method: "POST",
+        wallet: wallet ?? "",
+        body: { friendWallet: counterpartyWallet },
+      });
+      // "accepted"/"already_friends" → we're friends; "pending" → request sent.
+      const next =
+        d.status === "accepted" || d.status === "already_friends" ? "friends" : "outgoing";
+      setFriendStatus(next);
+      toast.show({
+        variant: "success",
+        title: next === "friends"
+          ? `You and ${counterpartyName} are now friends.`
+          : `Friend request sent to ${counterpartyName}.`,
+      });
+    } catch (e) {
+      toast.show({
+        variant: "error",
+        title: e instanceof ApiError ? e.message : "Could not send the friend request. Please try again.",
+      });
+    } finally {
+      setFriendLoading(false);
+    }
+  }
 
   const milestones = deal?.milestones ?? [];
   const releasedCount = milestones.filter((m) => m.status === "Released").length;
@@ -970,7 +1026,68 @@ export default function ActiveDealPage() {
               : `${releasedCount} of ${milestones.length} milestones`}
             accent={isRefunded ? undefined : "success"}
           />
-          <StatBlock label="Counterparty" value={counterpartyName} sub={`You as ${role}`} />
+          <StatBlock
+            label="Counterparty"
+            value={counterpartyName}
+            sub={`You as ${role}`}
+            action={
+              canAddFriend && friendStatus && friendStatus !== "self" ? (
+                friendStatus === "friends" ? (
+                  // Already friends — no action to offer, just a quiet indicator.
+                  <span style={{ marginTop: 8, fontSize: 11, color: "var(--success)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Friends
+                  </span>
+                ) : friendStatus === "incoming" ? (
+                  // They already asked us. Accepting lives on the profile page —
+                  // link there rather than showing a dead disabled button.
+                  <Link
+                    href={`/profile/${counterpartyWallet}`}
+                    className="btn-ghost"
+                    style={{
+                      marginTop: 8,
+                      height: 26,
+                      padding: "0 10px",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      textDecoration: "none",
+                    }}
+                  >
+                    Accept request
+                  </Link>
+                ) : (
+                  <button
+                    onClick={handleAddFriend}
+                    disabled={friendLoading || friendStatus === "outgoing"}
+                    className="btn-ghost"
+                    style={{
+                      marginTop: 8,
+                      height: 26,
+                      padding: "0 10px",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      cursor: friendLoading || friendStatus === "outgoing" ? "default" : "pointer",
+                      opacity: friendStatus === "outgoing" ? 0.7 : 1,
+                    }}
+                  >
+                    {friendStatus === "outgoing"
+                      ? "Request sent"
+                      : friendLoading
+                      ? "Sending…"
+                      : "Add friend"}
+                  </button>
+                )
+              ) : undefined
+            }
+          />
           <StatBlock
             last
             label="Status"
@@ -1735,7 +1852,7 @@ function ExternalLinkIcon() {
   );
 }
 
-function StatBlock({ label, value, sub, accent, first, last }: { label: string; value: string; sub: string; accent?: "success" | "warning" | "danger"; first?: boolean; last?: boolean }) {
+function StatBlock({ label, value, sub, accent, first, last, action }: { label: string; value: string; sub: string; accent?: "success" | "warning" | "danger"; first?: boolean; last?: boolean; action?: React.ReactNode }) {
   const color =
     accent === "success" ? "var(--success)"
     : accent === "warning" ? "var(--warning)"
@@ -1756,6 +1873,7 @@ function StatBlock({ label, value, sub, accent, first, last }: { label: string; 
       <p style={{ fontSize: 11, color: "var(--muted)", margin: 0, fontWeight: 510, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</p>
       <p style={{ fontSize: 18, fontWeight: 590, color, margin: "6px 0 1px", letterSpacing: "-0.015em", fontVariantNumeric: "tabular-nums" }}>{value}</p>
       <p style={{ fontSize: 11, color: "var(--subtle)", margin: 0 }}>{sub}</p>
+      {action}
     </div>
   );
 }

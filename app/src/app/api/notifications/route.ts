@@ -198,6 +198,9 @@ function eventTitle(eventType: string) {
     deal_accepted: "Deal accepted",
     deal_declined: "Deal declined",
     new_deal_invite: "New deal invite",
+    renegotiation_escalated: "Renegotiation escalated",
+    friend_request: "New friend request",
+    friend_request_accepted: "Friend request accepted",
   };
   return titles[eventType] ?? "Sealed notification";
 }
@@ -209,6 +212,9 @@ function eventBody(eventType: string) {
     deal_accepted: "Your counterparty accepted the deal terms.",
     deal_declined: "Your counterparty declined the deal.",
     new_deal_invite: "Someone invited you to a deal.",
+    renegotiation_escalated: "Your counterparty reopened the terms on a deal.",
+    friend_request: "Someone sent you a friend request.",
+    friend_request_accepted: "Someone accepted your friend request.",
   };
   return bodies[eventType] ?? "You have an update in Sealed Agent.";
 }

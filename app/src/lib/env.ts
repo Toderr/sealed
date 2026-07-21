@@ -41,3 +41,12 @@ export const FEATURE_X402 = process.env.NEXT_PUBLIC_FEATURE_X402 === "true";
 // flow is built — don't accept live verification submissions in prod meanwhile.
 export const FEATURE_GET_VERIFIED =
   process.env.NEXT_PUBLIC_FEATURE_GET_VERIFIED === "true";
+
+// Standalone "chat with the agent" surfaces (#4 / #19) — the free-form agent
+// chat entry points, hidden while the agent matures. This gates ONLY the
+// standalone chat surfaces (the nav's Agent tab, the agent-settings modal
+// shortcut). It deliberately does NOT gate the New Deal composer: the deal
+// drafting chat is the only way to create a deal, so hiding it would block the
+// core flow.
+export const FEATURE_AGENT_CHAT =
+  process.env.NEXT_PUBLIC_FEATURE_AGENT_CHAT === "true";

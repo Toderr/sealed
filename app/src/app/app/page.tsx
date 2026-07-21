@@ -4,7 +4,6 @@ import { Suspense, useMemo, useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import ChatInterface, { PartialDeal } from "@/components/ChatInterface";
-import SettingsModal from "@/components/SettingsModal";
 import { useToast } from "@/components/Toast";
 import { NotificationMenu } from "@/components/NotificationMenu";
 import { useProfileStore } from "@/lib/profile-store";
@@ -18,7 +17,7 @@ import { PublicKey } from "@solana/web3.js";
 import { buildEnsureAtaIx, buildReleaseMilestoneIx, getUsdcMint, sendTx, fetchFeeConfig } from "@/lib/escrow-client";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { escrowAccountUrl } from "@/lib/explorer";
-import { MOCK_CHAIN } from "@/lib/env";
+import { MOCK_CHAIN, FEATURE_AGENT_CHAT } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
 import { retryWrite } from "@/lib/retry-write";
@@ -103,7 +102,6 @@ export default function Home() {
 }
 
 function HomeContent() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [livePartial, setLivePartial] = useState<PartialDeal | null>(null);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [liveDeal, setLiveDeal] = useState<DealParams | null>(null);
@@ -315,7 +313,7 @@ function HomeContent() {
       <SealedBackdrop />
 
       {/* App Header */}
-      <AppHeader onOpenSettings={() => setSettingsOpen(true)} />
+      <AppHeader />
 
       <main className="flex-1 overflow-hidden" style={{ position: "relative", zIndex: 1 }}>
         <DealsBoldBoard
@@ -325,27 +323,23 @@ function HomeContent() {
           composer={composer}
         />
       </main>
-
-      {settingsOpen && (
-        <SettingsModal onClose={() => setSettingsOpen(false)} />
-      )}
     </div>
   );
 }
 
 /* ── AppHeader ── */
-function AppHeader({
-  onOpenSettings,
-}: {
-  onOpenSettings: () => void;
-}) {
+function AppHeader() {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
 
   // "New Deal" is no longer a tab — it opens the inline composer on the board.
+  // The "Agent" tab is gated behind FEATURE_AGENT_CHAT (#13/#19); when off,
+  // agent setup is reachable via Profile → Settings instead.
   const tabs: { id: string; label: string; href?: string }[] = [
     { id: "deals", label: "Deals", href: "/app" },
-    { id: "agent", label: "Agent", href: wallet ? `/profile/${wallet}?tab=agent` : "/profile" },
+    ...(FEATURE_AGENT_CHAT
+      ? [{ id: "agent", label: "Agent", href: wallet ? `/profile/${wallet}?tab=agent` : "/profile" }]
+      : []),
     { id: "profile", label: "Profile", href: wallet ? `/profile/${wallet}` : "/profile" },
   ];
 
@@ -393,29 +387,10 @@ function AppHeader({
         </nav>
       </div>
 
+      {/* The gear/agent-settings icon that sat left of the account was removed
+          (#21). Agent settings live under Profile → Settings. */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <NotificationMenu wallet={wallet} />
-        <button
-          onClick={onOpenSettings}
-          style={{
-            height: 30,
-            padding: "0 10px",
-            borderRadius: 6,
-            color: "var(--muted)",
-            fontSize: 12,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            background: "transparent",
-            border: 0,
-            cursor: "pointer",
-          }}
-          aria-label="Agent settings"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </button>
         {wallet ? <WalletMenu /> : <WalletMultiButton />}
       </div>
     </header>
