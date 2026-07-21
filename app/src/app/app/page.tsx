@@ -843,6 +843,10 @@ function DealDetailPanelBody({
 
   const done = milestones.filter((m) => isMilestoneDone(m.status)).length;
   const status = inferDealStatus({ ...deal, milestones });
+  // A refunded/completed deal is closed: escrow is empty, so no proof upload or
+  // release is possible. Without this the panel kept offering both.
+  const isRefunded = (deal.status ?? "").toLowerCase() === "refunded";
+  const isTerminal = isRefunded || status === "completed";
   const releasedAmount = milestones
     .filter((m) => isMilestoneDone(m.status))
     .reduce((s, m) => s + (m.amount || 0), 0);
@@ -962,7 +966,7 @@ function DealDetailPanelBody({
             <div style={{ fontSize: 15, fontWeight: 590, color: "var(--primary)", fontFamily: "ui-monospace, monospace", marginTop: 2 }}>${formatUsdc(deal.total_amount_usdc)} USDC</div>
           </div>
           <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: 10, border: "1px solid var(--card-border)" }}>
-            <div style={{ fontSize: 11, color: "var(--muted)" }}>Released</div>
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>{isRefunded ? "Released · rest refunded" : "Released"}</div>
             <div style={{ fontSize: 15, fontWeight: 590, color: "var(--success)", fontFamily: "ui-monospace, monospace", marginTop: 2 }}>${formatUsdc(releasedAmount)} USDC</div>
           </div>
         </div>
@@ -982,11 +986,15 @@ function DealDetailPanelBody({
                 <div key={i} style={{ padding: "10px 12px", background: "var(--surface)", borderRadius: 9, border: "1px solid var(--card-border)" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                     <span style={{ fontSize: 12, color: "var(--foreground)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i + 1}. {m.description}</span>
-                    <span style={{ fontSize: 11, color: isReleased ? "var(--success)" : isInReview ? "var(--warning)" : "var(--muted)", flexShrink: 0 }}>{m.status || "Pending"}</span>
+                    <span style={{ fontSize: 11, color: isReleased ? "var(--success)" : isInReview ? "var(--warning)" : "var(--muted)", flexShrink: 0 }}>
+                      {/* A refunded deal has no pending work — those milestones
+                          were cancelled and their funds went back to the buyer. */}
+                      {isRefunded && !isReleased ? "Refunded" : (m.status || "Pending")}
+                    </span>
                   </div>
 
                   {/* Seller: upload proof for the current pending milestone */}
-                  {role === "seller" && isCurrent && !isReleased && !isInReview && (
+                  {!isTerminal && role === "seller" && isCurrent && !isReleased && !isInReview && (
                     <>
                       <input
                         ref={(el) => { fileRefs.current[i] = el; }}
@@ -1005,7 +1013,7 @@ function DealDetailPanelBody({
                   )}
 
                   {/* Buyer: release the milestone once proof is in review */}
-                  {role === "buyer" && isInReview && (
+                  {!isTerminal && role === "buyer" && isInReview && (
                     confirmRelease === i ? (
                       <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
                         <button onClick={() => handleRelease(i)} disabled={working} className="btn-primary" style={{ flex: 1, height: 32, borderRadius: 7, fontSize: 12 }}>
