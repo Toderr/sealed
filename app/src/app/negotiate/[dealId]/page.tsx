@@ -1140,6 +1140,15 @@ export default function NegotiateRoom() {
 
   const roomStatusLabel = dealStatusLabel(deal.status);
 
+  // Whether the right-hand conversation column renders. Hidden before a
+  // counterparty exists (nothing to converse with), and in the seller's manual
+  // modes where ManualNegotiationPanel already IS the chat — showing both
+  // stacked two transcripts on top of each other. Drives the left column's
+  // span too, so the two can't disagree.
+  const showConversation =
+    !!deal.seller_wallet &&
+    !(role === "seller" && (sellerView === "manual" || sellerView === "fully-manual"));
+
   return (
     <Shell>
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
@@ -1178,13 +1187,17 @@ export default function NegotiateRoom() {
           </div>
         )}
 
-        {/* Chat takes the primary (wider) column; deal terms + parties sit in the
-            right sidebar so the negotiation conversation has room (bug #16). */}
+        {/* The live conversation owns the right column; everything about the
+            deal — your negotiation actions, terms, milestones, parties — sits
+            together on the left (#20). Chat gets the wider 2/3 track so a long
+            transcript stays readable. */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: conversation + negotiation */}
-          <div className="lg:col-span-2 space-y-4">
-            {/* Negotiation panel — placed above the chat so the conversation
-                box below has more room (layout fix). */}
+          {/* Left: negotiation actions + deal terms + parties. Spans the full
+              grid when the chat is hidden, so the column doesn't sit in a 1/3
+              track with two-thirds of the row empty. */}
+          <div className={`space-y-4 ${showConversation ? "" : "lg:col-span-3"}`}>
+            {/* Negotiation actions — mode choice, agent progress, accept /
+                renegotiate. Heads the left column, above the deal terms. */}
             <div className="surface-card rounded-xl overflow-hidden">
               {negState.kind === "idle" && (
                 <>
@@ -1515,11 +1528,6 @@ export default function NegotiateRoom() {
               )}
             </div>
 
-            {/* Shared conversation view — buyer always, seller only in non-manual mode */}
-            {!!deal.seller_wallet && !(role === "seller" && sellerView === "manual") && (
-              <ConversationView dealId={deal.deal_id} buyerView={role === "buyer"} myWallet={wallet} />
-            )}
-
             {/* Invite counterparty (buyer only, no seller yet) */}
             {awaitingCounterparty && deal.status === "draft" && inviteLink && (
               <div className="surface-card rounded-xl p-5 space-y-4">
@@ -1558,10 +1566,6 @@ export default function NegotiateRoom() {
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Right: deal terms + parties */}
-          <div className="space-y-4">
             {/* Deal terms */}
             <div className="surface-card rounded-xl p-5 space-y-4">
               <p className="text-[13px] text-primary" style={labelStyle}>Deal terms</p>
@@ -1621,6 +1625,13 @@ export default function NegotiateRoom() {
               handle={wallet === deal.seller_wallet ? (profile?.name ?? null) : cpHandle}
             />
           </div>
+
+          {/* Right: the live conversation, on the wider 2/3 track. */}
+          {showConversation && (
+            <div className="lg:col-span-2">
+              <ConversationView dealId={deal.deal_id} buyerView={role === "buyer"} myWallet={wallet} />
+            </div>
+          )}
         </div>
       </div>
 
