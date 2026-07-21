@@ -123,9 +123,14 @@ function buildEmailContent(
 ): { subject: string; html: string } {
   const dealId = payload.deal_id as string | undefined;
   const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  // Renegotiation reopens terms in the negotiate room; other deal events go to
-  // the review page. Fall back to the board when there's no deal id.
-  const ctaUrl = dealId
+  // An explicit href on the payload wins (non-deal events like friend requests
+  // point at a profile, not a deal). Otherwise: renegotiation reopens terms in
+  // the negotiate room; other deal events go to the review page. Fall back to
+  // the board when there's no deal id.
+  const href = typeof payload.href === "string" ? payload.href : null;
+  const ctaUrl = href
+    ? `${base}${href}`
+    : dealId
     ? eventType === "renegotiation_escalated"
       ? `${base}/negotiate/${dealId}`
       : `${base}/deals/${dealId}/review`
@@ -155,6 +160,14 @@ function buildEmailContent(
     renegotiation_escalated: {
       subject: "Renegotiation requested — Sealed Agent",
       body: "Your counterparty reopened the terms on a deal. Review the requested changes and respond in the negotiation room.",
+    },
+    friend_request: {
+      subject: "New friend request — Sealed Agent",
+      body: (payload.message as string | undefined) ?? "Someone sent you a friend request on Sealed Agent.",
+    },
+    friend_request_accepted: {
+      subject: "Friend request accepted — Sealed Agent",
+      body: (payload.message as string | undefined) ?? "Someone accepted your friend request on Sealed Agent.",
     },
   };
 

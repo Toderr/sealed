@@ -202,6 +202,11 @@ export interface NotificationPrefs {
   deal_accepted: boolean;
   deal_declined: boolean;
   new_deal_invite: boolean;
+  // Added after the initial schema — optional so rows written before the
+  // corresponding migration (which backfills the keys) still typecheck.
+  renegotiation_escalated?: boolean;
+  friend_request?: boolean;
+  friend_request_accepted?: boolean;
 }
 
 export interface SealedUser {
