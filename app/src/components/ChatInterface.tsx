@@ -572,19 +572,19 @@ export default function ChatInterface({
             </div>
             <p style={{ fontSize: 16, fontWeight: 600, color: "var(--primary)", margin: "0 0 6px" }}>Set up your AI agent first</p>
             <p style={{ fontSize: 13.5, color: "var(--muted)", margin: "0 0 20px", lineHeight: 1.55 }}>
-              Your agent needs an AI provider before it can draft deals. Add your own API key (OpenAI, Anthropic, Groq, and more) on the Agent Setup page — it takes a minute.
+              Your agent needs an AI provider before it can draft deals. Add your own API key (OpenAI, Anthropic, Groq, and more) under Profile → Settings — it takes a minute.
             </p>
             <div style={{ display: "flex", gap: 8 }}>
               <button className="btn-ghost" onClick={() => setAgentConfigError(false)} style={{ height: 40, borderRadius: 9, fontSize: 13, flex: "0 0 auto", padding: "0 16px" }}>
                 Not now
               </button>
               <Link
-                href={wallet ? `/profile/${wallet}?tab=agent` : "/profile"}
+                href={wallet ? `/profile/${wallet}?tab=settings` : "/profile"}
                 className="btn-primary"
                 style={{ height: 40, borderRadius: 9, fontSize: 13, flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontWeight: 510, textDecoration: "none" }}
               >
                 <Settings size={14} aria-hidden="true" />
-                Go to Agent Setup
+                Go to agent settings
               </Link>
             </div>
           </div>

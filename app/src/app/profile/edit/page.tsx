@@ -125,7 +125,7 @@ export default function EditProfilePage() {
       <main style={{ maxWidth: 680, margin: "0 auto", padding: "32px 20px 80px", position: "relative", zIndex: 1 }}>
         <h1 className="text-[22px] text-primary" style={{ fontWeight: 590, letterSpacing: "-0.02em", margin: "0 0 4px" }}>Edit your identity</h1>
         <p className="text-[13px] text-muted" style={{ margin: "0 0 24px" }}>
-          Update how counterparties see you. Your agent settings live on the <Link href={`/profile/${wallet}?tab=agent`} style={{ color: "var(--accent)" }}>Agent Setup</Link> tab.
+          Update how counterparties see you. Your agent settings live on the <Link href={`/profile/${wallet}?tab=settings`} style={{ color: "var(--accent)" }}>Settings</Link> tab.
         </p>
 
         <div className="surface-card" style={{ borderRadius: 12, padding: 22, display: "flex", flexDirection: "column", gap: 18 }}>

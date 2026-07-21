@@ -14,7 +14,8 @@ export default function AgentSettingsRedirectPage() {
 
   useEffect(() => {
     if (!wallet) return;
-    router.replace(`/profile/${wallet}?tab=agent`);
+    // Agent setup moved under Profile → Settings (#12).
+    router.replace(`/profile/${wallet}?tab=settings`);
   }, [router, wallet]);
 
   return (
