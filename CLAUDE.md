@@ -49,7 +49,8 @@ solana program deploy target/deploy/escrow.so  # Manual deploy
 Sealed uses Supabase for off-chain context only. On-chain remains the source of truth for deal state, escrow balances, and fund movement.
 
 - **Client**: `app/src/lib/supabase.ts` exports `supabase` (service-role client) and `table(name)` helper. Project prefix is `sealed`.
-- **Schema**: `app/src/lib/supabase-schema.sql` — 9 tables. Apply via the Supabase SQL editor.
+- **Schema**: `app/src/lib/db/supabase-schema.sql` — full table definitions. Apply via the Supabase SQL editor.
+- **Migrations**: `app/src/lib/db/migrations/` — numbered, apply in order. See the README there.
 - **Storage buckets**: `sealed-docs` (deliverable files) and `sealed-kyc` (KYC documents). Both private. Create in Supabase Storage dashboard.
 - **Env vars** (in `app/.env.local`):
   - `NEXT_PUBLIC_SUPABASE_URL` — Project URL from Supabase Settings → API
