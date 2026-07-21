@@ -12,6 +12,7 @@ export const GET = withRoute<{ params: Promise<{ wallet: string }> }>(
         handle: null,
         deals_total: 0,
         deals_successful: 0,
+        deals_failed: 0,
         avg_rating: 0,
         is_verified: false,
         member_since: null,

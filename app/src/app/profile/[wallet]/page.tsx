@@ -12,28 +12,30 @@ import type { PublicProfile } from "@/lib/types";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
 import { SelfProfilePage } from "../SelfProfilePage";
 
-type FullProfile = PublicProfile & {
-  bio?: string;
-  socials?: {
-    twitter?: string;
-    telegram?: string;
-    instagram?: string;
-    linkedin?: string;
-    website?: string;
-  };
-};
+// The public API returns FLAT social columns (twitter_handle, linkedin_url, …),
+// never a nested `socials` object — reading `profile.socials.*` here silently
+// rendered nothing for every user. `PublicProfile` already models the flat
+// shape, so use it directly and map to link URLs at the render site.
+type FullProfile = PublicProfile;
+
+// A stored handle may be a bare username ("alice"), an @handle, or a full URL.
+// Build a real profile URL for the bare/@ cases; pass URLs through untouched.
+function socialUrl(base: string, value: string | null | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `${base}${raw.replace(/^@/, "")}`;
+}
 
 type FriendStatus = "none" | "friends" | "outgoing" | "incoming" | "self";
-type Tab = "timeline" | "reviews" | "agents";
-const TABS: Tab[] = ["timeline", "reviews", "agents"];
-
-// Read the tab from the URL so a refresh keeps the selected tab (read directly
-// from window rather than useSearchParams to avoid needing a Suspense boundary).
-function initialTab(): Tab {
-  if (typeof window === "undefined") return "timeline";
-  const t = new URLSearchParams(window.location.search).get("tab");
-  return (TABS as string[]).includes(t ?? "") ? (t as Tab) : "timeline";
-}
+// The tab bar previously held "Deal timeline" and "Active agents" — both
+// hardcoded placeholder text with no data behind them. Worse, the timeline copy
+// read "will appear here" precisely when deals_total > 0, so the more
+// reputation a wallet had the emptier its profile looked. There is no public
+// per-wallet deal feed (deal rows hold private commercial terms) and no public
+// concept of an agent template, so the honest fix is to drop the dead tabs
+// rather than ship placeholders. Reviews is a real per-deal history and is now
+// rendered directly as a section.
 
 export default function PublicProfilePage() {
   const params = useParams();
@@ -46,19 +48,10 @@ export default function PublicProfilePage() {
   const [friendStatus, setFriendStatus] = useState<FriendStatus>("none");
   const [friendLoading, setFriendLoading] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
-  const [tab, setTabState] = useState<Tab>(initialTab);
   const [reportOpen, setReportOpen] = useState(false);
-
-  // Persist the selected tab to the URL (?tab=…) so it survives a refresh.
-  function setTab(next: Tab) {
-    setTabState(next);
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      if (next === "timeline") url.searchParams.delete("tab");
-      else url.searchParams.set("tab", next);
-      window.history.replaceState(null, "", url.toString());
-    }
-  }
+  // A stored avatar_url can 404 (bucket rotated, file deleted). Fall back to
+  // initials on error instead of showing a broken-image glyph.
+  const [avatarBroken, setAvatarBroken] = useState(false);
 
   const wallet = profileWallet;
   const isSelf = Boolean(wallet && myWallet === wallet);
@@ -125,6 +118,21 @@ export default function PublicProfilePage() {
     .map((part) => part[0])
     .join("")
     .toUpperCase();
+
+  // Real dispute/refund count from `sealed_reputation.deals_failed` — the seal
+  // used to hard-code "0 disputes" for everyone, which is exactly the wrong
+  // thing to fake on a page whose whole purpose is trustworthiness.
+  const disputeCount = profile?.deals_failed ?? 0;
+
+  const socials: { label: string; href: string }[] = (
+    [
+      { label: "Twitter / X", href: socialUrl("https://x.com/", profile?.twitter_handle) },
+      { label: "Telegram", href: socialUrl("https://t.me/", profile?.telegram_handle) },
+      { label: "LinkedIn", href: socialUrl("https://linkedin.com/in/", profile?.linkedin_url) },
+      { label: "Instagram", href: socialUrl("https://instagram.com/", profile?.instagram_handle) },
+      { label: "Website", href: socialUrl("https://", profile?.website) },
+    ] as { label: string; href: string | null }[]
+  ).flatMap((s) => (s.href ? [{ label: s.label, href: s.href }] : []));
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--background)", display: "flex", flexDirection: "column", position: "relative" }}>
@@ -199,8 +207,19 @@ export default function PublicProfilePage() {
                     fontSize: 24,
                     fontWeight: 590,
                     flexShrink: 0,
+                    overflow: "hidden",
                   }}>
-                    {initials}
+                    {profile.avatar_url && !avatarBroken ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={profile.avatar_url}
+                        alt={`${profileDisplayName} avatar`}
+                        onError={() => setAvatarBroken(true)}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      initials
+                    )}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -251,7 +270,11 @@ export default function PublicProfilePage() {
                     value={profile.avg_rating > 0 ? profile.avg_rating.toFixed(1) : "—"}
                     label="Avg rating"
                     star={profile.avg_rating > 0}
-                    onClick={profile.avg_rating > 0 ? () => setTab("reviews") : undefined}
+                    onClick={
+                      profile.avg_rating > 0
+                        ? () => document.getElementById("reviews")?.scrollIntoView({ behavior: "smooth" })
+                        : undefined
+                    }
                   />
                 </div>
 
@@ -274,7 +297,7 @@ export default function PublicProfilePage() {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 12, color: "var(--accent)", margin: 0, fontWeight: 590 }}>
-                        {profile.deals_successful} sealed · 0 disputes
+                        {profile.deals_successful} sealed · {disputeCount} dispute{disputeCount === 1 ? "" : "s"}
                       </p>
                       <p style={{ fontSize: 11, color: "var(--muted)", margin: "1px 0 0" }}>On-chain verified deal history</p>
                     </div>
@@ -342,74 +365,24 @@ export default function PublicProfilePage() {
                   </p>
                 </div>
 
-                {/* Socials */}
-                {profile.socials && Object.values(profile.socials).some(Boolean) && (
+                {/* Socials — built from the flat columns the API actually returns */}
+                {socials.length > 0 && (
                   <div style={{ marginTop: 20, display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {profile.socials.twitter && <SocialBtn href={profile.socials.twitter} label="Twitter / X" />}
-                    {profile.socials.telegram && <SocialBtn href={profile.socials.telegram} label="Telegram" />}
-                    {profile.socials.linkedin && <SocialBtn href={profile.socials.linkedin} label="LinkedIn" />}
-                    {profile.socials.instagram && <SocialBtn href={profile.socials.instagram} label="Instagram" />}
-                    {profile.socials.website && <SocialBtn href={profile.socials.website} label="Website" />}
+                    {socials.map((s) => (
+                      <SocialBtn key={s.label} href={s.href} label={s.label} />
+                    ))}
                   </div>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Tabs + content */}
-          <div style={{ maxWidth: 1020, margin: "0 auto", padding: "26px 32px 48px" }}>
-            <div style={{ display: "flex", gap: 14, marginBottom: 16, borderBottom: "1px solid var(--card-border-subtle)" }}>
-              {([
-                { id: "timeline", label: "Deal timeline" },
-                { id: "reviews",  label: "Reviews" },
-                { id: "agents",   label: "Active agents" },
-              ] as { id: Tab; label: string }[]).map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  style={{
-                    padding: "10px 4px",
-                    marginBottom: -1,
-                    color: tab === t.id ? "var(--primary)" : "var(--muted)",
-                    fontSize: 13,
-                    fontWeight: tab === t.id ? 590 : 510,
-                    background: "none",
-                    // All-longhand borders only — mixing the `borderBottom`
-                    // shorthand with `borderBottom*` longhands warns on rerender.
-                    borderTop: "none",
-                    borderLeft: "none",
-                    borderRight: "none",
-                    borderBottomStyle: "solid",
-                    borderBottomWidth: 2,
-                    borderBottomColor: tab === t.id ? "var(--accent)" : "transparent",
-                    cursor: "pointer",
-                    transition: "color 150ms",
-                  }}
-                >
-                  {t.label}
-                </button>
-              ))}
+          {/* Reviews */}
+          <div id="reviews" style={{ maxWidth: 1020, margin: "0 auto", padding: "26px 32px 48px" }}>
+            <div style={{ marginBottom: 16, paddingBottom: 10, borderBottom: "1px solid var(--card-border-subtle)" }}>
+              <p style={{ fontSize: 13, fontWeight: 590, color: "var(--primary)", margin: 0 }}>Reviews</p>
             </div>
-
-            {tab === "timeline" && (
-              profile.deals_total > 0 ? (
-                <div style={{ textAlign: "center", padding: "48px 0", color: "var(--muted)", fontSize: 13 }}>
-                  Deal timeline will appear here as deals are sealed.
-                </div>
-              ) : (
-                <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
-                  No sealed deals yet.
-                </div>
-              )
-            )}
-
-            {tab === "reviews" && <ReviewsList wallet={wallet ?? ""} />}
-
-            {tab === "agents" && (
-              <div style={{ textAlign: "center", padding: "48px 0", color: "var(--subtle)", fontSize: 13 }}>
-                No public agent profiles.
-              </div>
-            )}
+            <ReviewsList wallet={wallet ?? ""} />
           </div>
         </div>
       )}
