@@ -79,6 +79,20 @@ function sanitizeMilestones(value: unknown): DealMilestone[] | null {
   return milestones;
 }
 
+// Do two milestone arrays differ in their TERMS — what the deal is for and
+// what it pays? Deliberately ignores status/release_tx/proof_by, which are
+// progress bookkeeping and must stay writable after funding. Order matters:
+// on-chain release is positional, so a reorder is a term change even though
+// the multiset is identical.
+function termsChanged(prev: DealMilestone[], next: DealMilestone[]) {
+  if (prev.length !== next.length) return true;
+  return prev.some((p, i) => {
+    const n = next[i];
+    // Sub-cent drift is float noise from proportional rescaling, not an edit.
+    return p.description !== n.description || Math.abs((p.amount ?? 0) - (n.amount ?? 0)) > 0.005;
+  });
+}
+
 function allMilestonesReleased(milestones: DealMilestone[]) {
   return (
     milestones.length > 0 &&
@@ -158,7 +172,7 @@ export const PATCH = withRoute<{ params: Promise<{ dealId: string }> }>(
 
   const { data: existing } = await supabase
     .from(table("deals"))
-    .select("buyer_wallet, seller_wallet, status, milestones")
+    .select("buyer_wallet, seller_wallet, status, milestones, total_amount_usdc")
     .eq("deal_id", dealId)
     .single();
 
@@ -265,6 +279,9 @@ export const PATCH = withRoute<{ params: Promise<{ dealId: string }> }>(
     if (typeof body.total_amount_usdc !== "number" || !Number.isFinite(body.total_amount_usdc)) {
       throw new HttpError(400, "Invalid total amount");
     }
+    if (!PRE_ESCROW_STATUSES.has(existing.status)) {
+      throw new HttpError(409, "Deal terms are locked once escrow is on-chain");
+    }
     patch.total_amount_usdc = body.total_amount_usdc;
   }
 
@@ -285,7 +302,36 @@ export const PATCH = withRoute<{ params: Promise<{ dealId: string }> }>(
   }
 
   if (body.milestones !== undefined) {
+    // Once escrow is on-chain the milestone TERMS are frozen: the PDA is
+    // immutable and release_milestone pays deal.milestones[index].amount by
+    // position, so editing description/amount/count/order off-chain makes the
+    // mirror lie about what the chain will actually pay. Release still needs to
+    // write status/release_tx on a funded deal, so only reject term changes.
+    if (!PRE_ESCROW_STATUSES.has(existing.status)) {
+      const prev = (existing.milestones ?? []) as DealMilestone[];
+      if (termsChanged(prev, nextMilestones)) {
+        throw new HttpError(409, "Deal terms are locked once escrow is on-chain");
+      }
+    }
     patch.milestones = nextMilestones;
+  }
+
+  // Milestones must sum to the total. create_deal enforces this on-chain
+  // (MilestoneAmountMismatch), but that fires at deploy time — long after the
+  // bad split was saved and shown to both parties as agreed terms. Check it
+  // here so the write fails where the mistake was made. Only when the caller
+  // is actually changing terms; existing rows may predate this rule.
+  if (body.milestones !== undefined || body.total_amount_usdc !== undefined) {
+    const total = (patch.total_amount_usdc ?? existing.total_amount_usdc) as number;
+    if (typeof total === "number" && nextMilestones.length > 0) {
+      const sum = nextMilestones.reduce((acc, m) => acc + (m.amount ?? 0), 0);
+      if (Math.abs(sum - total) > 0.005) {
+        throw new HttpError(
+          400,
+          `Milestone amounts total $${sum.toFixed(2)} but the deal total is $${total.toFixed(2)}. They must match.`
+        );
+      }
+    }
   }
 
   if (allMilestonesReleased(nextMilestones)) {
