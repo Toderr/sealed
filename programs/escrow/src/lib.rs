@@ -53,9 +53,18 @@ pub mod escrow {
         instructions::release_milestone::handler(ctx, milestone_index)
     }
 
-    /// Refund remaining funds to buyer (requires both signatures)
+    /// Refund remaining funds to buyer (requires both signatures in ONE tx).
+    /// Superseded by `approve_refund` — kept for compatibility with any deal
+    /// mid-flight under the old flow.
     pub fn refund(ctx: Context<Refund>) -> Result<()> {
         instructions::refund::handler(ctx)
+    }
+
+    /// Mutual refund, two-step: each party approves in their OWN transaction and
+    /// the refund executes once both have. Avoids the ~90s blockhash expiry that
+    /// made the single shared co-signed transaction unusable in practice.
+    pub fn approve_refund(ctx: Context<ApproveRefund>) -> Result<()> {
+        instructions::approve_refund::handler(ctx)
     }
 
     /// Cancel an unfunded deal, close accounts, reclaim rent (buyer only)

@@ -394,28 +394,6 @@ async function handle(
     return json({ users: page, count, limit, offset });
   }
 
-  // GET/POST/DELETE /api/deals/:dealId/refund — mutual-refund relay (offline).
-  const refundMatch = path.match(/^\/api\/deals\/([^/]+)\/refund$/);
-  if (refundMatch) {
-    const dealId = decodeURIComponent(refundMatch[1]);
-    const all = read<Record<string, Record<string, unknown>>>(K.refundReqs, {});
-    if (method === "GET") {
-      const r = all[dealId];
-      return json({ request: r && r.status === "pending" ? r : null });
-    }
-    if (method === "POST") {
-      const b = (body ?? {}) as { partial_tx?: string };
-      if (!b.partial_tx) return json({ error: "partial_tx required" }, 400);
-      all[dealId] = { deal_id: dealId, requested_by: wallet, partial_tx: b.partial_tx, blockhash: null, status: "pending", created_at: nowIso() };
-      write(K.refundReqs, all);
-      return json({ request: all[dealId] });
-    }
-    if (method === "DELETE") {
-      if (all[dealId]) { all[dealId].status = params.get("completed") === "1" ? "completed" : "cancelled"; write(K.refundReqs, all); }
-      return json({ ok: true });
-    }
-  }
-
   // GET/PATCH /api/deals/:dealId
   const dealMatch = path.match(/^\/api\/deals\/([^/]+)$/);
   if (dealMatch && dealMatch[1] !== "mirror") {

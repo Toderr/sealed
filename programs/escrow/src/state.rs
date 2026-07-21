@@ -39,6 +39,13 @@ pub struct Deal {
     pub treasury: Pubkey,
     /// Whether the buyer's fee half has already been charged (once, at funding).
     pub buyer_fee_paid: bool,
+    /// Mutual-refund approvals. Each party approves in their OWN transaction;
+    /// the refund executes once both are true. This replaces the old ceremony
+    /// where buyer and seller had to co-sign a single shared transaction, which
+    /// could not work in practice: a recent blockhash expires in ~90s and the
+    /// counterparty signs much later.
+    pub buyer_refund_ok: bool,
+    pub seller_refund_ok: bool,
     /// Bump seed for PDA
     pub bump: u8,
 }

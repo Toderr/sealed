@@ -102,6 +102,13 @@ pub fn handler(ctx: Context<ReleaseMilestone>, milestone_index: u8) -> Result<()
     deal.milestones[index].confirmed_at = Some(Clock::get()?.unix_timestamp);
     deal.released_amount += amount;
 
+    // A release changes what a mutual refund would return, so any standing
+    // refund approval is no longer consent to THESE terms — clear both sides.
+    // Otherwise a stale approval could combine with a much later one and refund
+    // an amount neither party actually agreed to.
+    deal.buyer_refund_ok = false;
+    deal.seller_refund_ok = false;
+
     // Check if all milestones are released
     let all_released = deal.milestones.iter().all(|m| m.status == MilestoneStatus::Released);
     if all_released {

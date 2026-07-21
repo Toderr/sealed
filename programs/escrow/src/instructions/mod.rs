@@ -1,3 +1,4 @@
+pub mod approve_refund;
 pub mod buyer_timeout_refund;
 pub mod cancel_deal;
 pub mod close_deal;
@@ -7,6 +8,7 @@ pub mod fund_escrow;
 pub mod refund;
 pub mod release_milestone;
 
+pub use approve_refund::*;
 pub use buyer_timeout_refund::*;
 pub use cancel_deal::*;
 pub use close_deal::*;

@@ -12,9 +12,8 @@ import {
   buildBuyerTimeoutRefundIx,
   buildCancelDealIx,
   buildCloseDealIx,
-  buildRefundIx,
-  buildAndPartialSign,
-  coSignAndSend,
+  buildApproveRefundIx,
+  fetchDealRefundState,
   getUsdcMint,
   sendTx,
   fetchFeeConfig,
@@ -47,17 +46,6 @@ const TIMEOUT_SECONDS = 30 * 24 * 60 * 60;
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 type Milestone = { description: string; amount: number; status?: string };
-type RefundRequest = {
-  deal_id: string;
-  requested_by: string;
-  partial_tx: string;
-  blockhash: string | null;
-  // Present only for durable-nonce requests. A request without it predates the
-  // expiry fix and can't be co-signed (its blockhash is long dead).
-  nonce_account?: string | null;
-  status: string;
-  created_at: string;
-};
 type DbMsg = {
   id: string;
   role: string;
@@ -104,10 +92,6 @@ export default function ActiveDealPage() {
     dealId ? `/api/messages?deal_id=${dealId}` : null, wallet, { refreshInterval: POLL_MS });
   const deliverablesQuery = useApi<{ deliverables?: Deliverable[] }>(
     dealId ? `/api/deliverables?deal_id=${dealId}` : null, wallet, { refreshInterval: POLL_MS });
-  // Pending mutual-refund request (the relay). Polled so the counterparty sees
-  // it appear and can co-sign.
-  const refundReqQuery = useApi<{ request?: RefundRequest | null }>(
-    dealId ? `/api/deals/${dealId}/refund` : null, wallet, { refreshInterval: POLL_MS });
 
   const deal = dealQuery.data?.deal ?? null;
   // Show the error screen when the deal genuinely can't load: either the route
@@ -133,7 +117,7 @@ export default function ActiveDealPage() {
 
   // Revalidate all three after a write (replaces the old refreshAll()).
   const refreshAll = async () => {
-    await Promise.all([dealQuery.mutate(), messagesQuery.mutate(), deliverablesQuery.mutate(), refundReqQuery.mutate()]);
+    await Promise.all([dealQuery.mutate(), messagesQuery.mutate(), deliverablesQuery.mutate()]);
   };
 
   const [chatInput, setChatInput] = useState("");
@@ -149,8 +133,8 @@ export default function ActiveDealPage() {
   const [showSealedModal, setShowSealedModal] = useState(false);
   const [confirmModal, setConfirmModal] = useState<number | null>(null);
   const [refunding, setRefunding] = useState(false);
-  // Replaces the four native confirm() gates (timeout reclaim, cancel deal,
-  // request mutual refund, co-sign refund). confirm() is synchronous; a modal is
+  // Replaces the native confirm() gates (timeout reclaim, cancel deal,
+  // approve mutual refund). confirm() is synchronous; a modal is
   // not — so the action is parked here and run from the dialog's Confirm button.
   const [pendingConfirm, setPendingConfirm] = useState<{
     title: string;
@@ -520,109 +504,56 @@ export default function ActiveDealPage() {
     }
   }
 
-  // Mutual refund, step 1: the initiator (buyer or seller) builds the refund tx,
-  // partial-signs it, and stores it on the relay for the counterparty to co-sign.
-  function handleRequestRefund() {
-    if (!publicKey || !signTransaction || role === "observer" || !deal?.buyer_wallet || !deal?.seller_wallet) return;
+  // Mutual refund — two-step approval. Each party approves in their OWN
+  // transaction (approve_refund); the on-chain program performs the transfer on
+  // whichever call completes the pair. This replaces the old co-sign ceremony,
+  // where both parties had to sign one shared transaction — unworkable, since a
+  // recent blockhash dies in ~90s and the counterparty signs much later.
+  function handleApproveRefund() {
+    if (!publicKey || !signTransaction || role === "observer" || !deal?.buyer_wallet) return;
     setPendingConfirm({
-      title: "Request a mutual refund?",
-      body: "The other party must also sign. Unreleased escrow returns to the buyer.",
-      confirmLabel: "Request refund",
-      danger: true,
-      run: doRequestRefund,
-    });
-  }
-
-  async function doRequestRefund() {
-    if (!publicKey || !signTransaction || role === "observer" || !deal?.buyer_wallet || !deal?.seller_wallet) return;
-    setRefunding(true);
-    try {
-      const buyer = new PublicKey(deal.buyer_wallet);
-      const seller = new PublicKey(deal.seller_wallet);
-      const ix = await buildRefundIx(buyer, seller, dealId);
-      // Durable-nonce based: the partial tx stays valid until the counterparty
-      // co-signs, however long that takes (a recent blockhash expired in ~90s,
-      // so the handoff almost always failed with "Blockhash not found").
-      const { partialTx, nonceAccount, nonce } = await buildAndPartialSign(
-        connection, [ix], publicKey, signTransaction
-      );
-      await apiFetch(`/api/deals/${dealId}/refund`, {
-        method: "POST",
-        wallet: wallet ?? "",
-        body: { partial_tx: partialTx, blockhash: nonce, nonce_account: nonceAccount },
-      });
-      await postMessage(`↩️ ${role === "buyer" ? "Buyer" : "Seller"} requested a mutual refund. Awaiting the other party's signature.`);
-      await refreshAll();
-    } catch (err) {
-      console.error("Refund request failed:", err);
-      const msg = err instanceof Error ? err.message : String(err ?? "");
-      // Wallet rejection / user cancelled the signature — not an error, just a
-      // cancellation. Phantom/Solflare surface this as a message containing
-      // "reject"/"denied", or an object with code 4001.
-      // Solana wallet-adapter wraps the provider error in `.error`, so the 4001
-      // "user rejected" code lives at err.error.code, not err.code.
-      const e = err as { code?: number; error?: { code?: number } } | null;
-      const code = e?.code ?? e?.error?.code;
-      // Only treat it as a user cancellation on the wallet's explicit signal:
-      // the standard 4001 code, or a tight "user rejected/denied" phrase. A loose
-      // match on "cancel"/"reject" wrongly swallowed real network/abort errors as
-      // "you declined" (which they weren't).
-      const userCancelled = code === 4001 || /user (rejected|denied)|rejected the request/i.test(msg);
-      if (userCancelled) {
-        // A deliberate decline isn't a failure — surface it as info, not error.
-        toast.show({ variant: "info", title: "Refund cancelled — you declined the signature." });
-      } else if (err instanceof ApiError && err.status === 403) {
-        toast.show({ variant: "error", title: "Only the buyer or seller on this deal can start a refund." });
-      } else if (/blockhash|fetch|timeout|network|failed to fetch|aborted/i.test(msg)) {
-        toast.show({ variant: "error", title: "Couldn't reach the network. Check your connection and try again." });
-      } else {
-        toast.show({ variant: "error", title: "Couldn't start the refund. Please try again." });
-      }
-    } finally {
-      setRefunding(false);
-    }
-  }
-
-  // Mutual refund, step 2: the counterparty co-signs the stored partial tx and
-  // broadcasts it. On success the mirror is marked refunded and (for the buyer)
-  // the vault rent is reclaimed via close_deal.
-  function handleCoSignRefund() {
-    const req = refundReqQuery.data?.request;
-    if (!publicKey || !signTransaction || !req) return;
-    setPendingConfirm({
-      title: "Approve and submit the mutual refund?",
-      body: "Unreleased escrow returns to the buyer and the deal ends.",
+      title: "Approve a mutual refund?",
+      body: "Unreleased escrow returns to the buyer once both parties approve.",
       confirmLabel: "Approve refund",
       danger: true,
-      run: doCoSignRefund,
+      run: doApproveRefund,
     });
   }
 
-  async function doCoSignRefund() {
-    const req = refundReqQuery.data?.request;
-    if (!publicKey || !signTransaction || !req) return;
-    // Legacy request: created before refunds moved to durable nonces, so it
-    // carries an expired recent blockhash and can NEVER be co-signed. Clear it
-    // and tell the initiator to start again rather than failing cryptically.
-    if (!MOCK_CHAIN && !req.nonce_account) {
-      await apiFetchSafe(`/api/deals/${dealId}/refund`, { method: "DELETE", wallet: wallet ?? "" }, undefined);
-      await refundReqQuery.mutate?.();
-      toast.show({
-        variant: "error",
-        title: "This refund request has expired",
-        description: "It was created before the expiry fix. Ask the other party to request the refund again.",
-      });
-      return;
-    }
+  async function doApproveRefund() {
+    if (!publicKey || !signTransaction || role === "observer" || !deal?.buyer_wallet) return;
     setRefunding(true);
     try {
-      const sig = await coSignAndSend(connection, req.partial_tx, signTransaction);
-      if (MOCK_CHAIN && deal?.buyer_wallet) {
+      const buyerPubkey = new PublicKey(deal.buyer_wallet);
+      const ix = await buildApproveRefundIx(publicKey, buyerPubkey, dealId);
+      const sig = await sendTx(connection, [ix], signTransaction);
+      const shortSig = `${sig.slice(0, 8)}...${sig.slice(-8)}`;
+
+      // Did this call complete the pair, or is it the first approval? Read the
+      // Deal PDA back: it is the only authority on that. A completed refund sets
+      // status Refunded — and may close the account outright, which decodes as
+      // null. Both mean "done"; MOCK_CHAIN also returns null, so it falls back to
+      // the local mock ledger, which is authoritative offline.
+      const onChain = MOCK_CHAIN ? null : await fetchDealRefundState(connection, dealId);
+      const completed = MOCK_CHAIN ? true : onChain === null || onChain.status === "refunded";
+
+      if (!completed) {
+        // First approval recorded; the counterparty still has to approve.
+        await postMessage(
+          `↩️ ${role === "buyer" ? "Buyer" : "Seller"} approved a mutual refund. Awaiting the other party.\n\nTx: \`${shortSig}\``,
+          "assistant"
+        );
+        await refreshAll();
+        toast.show({ variant: "info", title: "Approval recorded — waiting for the other party to approve." });
+        return;
+      }
+
+      if (MOCK_CHAIN && deal.buyer_wallet) {
         // Mock ledger is a demo aid, not the source of truth — don't fail the
         // refund if this deal was never funded through it.
         try { mockEscrow.refund(dealId, deal.buyer_wallet); } catch { /* mock-only */ }
       }
-      // Reclaim the escrow vault rent (buyer-only, valid once refunded).
+      // Reclaim the escrow vault rent (buyer-only, valid only once refunded).
       if (role === "buyer") {
         try {
           const closeIx = await buildCloseDealIx(publicKey, dealId);
@@ -632,30 +563,31 @@ export default function ActiveDealPage() {
         }
       }
       await patchStatus("refunded");
-      await apiFetchSafe(`/api/deals/${dealId}/refund?completed=1`, { method: "DELETE", wallet: wallet ?? "" }, undefined);
       await postMessage(
-        `↩️ Mutual refund completed. Unreleased escrow returned to the buyer.\n\nTx: \`${sig.slice(0, 8)}...${sig.slice(-8)}\``,
+        `↩️ Mutual refund completed. Unreleased escrow returned to the buyer.\n\nTx: \`${shortSig}\``,
         "assistant"
       );
       await refreshAll();
     } catch (err) {
-      console.error("Co-sign refund failed:", err);
-      // Show the REAL reason — coSignAndSend already maps Solana's program logs
-      // to a specific message (consumed nonce / missing signature / insufficient
-      // funds / the failing log line). Don't overwrite it with a guess.
-      toast.show({
-        variant: "error",
-        title: err instanceof Error ? err.message : "Could not complete the refund.",
-      });
+      console.error("Approve refund failed:", err);
+      const msg = err instanceof Error ? err.message : String(err ?? "");
+      // Wallet rejection is a deliberate decline, not a failure. Only trust the
+      // wallet's explicit signal: the standard 4001 code, or a tight "user
+      // rejected/denied" phrase. A loose match on "cancel"/"reject" wrongly
+      // swallowed real network errors as "you declined" (which they weren't).
+      // wallet-adapter wraps the provider error, so 4001 can live at err.error.code.
+      const e = err as { code?: number; error?: { code?: number } } | null;
+      const code = e?.code ?? e?.error?.code;
+      const userCancelled = code === 4001 || /user (rejected|denied)|rejected the request/i.test(msg);
+      if (userCancelled) {
+        toast.show({ variant: "info", title: "Refund cancelled — you declined the signature." });
+      } else {
+        // Surface the REAL reason. Don't paper over it with a guess.
+        toast.show({ variant: "error", title: msg || "Could not approve the refund." });
+      }
     } finally {
       setRefunding(false);
     }
-  }
-
-  async function handleCancelRefundRequest() {
-    if (!wallet) return;
-    await apiFetchSafe(`/api/deals/${dealId}/refund`, { method: "DELETE", wallet }, undefined);
-    await refreshAll();
   }
 
   // Report a problem — files a complaint the platform reviews (mediate-only; it
@@ -747,6 +679,46 @@ export default function ActiveDealPage() {
   const isTerminal = isComplete || dealStatus === "completed" || dealStatus === "refunded";
   const isFunded = ["funded", "in_progress"].includes(dealStatus) || releasedCount > 0;
   const isUnfunded = !isFunded && ["draft", "seller-ready", "seller-agreed", "manual-chat", "escalated", "proposed"].includes(dealStatus);
+
+  // On-chain mutual-refund approvals (buyer_refund_ok / seller_refund_ok). The
+  // Deal PDA is the only source of truth for who has approved — there is no
+  // off-chain mirror of it — so poll it while the deal can still be refunded, to
+  // show "you approved, waiting for them" and to let the counterparty see that a
+  // refund is pending. Null = unknown/undecodable; the UI then just offers the
+  // button without an approval hint.
+  const [refundFlags, setRefundFlags] = useState<{ buyerRefundOk: boolean; sellerRefundOk: boolean } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const read = async () => {
+      // Not applicable (mock mode, unfunded, terminal, or observer) → clear.
+      if (MOCK_CHAIN || !isFunded || isTerminal || role === "observer") {
+        if (!cancelled) setRefundFlags(null);
+        return;
+      }
+      try {
+        const state = await fetchDealRefundState(connection, dealId);
+        if (cancelled) return;
+        setRefundFlags(state ? { buyerRefundOk: state.buyerRefundOk, sellerRefundOk: state.sellerRefundOk } : null);
+      } catch {
+        if (!cancelled) setRefundFlags(null);
+      }
+    };
+    void read();
+    if (MOCK_CHAIN || !isFunded || isTerminal || role === "observer") {
+      return () => { cancelled = true; };
+    }
+    const t = setInterval(read, POLL_MS);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [connection, dealId, isFunded, isTerminal, role]);
+
+  // Whether *I* have already approved, and whether the counterparty has.
+  const myRefundApproved = refundFlags
+    ? role === "buyer" ? refundFlags.buyerRefundOk : role === "seller" ? refundFlags.sellerRefundOk : false
+    : false;
+  const theirRefundApproved = refundFlags
+    ? role === "buyer" ? refundFlags.sellerRefundOk : role === "seller" ? refundFlags.buyerRefundOk : false
+    : false;
 
   // If this deal is (or goes back to) a pre-escrow negotiation status — e.g. a
   // funded deal re-opened via renegotiate/escalate — the deal page's milestone
@@ -1498,7 +1470,7 @@ export default function ActiveDealPage() {
               <div className="surface-card" style={{ borderRadius: 12, padding: 16 }}>
                 <p style={{ fontSize: 13, color: "var(--primary)", fontWeight: 590, margin: "0 0 4px" }}>Refund &amp; disputes</p>
                 <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
-                  A refund returns unreleased escrow to the buyer. A mutual refund needs both signatures; the buyer can reclaim funds alone after an inactivity timeout.
+                  A refund returns unreleased escrow to the buyer. A mutual refund needs both parties to approve — each in their own transaction; the buyer can reclaim funds alone after an inactivity timeout.
                 </p>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1527,42 +1499,37 @@ export default function ActiveDealPage() {
                     </button>
                   )}
 
-                  {/* Mutual refund (both sign, via relay). Only meaningful once
-                      escrow holds funds. */}
-                  {isFunded && (() => {
-                    const req = refundReqQuery.data?.request ?? null;
-                    if (!req) {
-                      return (
-                        <button
-                          className="btn-ghost"
-                          disabled={refunding}
-                          onClick={handleRequestRefund}
-                          style={{ height: 34, borderRadius: 7, fontSize: 12 }}
-                        >
-                          {refunding ? "Requesting…" : "Ask for a refund (both sign)"}
-                        </button>
-                      );
-                    }
-                    const iInitiated = req.requested_by === wallet;
-                    return (
-                      <div style={{ padding: "10px 12px", borderRadius: 8, background: "rgba(245,166,35,0.06)", border: "1px solid rgba(245,166,35,0.25)" }}>
-                        <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 8px", lineHeight: 1.5 }}>
-                          {iInitiated
-                            ? "Refund requested — waiting for the other party to approve & sign."
-                            : "The other party requested a mutual refund. Approve to return unreleased escrow to the buyer."}
-                        </p>
-                        {iInitiated ? (
-                          <button className="btn-ghost" disabled={refunding} onClick={handleCancelRefundRequest} style={{ height: 32, borderRadius: 6, fontSize: 12, width: "100%" }}>
-                            Cancel request
+                  {/* Mutual refund — two-step approval. Either party approves in
+                      their own transaction; the escrow returns to the buyer on the
+                      approval that completes the pair. Only meaningful once escrow
+                      actually holds funds. */}
+                  {isFunded && (
+                    <>
+                      {myRefundApproved ? (
+                        <div style={{ padding: "10px 12px", borderRadius: 8, background: "rgba(245,166,35,0.06)", border: "1px solid rgba(245,166,35,0.25)" }}>
+                          <p style={{ fontSize: 11, color: "var(--muted)", margin: 0, lineHeight: 1.5 }}>
+                            You approved a mutual refund — waiting for the {role === "buyer" ? "seller" : "buyer"} to approve.
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          {theirRefundApproved && (
+                            <p style={{ fontSize: 11, color: "var(--muted)", margin: 0, lineHeight: 1.5 }}>
+                              The {role === "buyer" ? "seller" : "buyer"} approved a mutual refund. Approve to return unreleased escrow to the buyer.
+                            </p>
+                          )}
+                          <button
+                            className={theirRefundApproved ? "btn-primary" : "btn-ghost"}
+                            disabled={refunding}
+                            onClick={handleApproveRefund}
+                            style={{ height: 34, borderRadius: 7, fontSize: 12 }}
+                          >
+                            {refunding ? "Approving…" : "Approve refund"}
                           </button>
-                        ) : (
-                          <button className="btn-primary" disabled={refunding} onClick={handleCoSignRefund} style={{ height: 34, borderRadius: 7, fontSize: 12, width: "100%" }}>
-                            {refunding ? "Submitting…" : "Approve & sign refund"}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })()}
+                        </>
+                      )}
+                    </>
+                  )}
 
                   {/* Dev-only: fast-forward the funding timestamp so the timeout is
                       testable without waiting 30 days. Mock mode only. */}
@@ -1597,7 +1564,7 @@ export default function ActiveDealPage() {
       </div>
 
       {/* Blocking confirmations (formerly window.confirm): timeout reclaim,
-          cancel deal, request mutual refund, co-sign mutual refund. */}
+          cancel deal, approve mutual refund. */}
       <ConfirmDialog
         open={pendingConfirm !== null}
         title={pendingConfirm?.title ?? ""}

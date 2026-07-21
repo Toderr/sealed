@@ -85,6 +85,9 @@ pub fn handler(
     deal.funded_at = 0;
     deal.updated_at = deal.created_at;
     deal.buyer_fee_paid = false;
+    // No mutual-refund approvals yet (two-step refund).
+    deal.buyer_refund_ok = false;
+    deal.seller_refund_ok = false;
     deal.bump = ctx.bumps.deal;
 
     // Snapshot the current platform fee onto the deal. The fee is only "live"

@@ -91,6 +91,10 @@ pub fn handler(ctx: Context<FundEscrow>, amount: u64) -> Result<()> {
         deal.status = DealStatus::Funded;
         deal.funded_at = now;
     }
+    // More money in escrow changes what a mutual refund would return, so a
+    // standing approval no longer reflects consent to the current amount.
+    deal.buyer_refund_ok = false;
+    deal.seller_refund_ok = false;
     deal.updated_at = now;
 
     msg!("Escrow funded: {} USDC", amount);
