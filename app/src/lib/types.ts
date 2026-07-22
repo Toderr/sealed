@@ -214,6 +214,10 @@ export interface SealedUser {
   handle: string;
   email: string | null;
   email_verified: boolean;
+  // Set by the Telegram bot webhook once the user links their account; the
+  // notification queue sends here. Never exposed to the client — the settings
+  // UI only receives a boolean (see api/users/[wallet]/public).
+  telegram_chat_id: string | null;
   telegram_username: string | null;
   notify_on: NotificationPrefs;
   kyc_status: "none" | "pending" | "approved" | "rejected";

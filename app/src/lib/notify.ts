@@ -48,8 +48,16 @@ export async function drainQueue(): Promise<{ sent: number; failed: number }> {
     .from(table("notification_queue"))
     .select("*")
     .eq("status", "pending");
-  if (!emailConfigured()) {
-    query = query.neq("channel", "email");
+  // Same reasoning for telegram: an unconfigured channel's rows would otherwise
+  // fill the LIMIT 50 window forever and starve the channels that CAN send.
+  const skip = [
+    ...(emailConfigured() ? [] : ["email"]),
+    ...(telegramConfigured() ? [] : ["telegram"]),
+  ];
+  if (skip.length === 1) {
+    query = query.neq("channel", skip[0]);
+  } else if (skip.length > 1) {
+    query = query.not("channel", "in", `(${skip.join(",")})`);
   }
   const { data: pending } = await query
     .order("created_at", { ascending: true })
@@ -70,8 +78,9 @@ export async function drainQueue(): Promise<{ sent: number; failed: number }> {
     try {
       if (row.channel === "email") {
         await sendEmailForEvent(row.recipient_wallet, row.event_type, row.payload);
+      } else if (row.channel === "telegram") {
+        await sendTelegramForEvent(row.recipient_wallet, row.event_type, row.payload);
       }
-      // Telegram: reserved, no-op for now
 
       await supabase
         .from(table("notification_queue"))
@@ -82,7 +91,7 @@ export async function drainQueue(): Promise<{ sent: number; failed: number }> {
       // If email simply isn't configured yet, DON'T burn the row to "failed"
       // (nothing ever resets failed → pending, so it'd never send once the key
       // is added). Leave it pending so a later drain retries it.
-      if (err instanceof EmailNotConfiguredError) {
+      if (err instanceof EmailNotConfiguredError || err instanceof TelegramNotConfiguredError) {
         failed++;
         continue;
       }
@@ -116,11 +125,13 @@ async function sendEmailForEvent(
   await sendEmail(u.email, subject, html);
 }
 
-function buildEmailContent(
+/** Subject/body/link for an event, shared by every channel so the copy can't
+ *  drift between email and Telegram. */
+function emailParts(
   handle: string,
   eventType: string,
   payload: Record<string, unknown>
-): { subject: string; html: string } {
+): { subject: string; body: string; ctaUrl: string } {
   const dealId = payload.deal_id as string | undefined;
   const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   // An explicit href on the payload wins (non-deal events like friend requests
@@ -176,6 +187,17 @@ function buildEmailContent(
     body: "You have a new notification on Sealed Agent.",
   };
 
+  return { subject: msg.subject, body: msg.body, ctaUrl };
+}
+
+function buildEmailContent(
+  handle: string,
+  eventType: string,
+  payload: Record<string, unknown>
+): { subject: string; html: string } {
+  const msg = emailParts(handle, eventType, payload);
+  const ctaUrl = msg.ctaUrl;
+
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
@@ -192,6 +214,75 @@ function buildEmailContent(
 </html>`;
 
   return { subject: msg.subject, html };
+}
+
+async function sendTelegramForEvent(
+  wallet: string,
+  eventType: string,
+  payload: Record<string, unknown>
+): Promise<void> {
+  const { data: user } = await supabase
+    .from(table("users"))
+    .select("telegram_chat_id, handle")
+    .eq("wallet", wallet)
+    .single();
+
+  if (!user) return;
+  const u = user as { telegram_chat_id: string | null; handle: string };
+  if (!u.telegram_chat_id) return;
+
+  await sendTelegram(u.telegram_chat_id, buildTelegramContent(u.handle, eventType, payload));
+}
+
+/** Telegram messages reuse the same copy as email, as plain text + a link.
+ *  Kept deliberately short: a chat notification is a nudge, not a document. */
+function buildTelegramContent(
+  handle: string,
+  eventType: string,
+  payload: Record<string, unknown>
+): string {
+  const { subject, ctaUrl, body } = emailParts(handle, eventType, payload);
+  // HTML parse mode: escape anything that could come from user input.
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<b>${esc(subject)}</b>\n\n${esc(body)}\n\n<a href="${esc(ctaUrl)}">Open in Sealed Agent</a>`;
+}
+
+/** True when the Telegram transport is configured (a bot token is present). */
+export function telegramConfigured(): boolean {
+  return !!process.env.TELEGRAM_BOT_TOKEN;
+}
+
+/** Telegram counterpart of EmailNotConfiguredError — see that class. */
+export class TelegramNotConfiguredError extends Error {
+  constructor() {
+    super("Telegram is not configured (TELEGRAM_BOT_TOKEN unset)");
+    this.name = "TelegramNotConfiguredError";
+  }
+}
+
+export async function sendTelegram(chatId: string, html: string): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) {
+    console.warn("[notify] TELEGRAM_BOT_TOKEN not set — cannot message chat", chatId);
+    throw new TelegramNotConfiguredError();
+  }
+
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: html,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    }),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Telegram error ${res.status}: ${detail.slice(0, 200)}`);
+  }
 }
 
 /** True when the email transport is configured (a Resend key is present). */
