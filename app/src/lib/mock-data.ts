@@ -171,6 +171,12 @@ function isCompleted(deal: MirrorDeal): boolean {
     deal.milestones.every((m) => m.status === "Released" || m.status === "Completed")
   );
 }
+// Mirrors getReputationFallback in sealed-users.ts — refunded/disputed deals are
+// the "disputes" figure the public trust seal reports.
+function isFailed(deal: MirrorDeal): boolean {
+  const status = deal.status?.toLowerCase();
+  return status === "refunded" || status === "disputed";
+}
 function counterparty(deal: MirrorDeal, wallet: string): string | null {
   if (!deal.seller_wallet) return null;
   if (deal.buyer_wallet === wallet) return deal.seller_wallet;
@@ -571,6 +577,7 @@ async function handle(
       kyc_status: (p.kyc_status as string) ?? "none",
       deals_total: deals.length,
       deals_successful: deals.filter(isCompleted).length,
+      deals_failed: deals.filter(isFailed).length,
       avg_rating: 0,
       member_since: hasProfile ? ((p.member_since as string) ?? nowIso()) : null,
       website: (p.website as string) ?? null,

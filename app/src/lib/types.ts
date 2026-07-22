@@ -235,6 +235,7 @@ export interface PublicProfile {
   handle: string | null;
   deals_total: number;
   deals_successful: number;
+  deals_failed: number;
   avg_rating: number;
   is_verified: boolean;
   member_since: string | null;

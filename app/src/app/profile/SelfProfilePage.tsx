@@ -59,6 +59,15 @@ type ProfileDealRowData = {
 
 type CounterpartyProfile = Pick<PublicProfile, "handle" | "display_name" | "avatar_url">;
 
+// `/api/users/{wallet}/public?self=1` returns the public profile plus the
+// caller's own private fields. `kyc_status` in particular was already being
+// returned but had no type and no UI, so a user with a submitted-and-pending
+// KYC review saw the same "Become a verified account" pitch as someone who had
+// never applied.
+type SelfProfileResponse = PublicProfile & {
+  kyc_status?: "none" | "pending" | "approved" | "rejected";
+};
+
 type DealFilter = "all" | "active" | "sealed" | "needs_invite";
 type DealSort = "newest" | "oldest" | "value_desc" | "value_asc" | "status";
 
@@ -266,7 +275,7 @@ export function SelfProfilePageContent() {
   }, []);
   const [mirrorDeals, setMirrorDeals] = useState<ProfileDealRowData[]>([]);
   const [sessionDeals, setSessionDeals] = useState<ProfileDealRowData[]>([]);
-  const [publicProfile, setPublicProfile] = useState<PublicProfile | null>(null);
+  const [publicProfile, setPublicProfile] = useState<SelfProfileResponse | null>(null);
   const [counterpartyProfiles, setCounterpartyProfiles] = useState<Record<string, CounterpartyProfile>>({});
   const [dealSearch, setDealSearch] = useState("");
   const [dealFilter, setDealFilter] = useState<DealFilter>("all");
@@ -393,7 +402,7 @@ export function SelfProfilePageContent() {
       return;
     }
 
-    apiFetch<PublicProfile>(`/api/users/${wallet}/public?self=1`)
+    apiFetch<SelfProfileResponse>(`/api/users/${wallet}/public?self=1`)
       .then((data) => {
         if (!cancelled) setPublicProfile(data);
       })
@@ -617,7 +626,7 @@ export function SelfProfilePageContent() {
             {/* Right: Dashboard */}
             <main className="flex-1 min-w-0 space-y-6">
               {publicProfile && !publicProfile.is_verified && (
-                <VerifiedAccountBanner />
+                <VerifiedAccountBanner kycStatus={publicProfile.kyc_status ?? "none"} />
               )}
 
               {/* Tab bar — "Agent Setup" is no longer its own tab (#12); its
@@ -914,15 +923,67 @@ function DealListControls({
   );
 }
 
-function VerifiedAccountBanner() {
+function VerifiedAccountBanner({
+  kycStatus,
+}: {
+  kycStatus: "none" | "pending" | "approved" | "rejected";
+}) {
+  // A submitted review is in flight — show status, not a sales pitch, and no CTA.
+  if (kycStatus === "pending") {
+    return (
+      <div className="surface-card rounded-xl border border-accent/25 bg-accent/10 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="space-y-1">
+          <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>
+            Verification under review
+          </p>
+          <p className="text-[12px] text-muted leading-relaxed">
+            We&apos;ve received your documents. Reviews usually complete within a few business days —
+            your profile updates automatically once approved.
+          </p>
+        </div>
+        <span className="text-[12px] text-accent flex-shrink-0" style={{ fontWeight: 510 }}>
+          Pending
+        </span>
+      </div>
+    );
+  }
+
+  // `approved` with is_verified false means the admin approved KYC but
+  // `verified_at` isn't set yet — surface it as approved rather than pitching.
+  if (kycStatus === "approved") {
+    return (
+      <div className="surface-card rounded-xl border border-success/25 bg-success/10 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="space-y-1">
+          <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>
+            Verification approved
+          </p>
+          <p className="text-[12px] text-muted leading-relaxed">
+            Your documents cleared review. The verified badge will appear on your public profile shortly.
+          </p>
+        </div>
+        <span className="text-[12px] text-success flex-shrink-0" style={{ fontWeight: 510 }}>
+          Approved
+        </span>
+      </div>
+    );
+  }
+
+  const rejected = kycStatus === "rejected";
+
   return (
-    <div className="surface-card rounded-xl border border-warning/25 bg-warning/10 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div
+      className={`surface-card rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+        rejected ? "border border-danger/25 bg-danger/10" : "border border-warning/25 bg-warning/10"
+      }`}
+    >
       <div className="space-y-1">
         <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>
-          Become a verified account
+          {rejected ? "Verification not approved" : "Become a verified account"}
         </p>
         <p className="text-[12px] text-muted leading-relaxed">
-          Add account verification to raise trust signals on your profile and unlock more agent templates.
+          {rejected
+            ? "We couldn't verify your account from the documents provided. You can submit new documents to try again."
+            : "Add account verification to raise trust signals on your profile and unlock more agent templates."}
         </p>
       </div>
       {/* "Get verified" is gated behind a "coming soon" flag (#18) — it will

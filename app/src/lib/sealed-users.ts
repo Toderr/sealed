@@ -56,6 +56,7 @@ async function getReputationFallback(wallet: string) {
   return {
     deals_total: dealsSuccessful + dealsFailed,
     deals_successful: dealsSuccessful,
+    deals_failed: dealsFailed,
     avg_rating: avgRating,
   };
 }
@@ -164,6 +165,9 @@ export async function getPublicProfile(
     handle: user?.handle ?? null,
     deals_total: Math.max(rep?.deals_total ?? 0, fallback.deals_total),
     deals_successful: Math.max(rep?.deals_successful ?? 0, fallback.deals_successful),
+    // Disputes/refunds are a trust signal, so take the higher of the aggregate
+    // row and the recount rather than trusting a stale `sealed_reputation` row.
+    deals_failed: Math.max(rep?.deals_failed ?? 0, fallback.deals_failed),
     avg_rating: fallback.avg_rating > 0 ? fallback.avg_rating : rep?.avg_rating ?? 0,
     is_verified: !!user?.verified_at,
     member_since: user?.member_since ?? null,
