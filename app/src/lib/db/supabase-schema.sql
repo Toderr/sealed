@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS sealed_deals (
     )),
     milestones JSONB NOT NULL DEFAULT '[]'::jsonb,
     funded_at TIMESTAMPTZ,                            -- wall-clock funding time (mirrors on-chain deal.funded_at) for the reclaim-timeout UI
+    invite_code TEXT UNIQUE,                          -- 8 random base62 chars backing the short /i/{code} invite link; minted lazily, NULL until first requested
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

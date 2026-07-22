@@ -30,6 +30,7 @@ migration, update the schema file to match, or the two drift.
 | 010 | `sealed_refund_requests` — mutual-refund relay |
 | 011 | Safety net: ensure every table in the schema file exists |
 | 012 | Notify on friend requests (`notify_on` keys) |
+| 013 | `sealed_deals.invite_code` — short `/i/{code}` invite links |
 
 ## Why several of these exist
 

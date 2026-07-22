@@ -12,6 +12,7 @@ import { useBusinessMemory } from "@/memory/localstorage-store";
 import { getLlmHeaders } from "@/lib/llm-headers";
 import { isAgentConfigError } from "@/lib/agent-config-error";
 import { useProfileStore, encodeInvite } from "@/lib/profile-store";
+import { fetchShortInviteLink } from "@/lib/invite-link";
 import { useDealsStore, clearDealJoinSignals } from "@/lib/deals-store";
 import { atDisplayHandle } from "@/lib/user-display";
 import {
@@ -574,8 +575,17 @@ export default function NegotiateRoom() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal?.status, role, negState.kind, !!memory]);
 
-  // Generate invite link
-  const inviteLink = (() => {
+  // Generate invite link.
+  //
+  // Preferred form is the short /i/{code} link — the old /invite/{base64} links
+  // ran 800-1000+ chars (the whole deal payload lived in the URL) and chat apps
+  // wrapped or truncated them. Minting a code is a server round trip, so the
+  // legacy long link is built synchronously below and used until the short one
+  // arrives; that keeps the share box populated on first paint and means a
+  // failed mint degrades to a working link instead of an empty field.
+  const [shortInviteLink, setShortInviteLink] = useState("");
+
+  const legacyInviteLink = useMemo(() => {
     if (!deal || !profile || typeof window === "undefined") return "";
     const payload = {
       dealId: deal.deal_id,
@@ -591,7 +601,27 @@ export default function NegotiateRoom() {
       description: profile.bio ?? "",
     };
     return `${window.location.origin}/invite/${encodeURIComponent(encodeInvite(payload))}`;
-  })();
+  }, [deal, profile, wallet]);
+
+  const dealIdForInvite = deal?.deal_id;
+  useEffect(() => {
+    if (!dealIdForInvite || !wallet || typeof window === "undefined") return;
+
+    let cancelled = false;
+    fetchShortInviteLink(dealIdForInvite, wallet, window.location.origin)
+      .then((link) => {
+        if (!cancelled && link) setShortInviteLink(link);
+      })
+      .catch(() => {
+        /* keep the legacy link — it still resolves */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dealIdForInvite, wallet]);
+
+  const inviteLink = shortInviteLink || legacyInviteLink;
 
   const dealParams: DealParams = deal
     ? {
