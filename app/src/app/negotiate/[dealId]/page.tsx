@@ -384,10 +384,15 @@ export default function NegotiateRoom() {
   // Redirect both parties once escrow is funded or deal is in any post-negotiate state.
   // Covers the case where the mirror call failed silently and Supabase still has
   // "seller-agreed" when the seller refreshes — they should never land back on negotiate.
+  // One-shot: router.push is a soft nav that doesn't unmount synchronously, so
+  // without this the effect can fire again on a later render and stack a second
+  // navigation to the same route (#10).
+  const redirectedRef = useRef(false);
   useEffect(() => {
-    if (!deal) return;
+    if (!deal || redirectedRef.current) return;
     const postNeg = ["funded", "in_progress", "completed", "refunded", "disputed"];
     if (postNeg.includes(deal.status)) {
+      redirectedRef.current = true;
       router.push(`/deals/${deal.deal_id}`);
     }
   }, [deal?.status, deal?.deal_id, router]);

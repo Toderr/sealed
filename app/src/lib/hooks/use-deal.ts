@@ -121,6 +121,48 @@ async function fetchDeal([, dealId]: readonly [string, string]): Promise<DealRes
   }
 }
 
+// Deal status only ever moves FORWARD. Rank is used to reject a stale fetch
+// that would drag the cached status backwards (#10).
+//
+// Deploy is the case that matters: sendTx takes seconds, the 4s poll keeps
+// firing throughout, and returning from the wallet popup triggers an extra
+// revalidateOnFocus fetch. A GET issued before the on-chain settlement but
+// resolving after it carries the OLD status — and since the chain has already
+// settled, the local value is the authoritative one, not the server's.
+//
+// Statuses off the linear path (refunded/disputed) share the terminal rank:
+// they can't be reached from a later state, so ordering among them is moot.
+//
+// `escalated` is deliberately NOT ranked. Renegotiation is a legitimate move
+// BACKWARDS (seller-agreed → escalated reopens agreed terms), and cross-device
+// it arrives only via the poll — ranking it would make the guard swallow the
+// counterparty's escalation. Same-device it comes through applyServerPatch,
+// which bypasses compare entirely, so only the polled path is at risk.
+// Unranked ⇒ never treated as a regression ⇒ always applied.
+const STATUS_RANK: Record<string, number> = {
+  draft: 0,
+  "seller-ready": 1,
+  "manual-chat": 1,
+  "seller-agreed": 2,
+  proposed: 3,
+  funded: 4,
+  in_progress: 5,
+  completed: 6,
+  refunded: 6,
+  disputed: 6,
+};
+
+/** True when `next` would move the deal to an EARLIER lifecycle stage. Unknown
+ *  statuses rank -1 and are never treated as a regression, so an unrecognized
+ *  value can't wedge the UI. */
+function isStatusRegression(prev?: string, next?: string): boolean {
+  if (!prev || !next || prev === next) return false;
+  const p = STATUS_RANK[prev] ?? -1;
+  const n = STATUS_RANK[next] ?? -1;
+  if (p < 0 || n < 0) return false;
+  return n < p;
+}
+
 // Equal (skip re-render) when no field a writer can change differs. The old
 // poll guard only checked status + seller_wallet, but optimistic writes also
 // touch total_amount_usdc + milestones (seller-agreed) — include those so the
@@ -132,6 +174,10 @@ function compareDeal(a?: DealResult, b?: DealResult): boolean {
   const db = b?.deal;
   if (da === db) return true;
   if (!da || !db) return da === db && a?.error === b?.error;
+  // A fetch that would move the status backwards is stale in-flight data, not
+  // news. Report "equal" so SWR keeps the cached (newer) value and skips the
+  // re-render — this is what stops the funded → seller-agreed → funded flash.
+  if (isStatusRegression(da.status, db.status)) return true;
   return (
     da.status === db.status &&
     (da.seller_wallet ?? "") === (db.seller_wallet ?? "") &&
