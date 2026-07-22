@@ -753,6 +753,29 @@ export default function ActiveDealPage() {
   const isFunded = ["funded", "in_progress"].includes(dealStatus) || releasedCount > 0;
   const isUnfunded = !isFunded && ["draft", "seller-ready", "seller-agreed", "manual-chat", "escalated", "proposed"].includes(dealStatus);
 
+  // Inactivity-reclaim window (#5/#6/#7). The on-chain escape hatch already
+  // exists; what was missing is telling the buyer it exists BEFORE they need it.
+  // Previously the only way to discover the window was to click Reclaim and read
+  // the failure. Purely presentational — the chain remains authoritative, and a
+  // clock skew here can only mis-time a hint, never a transfer.
+  const reclaim = useMemo(() => {
+    if (!isFunded || isTerminal) return null;
+    // funded_at is the true funding time; updated_at is bumped by later edits, so
+    // it's an approximation and is labelled as such.
+    const exact = !!deal?.funded_at;
+    const raw = deal?.funded_at ?? deal?.updated_at ?? null;
+    const fundedAt = raw ? new Date(raw) : null;
+    if (!fundedAt || isNaN(fundedAt.getTime())) return null;
+    const unlockAt = new Date(fundedAt.getTime() + TIMEOUT_SECONDS * 1000);
+    const msLeft = unlockAt.getTime() - Date.now();
+    return {
+      exact,
+      unlockAt,
+      unlocked: msLeft <= 0,
+      daysLeft: Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000))),
+    };
+  }, [isFunded, isTerminal, deal?.funded_at, deal?.updated_at]);
+
   // On-chain mutual-refund approvals (buyer_refund_ok / seller_refund_ok). The
   // Deal PDA is the only source of truth for who has approved — there is no
   // off-chain mirror of it — so poll it while the deal can still be refunded, to
@@ -1650,6 +1673,18 @@ export default function ActiveDealPage() {
                 </p>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {/* Seller-facing counterpart of the reclaim notice. The timeout
+                      only works as pressure if the seller knows it's running. */}
+                  {role === "seller" && isFunded && !isTerminal && reclaim && (
+                    <div style={{ padding: "10px 12px", borderRadius: 8, background: reclaim.unlocked ? "rgba(245,166,35,0.06)" : "rgba(255,255,255,0.02)", border: `1px solid ${reclaim.unlocked ? "rgba(245,166,35,0.25)" : "var(--card-border-subtle)"}` }}>
+                      <p style={{ fontSize: 11, color: "var(--muted)", margin: 0, lineHeight: 1.5 }}>
+                        {reclaim.unlocked
+                          ? "The inactivity window has elapsed — the buyer can now reclaim the escrowed funds unilaterally. Submit your deliverable or agree a refund to resolve this."
+                          : `If no milestone is released, the buyer can reclaim the escrow in ${reclaim.daysLeft} day${reclaim.daysLeft === 1 ? "" : "s"} (${reclaim.unlockAt.toLocaleDateString()}).`}
+                      </p>
+                    </div>
+                  )}
+
                   {/* Buyer + unfunded → cancel */}
                   {role === "buyer" && isUnfunded && (
                     <button
@@ -1663,17 +1698,34 @@ export default function ActiveDealPage() {
                   )}
 
                   {/* Buyer + funded → timeout refund (ghost-seller escape hatch).
-                      Not offered once the deal is terminal — escrow is empty. */}
+                      Not offered once the deal is terminal — escrow is empty.
+                      The button is disabled until the window opens and says WHEN
+                      it opens (#5/#6/#7): previously the only way to find out was
+                      to click and read the failure. The chain still enforces the
+                      timing — this is a hint, not a gate. */}
                   {!isTerminal && role === "buyer" && isFunded && (
-                    <button
-                      className="btn-ghost"
-                      disabled={refunding}
-                      onClick={handleTimeoutRefund}
-                      style={{ height: 34, borderRadius: 7, fontSize: 12 }}
-                      title="Reclaim your funds if the seller has gone inactive past the timeout window"
-                    >
-                      {refunding ? "Processing…" : "Reclaim funds (inactivity timeout)"}
-                    </button>
+                    <>
+                      <button
+                        className="btn-ghost"
+                        disabled={refunding || (!!reclaim && !reclaim.unlocked)}
+                        onClick={handleTimeoutRefund}
+                        style={{ height: 34, borderRadius: 7, fontSize: 12 }}
+                        title={
+                          reclaim && !reclaim.unlocked
+                            ? `Unlocks ${reclaim.unlockAt.toLocaleDateString()}`
+                            : "Reclaim your funds if the seller has gone inactive past the timeout window"
+                        }
+                      >
+                        {refunding ? "Processing…" : "Reclaim funds (inactivity timeout)"}
+                      </button>
+                      {reclaim && !reclaim.unlocked && (
+                        <p style={{ fontSize: 11, color: "var(--muted)", margin: "-2px 0 0", lineHeight: 1.5 }}>
+                          Available in {reclaim.daysLeft} day{reclaim.daysLeft === 1 ? "" : "s"} —{" "}
+                          {reclaim.exact ? "" : "approximately "}
+                          {reclaim.unlockAt.toLocaleDateString()}, 30 days after funding.
+                        </p>
+                      )}
+                    </>
                   )}
 
                   {/* Mutual refund — two-step approval. Either party approves in
