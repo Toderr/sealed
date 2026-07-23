@@ -70,7 +70,7 @@ export const POST = withRoute(async (request) => {
   // seller) to mutate it — prevents a third party from overwriting the row.
   const { data: existing } = await supabase
     .from(table("deals"))
-    .select("buyer_wallet, seller_wallet, milestones")
+    .select("buyer_wallet, seller_wallet, milestones, creator_role")
     .eq("deal_id", deal_id)
     .maybeSingle();
 
@@ -92,6 +92,21 @@ export const POST = withRoute(async (request) => {
   // don't carry it — e.g. the invite-accept flow re-mirrors proof-less milestones
   // and would otherwise wipe the assignments set at creation. Merge by index from
   // the existing row when the incoming milestone omits proof_by.
+  // Who created this deal. Write-once: set on the row that first creates the
+  // deal, never overwritten by a later re-sync. The creator is a historical
+  // fact — a re-mirror from the counterparty's device (or a legacy caller that
+  // omits creator_role) must not be able to rewrite it. Needed for per-user fee
+  // tiers, which apply only to the deal's CREATOR (issue #49); until now this
+  // field was received, used for slot routing, and thrown away.
+  const resolvedCreatorRole: "buyer" | "seller" | null =
+    existing
+      ? null // already created — preserve whatever was recorded (or wasn't)
+      : creator_role === "seller"
+      ? "seller"
+      : creator_role === "buyer"
+      ? "buyer"
+      : null; // legacy caller sent nothing: record nothing rather than guess
+
   const existingMs = Array.isArray(existing?.milestones) ? existing.milestones : [];
   const finalMilestones = (milestones ?? []).map((m, i) => {
     const incoming = m as { proof_by?: string };
@@ -115,6 +130,9 @@ export const POST = withRoute(async (request) => {
         // Only include funded_at when provided so a plain draft-create doesn't
         // null out a previously-stamped funding time on upsert.
         ...(funded_at !== undefined ? { funded_at } : {}),
+        // Same guard, stronger rule: only ever written on first create. Omitted
+        // entirely for an existing deal, so an upsert can't overwrite it.
+        ...(resolvedCreatorRole ? { creator_role: resolvedCreatorRole } : {}),
       },
       { onConflict: "deal_id" }
     )
