@@ -5,7 +5,7 @@ use crate::error::EscrowError;
 use crate::state::*;
 
 #[derive(Accounts)]
-#[instruction(deal_id: String)]
+#[instruction(deal_id: String, milestones: Vec<MilestoneInput>, total_amount: u64, creator_wallet: Pubkey)]
 pub struct CreateDeal<'info> {
     #[account(mut)]
     pub buyer: Signer<'info>,
@@ -41,6 +41,17 @@ pub struct CreateDeal<'info> {
     #[account(seeds = [b"config"], bump = config.bump)]
     pub config: Option<Account<'info, Config>>,
 
+    /// The deal creator's tier assignment, if they have one. Optional because
+    /// ABSENCE IS THE DEFAULT — the overwhelming majority of wallets are
+    /// untiered and simply have no such account. Seeds bind it to
+    /// `creator_wallet`, so a caller cannot pass someone else's (cheaper) tier:
+    /// the PDA derivation would not match.
+    #[account(
+        seeds = [b"tier", creator_wallet.as_ref()],
+        bump = creator_tier.bump,
+    )]
+    pub creator_tier: Option<Account<'info, UserTier>>,
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
@@ -51,9 +62,18 @@ pub fn handler(
     deal_id: String,
     milestones: Vec<MilestoneInput>,
     total_amount: u64,
+    creator_wallet: Pubkey,
 ) -> Result<()> {
     require!(deal_id.len() <= 32, EscrowError::DealIdTooLong);
     require!(milestones.len() <= 10, EscrowError::TooManyMilestones);
+
+    // The creator must be one of the two parties. Without this a buyer could
+    // name any wallet as "creator" — including one they know holds an SSS tier —
+    // and claim its pricing for a deal that wallet has nothing to do with.
+    require!(
+        creator_wallet == ctx.accounts.buyer.key() || creator_wallet == ctx.accounts.seller.key(),
+        EscrowError::InvalidCreator
+    );
 
     let milestone_sum: u64 = milestones.iter().map(|m| m.amount).sum();
     require!(
@@ -94,14 +114,65 @@ pub fn handler(
     // when a rate is set AND a treasury exists — otherwise the deal is fee-free
     // (fee_bps 0 / treasury default), so deals stay fundable before the treasury
     // is configured. Later fee changes never affect this (already-created) deal.
+    deal.creator = creator_wallet;
+
     match &ctx.accounts.config {
         Some(config) if config.fee_active() => {
             deal.fee_bps = config.fee_bps;
             deal.treasury = config.treasury;
+
+            // Resolve the CREATOR's tier, if any. A tier is a property of the
+            // wallet that created the deal — being a counterparty on someone
+            // else's deal never earns a discount.
+            //
+            // The tier is resolved once, here, and its rates are snapshotted
+            // onto the deal like fee_bps always has been. Repricing a tier
+            // later can therefore never change a deal already underway.
+            let tier = ctx
+                .accounts
+                .creator_tier
+                .as_ref()
+                .filter(|t| t.wallet == creator_wallet)
+                .and_then(|t| config.tier(t.tier_id));
+
+            match tier {
+                Some(t) => {
+                    // Map creator/counterparty onto buyer/seller for this deal.
+                    let creator_is_buyer = creator_wallet == deal.buyer;
+                    deal.buyer_fee_bps = if creator_is_buyer {
+                        t.creator_fee_bps
+                    } else {
+                        t.counterparty_fee_bps
+                    };
+                    deal.seller_fee_bps = if creator_is_buyer {
+                        t.counterparty_fee_bps
+                    } else {
+                        t.creator_fee_bps
+                    };
+                    deal.asymmetric_fees = true;
+                    msg!(
+                        "Tier {} applied: buyer={} bps, seller={} bps",
+                        t.id,
+                        deal.buyer_fee_bps,
+                        deal.seller_fee_bps
+                    );
+                }
+                None => {
+                    // Untiered: leave asymmetric_fees false so the fee helpers
+                    // use the symmetric half-split, byte-identical to the
+                    // behavior before tiers existed.
+                    deal.buyer_fee_bps = 0;
+                    deal.seller_fee_bps = 0;
+                    deal.asymmetric_fees = false;
+                }
+            }
         }
         _ => {
             deal.fee_bps = 0;
             deal.treasury = Pubkey::default();
+            deal.buyer_fee_bps = 0;
+            deal.seller_fee_bps = 0;
+            deal.asymmetric_fees = false;
         }
     }
 

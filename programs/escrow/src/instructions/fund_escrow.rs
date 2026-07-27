@@ -59,7 +59,7 @@ pub fn handler(ctx: Context<FundEscrow>, amount: u64) -> Result<()> {
     // Charge the buyer's fee half ONCE, to the treasury. Only when the deal
     // carries a fee; skipped entirely for fee-free deals (no treasury needed).
     if deal.has_fee() && !deal.buyer_fee_paid {
-        let buyer_fee = deal.half_fee(deal.total_amount);
+        let buyer_fee = deal.buyer_fee(deal.total_amount);
         if buyer_fee > 0 {
             let treasury_ta = ctx
                 .accounts

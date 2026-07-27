@@ -52,7 +52,7 @@ pub fn handler(ctx: Context<ReleaseMilestone>, milestone_index: u8) -> Result<()
     let bump = deal.bump;
 
     // Seller's fee half comes out of this milestone; the rest goes to the seller.
-    let seller_fee = if deal.has_fee() { deal.half_fee(amount) } else { 0 };
+    let seller_fee = if deal.has_fee() { deal.seller_fee(amount) } else { 0 };
     let seller_net = amount.checked_sub(seller_fee).ok_or(EscrowError::MathOverflow)?;
     let deal_treasury = deal.treasury;
     let deal_mint = deal.mint;

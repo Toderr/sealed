@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::error::EscrowError;
-use crate::state::Config;
+use crate::state::{Config, Tier};
 
 // ── init_config ───────────────────────────────────────────────────────────────
 // Creates the single global Config PDA. The caller becomes the authority. The
@@ -69,5 +69,45 @@ pub fn set_treasury(ctx: Context<UpdateConfig>, treasury: Pubkey) -> Result<()> 
 pub fn set_authority(ctx: Context<UpdateConfig>, new_authority: Pubkey) -> Result<()> {
     ctx.accounts.config.authority = new_authority;
     msg!("Authority transferred: {}", new_authority);
+    Ok(())
+}
+
+// ── set_tiers ─────────────────────────────────────────────────────────────────
+// Replace the whole tier table in one call (authority only). Wholesale rather
+// than per-entry so the table is always internally consistent — no window where
+// half the tiers are new pricing and half are old.
+//
+// This is what makes pricing a config change rather than a code change: adding,
+// removing, or repricing a tier is a script run, never a rebuild or redeploy.
+// Deals already created keep the rates they snapshotted at creation.
+
+pub fn set_tiers(ctx: Context<UpdateConfig>, tiers: Vec<Tier>) -> Result<()> {
+    require!(
+        tiers.len() <= Config::MAX_TIERS,
+        EscrowError::TooManyTiers
+    );
+
+    // Every rate is capped by the same ceiling as the global fee. A tier is a
+    // discount mechanism; it must not become a backdoor to overcharging.
+    for t in tiers.iter() {
+        require!(
+            t.creator_fee_bps <= Config::MAX_FEE_BPS
+                && t.counterparty_fee_bps <= Config::MAX_FEE_BPS,
+            EscrowError::FeeTooHigh
+        );
+    }
+
+    // Duplicate ids would make `Config::tier()` resolution order-dependent, so
+    // the same wallet could be priced differently depending on how the vec was
+    // written. Reject rather than silently taking the first match.
+    for (i, t) in tiers.iter().enumerate() {
+        require!(
+            !tiers.iter().skip(i + 1).any(|o| o.id == t.id),
+            EscrowError::DuplicateTierId
+        );
+    }
+
+    ctx.accounts.config.tiers = tiers;
+    msg!("Tiers updated: {} configured", ctx.accounts.config.tiers.len());
     Ok(())
 }
