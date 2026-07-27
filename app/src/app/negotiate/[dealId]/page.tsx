@@ -1164,7 +1164,16 @@ export default function NegotiateRoom() {
         : undefined;
 
       const ensureAtaIx = await buildEnsureAtaIx(publicKey, publicKey, mint);
-      const createIx = await buildCreateDealIx(publicKey, finalTerms, connection);
+      // Thread the creator role into create_deal. finalTerms is built from the
+      // negotiation and doesn't carry it, so without this it defaulted to buyer:
+      // the on-chain creator became the wrong party (flipping a seller-created
+      // deal to buyer) AND the wrong tier resolved (an SSS seller-creator's
+      // counterparty was charged the flat 0.5% instead of the tier's 1%).
+      const createIx = await buildCreateDealIx(
+        publicKey,
+        { ...finalTerms, creatorRole: creatorIsBuyer ? "buyer" : "seller" },
+        connection
+      );
       const fundIx = await buildFundEscrowIx(publicKey, finalTerms.dealId, finalTerms.totalAmount, treasuryTa);
       const sig = await sendTx(connection, [ensureAtaIx, createIx, fundIx], signTransaction);
 

@@ -36,7 +36,15 @@ function normalizeProofBy(value: unknown): ProofBy {
   return value === "buyer" ? "buyer" : "seller";
 }
 
-function tryParseDealParams(text: string): DealParams | undefined {
+function tryParseDealParams(
+  text: string,
+  // The side the user explicitly chose BEFORE prompting. It is authoritative —
+  // the LLM must not flip it. Previously the parser trusted parsed.creator_role
+  // and fell back to "buyer" whenever the model omitted it, silently discarding
+  // a user who had picked "seller" (they'd end up the buyer on-chain, funding a
+  // deal they meant to receive on, and the wrong tier would resolve).
+  chosenRole: "buyer" | "seller" = "buyer"
+): DealParams | undefined {
   const block = extractJsonBlock(text);
   if (!block) return undefined;
   try {
@@ -53,7 +61,7 @@ function tryParseDealParams(text: string): DealParams | undefined {
         dealId: parsed.deal_id,
         title: parsed.title ?? parsed.deal_id,
         sellerWallet: parsed.seller_wallet ?? "",
-        creatorRole: parsed.creator_role === "seller" ? "seller" : "buyer",
+        creatorRole: chosenRole,
         totalAmount: parsed.total_amount,
         milestones: parsed.milestones.map(
           (m: { description: string; amount: number; proof_by?: unknown }) => ({
@@ -225,7 +233,7 @@ export default function ChatInterface({
         responseText = data.response;
       }
 
-      const dealParams = tryParseDealParams(responseText);
+      const dealParams = tryParseDealParams(responseText, creatorRole);
 
       const assistantMsg: ChatMessage = {
         id: crypto.randomUUID(),
