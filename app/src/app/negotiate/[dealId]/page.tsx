@@ -977,13 +977,18 @@ export default function NegotiateRoom() {
   }, [deal, wallet, memory, role, dealParams, applyServerPatch]);
 
   // If the seller requests renegotiation, the buyer's room should actively
-  // restart the agent flow instead of staying on a stale result.
+  // restart the agent flow instead of staying on a stale result — but ONLY for
+  // agent-mode deals. A manual/fully-manual deal renegotiates by reopening the
+  // editor (editingTerms), never by auto-running the agent; firing it here would
+  // auto-agree and lock the seller out of a human reply.
   useEffect(() => {
     if (!deal || deal.status !== "escalated") return;
     if (role !== "buyer" || negState.kind !== "idle" || !memory) return;
+    if (sellerView === "manual" || sellerView === "fully-manual") return;
     if (!renegotiationNotice?.content || renegotiationNotice.wallet === wallet) return;
     startNegotiation(renegotiationNotice.content);
   }, [
+    sellerView,
     deal,
     role,
     negState.kind,
@@ -1472,7 +1477,15 @@ export default function NegotiateRoom() {
                       wallet={wallet ?? ""}
                       mode={sellerView === "fully-manual" ? "fully-manual" : "assisted"}
                       party="seller"
-                      onRenegotiate={() => setRenegotiateOpen(true)}
+                      // Fully-manual is human↔human: renegotiate must reopen the
+                      // terms editor, never the agent modal (which would auto-run
+                      // and lock the counterparty out). Assisted mode IS a chat with
+                      // the buyer's agent, so the agent modal is appropriate there.
+                      onRenegotiate={
+                        sellerView === "fully-manual"
+                          ? () => { setEditingTerms(true); setTermsError(null); }
+                          : () => setRenegotiateOpen(true)
+                      }
                       onBack={async () => {
                         // Going back must also clear the shared status. Manual
                         // chat sets the deal to "manual-chat"; resetting only the
@@ -1548,7 +1561,10 @@ export default function NegotiateRoom() {
                       deploying={deploying}
                       deployError={deployError}
                       onAccept={handleAcceptAndDeploy}
-                      onRenegotiate={() => setRenegotiateOpen(true)}
+                      // These terms were reached by MANUAL negotiation, so
+                      // renegotiate reopens the editor rather than firing the
+                      // agent — the counterparty must be able to respond by hand.
+                      onRenegotiate={() => { setEditingTerms(true); setTermsError(null); }}
                       onReject={deal.seller_wallet ? () => { setRejectError(null); setRejectOpen(true); } : undefined}
                     />
                   )}
@@ -1582,7 +1598,11 @@ export default function NegotiateRoom() {
                       wallet={wallet ?? ""}
                       mode="fully-manual"
                       party="buyer"
-                      onRenegotiate={() => setRenegotiateOpen(true)}
+                      // Renegotiate in a MANUAL chat must stay manual — reopen the
+                      // terms editor, NOT the agent modal. Routing this into the
+                      // agent (RenegotiateModal → startNegotiation) auto-negotiated
+                      // and auto-agreed, locking the seller out of a human reply.
+                      onRenegotiate={() => { setEditingTerms(true); setTermsError(null); }}
                       onAgree={(negotiatedTerms) => handleManualAgree(deal, negotiatedTerms)}
                     />
                   )}

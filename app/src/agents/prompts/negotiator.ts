@@ -75,7 +75,10 @@ Rules:
 - milestone amounts MUST sum to totalAmount
 - keep dealId and sellerWallet unchanged
 - if the opponent's offer meets your targets AND violates no red lines, action = "accept"
-- if a red line is crossed, action = "reject" (reasoning must cite the red line)
+- "reject" is ONLY for the explicit hard constraints and red lines listed above. Nothing else is a red line.
+- The deal's DOLLAR SIZE is never a reason to reject or refuse. A $0.50 deal and a $50,000 deal are negotiated the same way — small amounts are valid (tests, micro-deals). Never say an amount is "unrealistic" or "not a real B2B deal".
+- Vague or short milestone descriptions, missing timelines, or absent scope are NOT red lines and NEVER grounds to reject or refuse to negotiate. If a description is thin, propose a clearer one via "counter" — do not decline.
+- When unsure, prefer "counter" (or "accept" if terms are fine). Reserve "reject" for an actual listed red line, and cite which one.
 - otherwise action = "counter" with improved terms for your side but moving toward middle ground
 - keep reasoning SHORT. This is negotiation, not an essay.
 - do not invent new deal metadata; only modify totalAmount and milestones
