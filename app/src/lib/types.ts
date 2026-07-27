@@ -104,6 +104,11 @@ export interface SupabaseDeal {
   // Wall-clock funding time, mirrored from on-chain deal.funded_at, used to show
   // when the 30-day buyer-timeout reclaim window elapses (#9). Unset until funded.
   funded_at?: string | null;
+  // Which side CREATED this deal. Write-once at creation; null for deals that
+  // predate migration 015 (never backfilled — the information didn't exist, so
+  // any value would be a guess). Per-user fee tiers key off this, since a tier
+  // applies only when its holder is the creator. See issue #49.
+  creator_role?: "buyer" | "seller" | null;
 }
 
 // --- AI Agent types ---

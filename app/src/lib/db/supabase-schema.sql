@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS sealed_deals (
     milestones JSONB NOT NULL DEFAULT '[]'::jsonb,
     funded_at TIMESTAMPTZ,                            -- wall-clock funding time (mirrors on-chain deal.funded_at) for the reclaim-timeout UI
     invite_code TEXT UNIQUE,                          -- 8 random base62 chars backing the short /i/{code} invite link; minted lazily, NULL until first requested
+    creator_role TEXT CHECK (creator_role IN ('buyer','seller')),  -- which side CREATED the deal; write-once. NULL for rows predating migration 015 (never backfilled — it would be a guess). Drives per-user fee tiers, which apply only to the creator.
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

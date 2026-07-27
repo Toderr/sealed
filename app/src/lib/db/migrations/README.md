@@ -32,6 +32,7 @@ migration, update the schema file to match, or the two drift.
 | 012 | Notify on friend requests (`notify_on` keys) |
 | 013 | `sealed_deals.invite_code` — short `/i/{code}` invite links |
 | 014 | Telegram account linking (`telegram_link_code` + expiry) |
+| 015 | `sealed_deals.creator_role` — who created the deal (fee tiers, issue #49) |
 
 ## Why several of these exist
 
