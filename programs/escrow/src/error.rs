@@ -28,6 +28,16 @@ pub enum EscrowError {
     UnauthorizedAuthority,
     #[msg("Fee exceeds the maximum allowed (5%)")]
     FeeTooHigh,
+    #[msg("Too many tiers configured (max 16)")]
+    TooManyTiers,
+    #[msg("Duplicate tier id — each tier id must be unique")]
+    DuplicateTierId,
+    #[msg("No tier with that id exists in the platform config")]
+    UnknownTierId,
+    #[msg("The named creator is not a party to this deal")]
+    InvalidCreator,
+    #[msg("Account could not be deserialized")]
+    AccountDidNotDeserialize,
     #[msg("This deal charges a fee; the correct treasury token account is required")]
     TreasuryAccountRequired,
     #[msg("Arithmetic overflow")]

@@ -55,6 +55,15 @@ export function findConfigPDA(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
 }
 
+/** Per-wallet tier assignment PDA (seeds = ["tier", wallet]). Only whitelisted
+ *  wallets have this account; absence means untiered. */
+export function findUserTierPDA(wallet: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("tier"), wallet.toBuffer()],
+    PROGRAM_ID
+  );
+}
+
 // Total platform fee in basis points (100 = 1%), split half buyer / half seller.
 // The on-chain Config is the source of truth; this mirrors the default for the
 // deposit UI's line-item math when a live config isn't read.
@@ -86,7 +95,9 @@ export async function fetchFeeConfig(connection?: Connection): Promise<FeeConfig
     const [configPDA] = findConfigPDA();
     const info = await connection.getAccountInfo(configPDA);
     if (!info) return { feeBps: DEFAULT_FEE_BPS, treasury: "", active: false };
-    // Config layout: [8 disc][32 authority][32 treasury][2 fee_bps][1 bump]
+    // Config layout: [8 disc][32 authority][32 treasury][2 fee_bps][4+len·5 tiers][1 bump]
+    // Only treasury + fee_bps are read, both at fixed offsets BEFORE the tiers
+    // vec — so appending tiers didn't move them. (tiers/bump are not decoded here.)
     const data = info.data;
     const treasuryBytes = data.subarray(8 + 32, 8 + 32 + 32);
     const treasuryPk = new PublicKey(treasuryBytes);
@@ -172,7 +183,11 @@ function mockIx(payer: PublicKey): TransactionInstruction {
 
 export async function buildCreateDealIx(
   buyer: PublicKey,
-  params: DealParams
+  params: DealParams,
+  // Optional: used to detect whether the creator has a tier account on-chain.
+  // Omitted → the deal is built as untiered (standard fee), which is safe and
+  // matches pre-tier behavior; passing it enables tiered pricing.
+  connection?: Connection
 ): Promise<TransactionInstruction> {
   if (MOCK_CHAIN) return mockIx(buyer);
   const seller = new PublicKey(params.sellerWallet);
@@ -185,12 +200,20 @@ export async function buildCreateDealIx(
     amount: new BN(usdcToLamports(m.amount)),
   }));
 
+  // Who created this deal. It cannot be inferred on-chain — the buyer signs
+  // create_deal regardless of who initiated — and it selects whose tier (if
+  // any) prices the deal. Defaults to the buyer, which is both the common case
+  // and the historical behavior.
+  const creatorWallet =
+    params.creatorRole === "seller" ? seller : buyer;
+
   const disc = await sha256Discriminator("create_deal");
   const data = Buffer.concat([
     disc,
     encodeString(params.dealId),
     encodeMilestones(milestones),
     encodeU64(new BN(usdcToLamports(params.totalAmount))),
+    creatorWallet.toBuffer(),
   ]);
 
   // Optional config account (Anchor Option<Account>): pass the Config PDA to
@@ -199,6 +222,21 @@ export async function buildCreateDealIx(
   // on-chain yet, pass PROGRAM_ID here instead of configPDA so create_deal
   // treats the deal as fee-free. Once init_config is run, always pass configPDA.
   const [configPDA] = findConfigPDA();
+
+  // The creator's tier account (Anchor Option<Account>): pass its PDA only when
+  // the account actually exists on-chain, else the program id to signal None.
+  // Most wallets are untiered and have no such account — resolving to None then
+  // means the deal uses the standard fee, exactly as before tiers existed.
+  const [creatorTierPDA] = findUserTierPDA(creatorWallet);
+  let tierSlot = PROGRAM_ID;
+  if (connection) {
+    try {
+      const info = await connection.getAccountInfo(creatorTierPDA);
+      if (info) tierSlot = creatorTierPDA;
+    } catch {
+      // Lookup failed → treat as untiered rather than blocking deal creation.
+    }
+  }
 
   return new TransactionInstruction({
     programId: PROGRAM_ID,
@@ -209,6 +247,7 @@ export async function buildCreateDealIx(
       { pubkey: mint, isSigner: false, isWritable: false },
       { pubkey: escrowVault, isSigner: false, isWritable: true },
       { pubkey: configPDA, isSigner: false, isWritable: false },
+      { pubkey: tierSlot, isSigner: false, isWritable: false },
       { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
@@ -680,6 +719,33 @@ export { getAccount, getAssociatedTokenAddress, TokenAccountNotFoundError, Token
 
 // Cancel an unfunded (or partially funded) deal. Buyer-only. Returns any
 // partial funding to buyer and closes both the escrow vault and deal PDA.
+/**
+ * Grow a pre-tier Deal account to the current layout. Permissionless and
+ * idempotent: safe to prepend to any instruction that operates on a deal which
+ * might predate the tier upgrade. `payer` covers the small rent top-up.
+ *
+ * A deal created before the tier upgrade is too short to deserialize under the
+ * new layout, so fund/release/refund on it fail until this runs once.
+ */
+export async function buildMigrateDealIx(
+  payer: PublicKey,
+  dealId: string
+): Promise<TransactionInstruction> {
+  if (MOCK_CHAIN) return mockIx(payer);
+  const [dealPDA] = findDealPDA(dealId);
+  const disc = await sha256Discriminator("migrate_deal");
+  const data = Buffer.concat([disc, encodeString(dealId)]);
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+
 export async function buildCancelDealIx(
   buyer: PublicKey,
   dealId: string

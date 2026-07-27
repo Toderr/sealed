@@ -95,3 +95,4 @@ screenshot-tmp/package*.json
 !Anchor.toml
 
 .vercel
+.build-escrow.sh

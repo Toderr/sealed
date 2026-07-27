@@ -1142,7 +1142,7 @@ export default function NegotiateRoom() {
         : undefined;
 
       const ensureAtaIx = await buildEnsureAtaIx(publicKey, publicKey, mint);
-      const createIx = await buildCreateDealIx(publicKey, finalTerms);
+      const createIx = await buildCreateDealIx(publicKey, finalTerms, connection);
       const fundIx = await buildFundEscrowIx(publicKey, finalTerms.dealId, finalTerms.totalAmount, treasuryTa);
       const sig = await sendTx(connection, [ensureAtaIx, createIx, fundIx], signTransaction);
 

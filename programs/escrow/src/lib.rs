@@ -5,7 +5,7 @@ pub mod instructions;
 pub mod state;
 
 use instructions::*;
-use state::MilestoneInput;
+use state::{MilestoneInput, Tier};
 
 declare_id!("3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ");
 
@@ -33,19 +33,48 @@ pub mod escrow {
         instructions::config::set_authority(ctx, new_authority)
     }
 
-    /// Create a new deal with milestones and escrow parameters
+    /// Replace the pricing tier table (authority only). Repricing a tier is a
+    /// config change, never a redeploy; deals keep the rates they snapshotted.
+    pub fn set_tiers(ctx: Context<UpdateConfig>, tiers: Vec<Tier>) -> Result<()> {
+        instructions::config::set_tiers(ctx, tiers)
+    }
+
+    /// Assign a wallet to a pricing tier (authority only). Creates or updates.
+    pub fn set_user_tier(ctx: Context<SetUserTier>, wallet: Pubkey, tier_id: u8) -> Result<()> {
+        instructions::tier::set_user_tier(ctx, wallet, tier_id)
+    }
+
+    /// Revoke a wallet's tier (authority only), returning the account rent.
+    pub fn clear_user_tier(ctx: Context<ClearUserTier>, wallet: Pubkey) -> Result<()> {
+        instructions::tier::clear_user_tier(ctx, wallet)
+    }
+
+    /// Create a new deal with milestones and escrow parameters.
+    /// `creator_wallet` records which party initiated the deal — it cannot be
+    /// inferred, since the buyer always signs regardless of who created it —
+    /// and selects whose tier (if any) prices the deal.
     pub fn create_deal(
         ctx: Context<CreateDeal>,
         deal_id: String,
         milestones: Vec<MilestoneInput>,
         total_amount: u64,
+        creator_wallet: Pubkey,
     ) -> Result<()> {
-        instructions::create_deal::handler(ctx, deal_id, milestones, total_amount)
+        instructions::create_deal::handler(ctx, deal_id, milestones, total_amount, creator_wallet)
     }
 
     /// Fund the escrow with USDC
     pub fn fund_escrow(ctx: Context<FundEscrow>, amount: u64) -> Result<()> {
         instructions::fund_escrow::handler(ctx, amount)
+    }
+
+    /// Grow a pre-tier Deal account to the current layout (permissionless,
+    /// idempotent). Must be run on any deal created before the tier upgrade
+    /// before it can be funded, released, or refunded again — an old, shorter
+    /// account otherwise fails to deserialize. Zero-fills the new tail, which is
+    /// the correct legacy default (untiered, symmetric split).
+    pub fn migrate_deal(ctx: Context<MigrateDeal>, deal_id: String) -> Result<()> {
+        instructions::migrate_deal::handler(ctx, deal_id)
     }
 
     /// Release funds for a completed milestone
