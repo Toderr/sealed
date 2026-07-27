@@ -2639,11 +2639,17 @@ function FeeBreakdown({
   if (!state || !state.active) return null;
   const buyerFee = sideFeeLamports(contractAmount * 1_000_000, state.buyerBps) / 1_000_000;
   const total = contractAmount + buyerFee;
+  // USDC has 6 decimals, but formatUsdc rounds to 2 — which turned a $0.005 fee
+  // into "$0.01" and a $0.505 total into "$0.51", making the panel disagree with
+  // what Phantom actually charges. Show the exact amount here (trailing zeros
+  // trimmed, up to 6 dp) so the deposit total matches the wallet to the lamport.
+  const exactUsdc = (n: number) =>
+    n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 });
   return (
     <div className="space-y-1 pt-2 mt-1 border-t border-card-border-subtle text-[12px]">
-      <div className="flex justify-between text-muted"><span>Contract</span><span className="tabular-nums">${formatUsdc(contractAmount)}</span></div>
-      <div className="flex justify-between text-muted"><span>Platform fee ({(state.buyerBps / 100).toFixed(2)}%)</span><span className="tabular-nums">${formatUsdc(buyerFee)}</span></div>
-      <div className="flex justify-between text-primary" style={{ fontWeight: 590 }}><span>Total to deposit</span><span className="tabular-nums">${formatUsdc(total)} USDC</span></div>
+      <div className="flex justify-between text-muted"><span>Contract</span><span className="tabular-nums">${exactUsdc(contractAmount)}</span></div>
+      <div className="flex justify-between text-muted"><span>Platform fee ({(state.buyerBps / 100).toFixed(2)}%)</span><span className="tabular-nums">${exactUsdc(buyerFee)}</span></div>
+      <div className="flex justify-between text-primary" style={{ fontWeight: 590 }}><span>Total to deposit</span><span className="tabular-nums">${exactUsdc(total)} USDC</span></div>
     </div>
   );
 }
