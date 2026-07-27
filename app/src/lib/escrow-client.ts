@@ -95,9 +95,8 @@ export async function fetchFeeConfig(connection?: Connection): Promise<FeeConfig
     const [configPDA] = findConfigPDA();
     const info = await connection.getAccountInfo(configPDA);
     if (!info) return { feeBps: DEFAULT_FEE_BPS, treasury: "", active: false };
-    // Config layout: [8 disc][32 authority][32 treasury][2 fee_bps][4+len·5 tiers][1 bump]
-    // Only treasury + fee_bps are read, both at fixed offsets BEFORE the tiers
-    // vec — so appending tiers didn't move them. (tiers/bump are not decoded here.)
+    // Config layout: [8 disc][32 authority][32 treasury][2 fee_bps][1 bump][4 vec_len][tiers·5]
+    // treasury + fee_bps sit at fixed offsets before bump, so they're stable.
     const data = info.data;
     const treasuryBytes = data.subarray(8 + 32, 8 + 32 + 32);
     const treasuryPk = new PublicKey(treasuryBytes);
@@ -111,6 +110,84 @@ export async function fetchFeeConfig(connection?: Connection): Promise<FeeConfig
   } catch {
     return { feeBps: DEFAULT_FEE_BPS, treasury: "", active: false };
   }
+}
+
+/** One pricing tier, decoded from the on-chain Config.tiers vec. */
+export type Tier = { id: number; creatorFeeBps: number; counterpartyFeeBps: number };
+
+/** Decode the tier table from Config. Empty when none configured (or on error).
+ *  Layout after fee_bps: [1 bump][4 vec_len][ (id u8, creator u16, counterparty u16) · len ]. */
+export async function fetchTiers(connection?: Connection): Promise<Tier[]> {
+  if (MOCK_CHAIN || !connection) return [];
+  try {
+    const [configPDA] = findConfigPDA();
+    const info = await connection.getAccountInfo(configPDA);
+    if (!info) return [];
+    const d = info.data;
+    let o = 8 + 32 + 32 + 2 + 1; // skip disc, authority, treasury, fee_bps, bump
+    if (d.length < o + 4) return [];
+    const len = d.readUInt32LE(o);
+    o += 4;
+    const tiers: Tier[] = [];
+    for (let i = 0; i < len && o + 5 <= d.length; i++) {
+      tiers.push({
+        id: d.readUInt8(o),
+        creatorFeeBps: d.readUInt16LE(o + 1),
+        counterpartyFeeBps: d.readUInt16LE(o + 3),
+      });
+      o += 5;
+    }
+    return tiers;
+  } catch {
+    return [];
+  }
+}
+
+/** Read a wallet's assigned tier id, or null if it has no UserTier account
+ *  (i.e. untiered). Mirrors the on-chain resolution the program does at
+ *  create_deal — so the funding UI can show the fee the chain will ACTUALLY
+ *  charge, not the flat default. */
+export async function fetchUserTierId(
+  connection: Connection | undefined,
+  wallet: PublicKey
+): Promise<number | null> {
+  if (MOCK_CHAIN || !connection) return null;
+  try {
+    const [pda] = findUserTierPDA(wallet);
+    const info = await connection.getAccountInfo(pda);
+    if (!info) return null; // no account = untiered
+    // UserTier layout: [8 disc][32 wallet][1 tier_id][1 bump]
+    return info.data.readUInt8(8 + 32);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The BUYER's fee rate in bps for a deal, matching create_deal exactly.
+ *
+ *  - Untiered: the buyer pays half the symmetric total (fee_bps / 2), as always.
+ *  - Tiered: the creator's tier applies. If the creator IS the buyer, the buyer
+ *    pays creator_fee_bps; if the creator is the seller, the buyer is the
+ *    counterparty and pays counterparty_fee_bps.
+ *
+ * This is why an SSS-creator deal shows the buyer $0 fee: creator_fee_bps = 0.
+ */
+export async function resolveBuyerFeeBps(
+  connection: Connection | undefined,
+  opts: { globalFeeBps: number; creatorWallet: PublicKey; creatorIsBuyer: boolean }
+): Promise<number> {
+  const tierId = await fetchUserTierId(connection, opts.creatorWallet);
+  if (tierId === null) return Math.floor(opts.globalFeeBps / 2); // untiered symmetric half
+  const tiers = await fetchTiers(connection);
+  const tier = tiers.find((t) => t.id === tierId);
+  if (!tier) return Math.floor(opts.globalFeeBps / 2); // orphaned id → default, as on-chain
+  return opts.creatorIsBuyer ? tier.creatorFeeBps : tier.counterpartyFeeBps;
+}
+
+/** Fee on `amount` (lamports) at a per-side bps rate. `amount * bps / 10_000`. */
+export function sideFeeLamports(amountLamports: number, bps: number): number {
+  return Math.floor((amountLamports * bps) / 10_000);
 }
 
 export function getUsdcMint(): PublicKey {
