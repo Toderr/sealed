@@ -223,14 +223,19 @@ pub struct Config {
     /// Default total fee in basis points (100 = 1%) for wallets with no tier.
     /// Split half buyer / half seller, as it always has been.
     pub fee_bps: u16,
-    /// Pricing tiers, indexed by Tier.id. Empty = nobody is tiered and every
-    /// deal uses fee_bps. Sized generously up front: growing this later means
-    /// reallocating the account, which is far more disruptive than the ~80
-    /// unused bytes it costs today.
-    #[max_len(16)]
-    pub tiers: Vec<Tier>,
     /// Bump seed
     pub bump: u8,
+    // ── Appended AFTER the original fields (which ended at `bump`). ───────────
+    // Borsh is positional: the pre-tier Config had `bump` last, so `tiers` MUST
+    // come after it, not before — otherwise migrating an existing Config would
+    // need to relocate `bump`, not just grow the account. As a trailing field,
+    // migrate_config is a pure resize + zero-fill, and a zero-filled tail is an
+    // empty vec (len prefix 0) = "no tiers", which is the truth until set_tiers.
+    /// Pricing tiers, indexed by Tier.id. Empty = nobody is tiered and every
+    /// deal uses fee_bps. Sized generously up front (max 16): growing the cap
+    /// later would need another realloc.
+    #[max_len(16)]
+    pub tiers: Vec<Tier>,
 }
 
 impl Config {
