@@ -525,7 +525,13 @@ export default function NegotiateRoom() {
   // exchange itself is already visible in the shared ConversationView (turns are
   // persisted to chat server-side after the run).
   useEffect(() => {
-    if (!deal || role !== "seller" || deal.status !== "proposed" || negState.kind !== "idle") return;
+    // Both parties need a result panel once the deal is `proposed`. Previously
+    // seller-only, which left the BUYER's left column empty at `proposed` (no
+    // idle-branch matches that status for the buyer) — the deal terms card
+    // floated to the top with no negotiation panel above it. The buyer is the
+    // funder, so their panel carries the Accept & Deploy action; the seller's is
+    // the "waiting for buyer" acknowledgement.
+    if (!deal || role === "observer" || deal.status !== "proposed" || negState.kind !== "idle") return;
     const now = Date.now();
     const terms: DealParams = {
       dealId: deal.deal_id,
@@ -546,14 +552,16 @@ export default function NegotiateRoom() {
         status: "agreed",
         finalTerms: terms,
         summary: {
-          pros: ["Your agent and the buyer's agent reached agreement"],
+          pros: ["Both parties agreed on these terms"],
           cons: [],
           keyConcessions: [],
           riskFlags: [],
           confidenceScore: 1,
           recommendation: "accept",
           recommendationReasoning:
-            "Your agents agreed on these terms. Waiting for the buyer to accept and deploy the escrow.",
+            role === "buyer"
+              ? "These terms are agreed. Accept to fund and deploy the escrow."
+              : "Agreed. Waiting for the buyer to accept and deploy the escrow.",
         },
         buyerBoundaries: defaultSellerBoundaries(),
         sellerBoundaries: defaultSellerBoundaries(),
