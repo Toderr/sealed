@@ -2045,18 +2045,88 @@ function SettingsTab({ wallet }: { wallet: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
+  // Telegram linking (#18).
+  const [telegramLinked, setTelegramLinked] = useState(false);
+  const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
+  const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [deepLink, setDeepLink] = useState<string | null>(null);
+  const [tgBusy, setTgBusy] = useState(false);
+  const [tgError, setTgError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetchSafe<{ notify_on?: NotificationPrefs; email?: string; email_verified?: boolean }>(
-      `/api/users/${wallet}/public?self=1`, {}, {}
-    )
+    apiFetchSafe<{
+      notify_on?: NotificationPrefs;
+      email?: string;
+      email_verified?: boolean;
+      telegram_linked?: boolean;
+      telegram_username?: string | null;
+    }>(`/api/users/${wallet}/public?self=1`, {}, {})
       .then((data) => {
         if (data.notify_on) setNotifyPrefs(data.notify_on);
         if (data.email) setEmail(data.email);
         if (data.email_verified) setEmailVerified(data.email_verified);
+        if (data.telegram_linked) setTelegramLinked(true);
+        if (data.telegram_username) setTelegramUsername(data.telegram_username);
       })
       .finally(() => setLoading(false));
   }, [wallet]);
+
+  // While a code is outstanding, poll for the link completing. The user
+  // finishes in Telegram, so nothing in this tab would otherwise tell us.
+  useEffect(() => {
+    if (!linkCode || telegramLinked) return;
+    const id = setInterval(async () => {
+      const data = await apiFetchSafe<{ telegram_linked?: boolean; telegram_username?: string | null }>(
+        `/api/users/${wallet}/public?self=1`, {}, {}
+      );
+      if (data.telegram_linked) {
+        setTelegramLinked(true);
+        setTelegramUsername(data.telegram_username ?? null);
+        setLinkCode(null);
+        setDeepLink(null);
+      }
+    }, 3000);
+    return () => clearInterval(id);
+  }, [linkCode, telegramLinked, wallet]);
+
+  // Which channels a queued notification would actually reach. Mirrors
+  // queueNotification's rule: a verified email and/or a linked Telegram chat.
+  const deliveryChannels = [
+    ...(emailVerified ? ["email"] : []),
+    ...(telegramLinked ? ["Telegram"] : []),
+  ];
+
+  async function startTelegramLink() {
+    setTgBusy(true);
+    setTgError(null);
+    try {
+      const data = await apiFetch<{ code: string; deep_link: string | null }>(
+        "/api/telegram/link", { method: "POST", wallet }
+      );
+      setLinkCode(data.code);
+      setDeepLink(data.deep_link);
+    } catch (e) {
+      setTgError(e instanceof ApiError ? e.message : "Couldn't start Telegram linking.");
+    } finally {
+      setTgBusy(false);
+    }
+  }
+
+  async function unlinkTelegram() {
+    setTgBusy(true);
+    setTgError(null);
+    try {
+      await apiFetch("/api/telegram/link", { method: "DELETE", wallet });
+      setTelegramLinked(false);
+      setTelegramUsername(null);
+      setLinkCode(null);
+      setDeepLink(null);
+    } catch (e) {
+      setTgError(e instanceof ApiError ? e.message : "Couldn't disconnect Telegram.");
+    } finally {
+      setTgBusy(false);
+    }
+  }
 
   async function sendOtp() {
     setOtpError(null);
@@ -2177,21 +2247,73 @@ function SettingsTab({ wallet }: { wallet: string }) {
       </div>
 
       {/* Telegram section */}
-      <div className="surface-card rounded-xl p-5 space-y-4 opacity-60">
+      <div className="surface-card rounded-xl p-5 space-y-4">
         <div>
           <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>Telegram notifications</p>
-          <p className="text-[12px] text-muted mt-0.5">Setup coming soon.</p>
+          <p className="text-[12px] text-muted mt-0.5">
+            {telegramLinked
+              ? "Connected. You'll get the events selected below in Telegram."
+              : "Connect Telegram to get notified in chat as well as by email."}
+          </p>
         </div>
-        <input
-          disabled
-          placeholder="@your_telegram_handle"
-          className="w-full h-10 rounded-md bg-surface border border-card-border px-3 text-[13px] text-muted cursor-not-allowed"
-        />
+
+        {telegramLinked ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-1.5 text-[13px] text-success">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              {telegramUsername ? `@${telegramUsername}` : "Connected"}
+            </span>
+            <button onClick={unlinkTelegram} disabled={tgBusy} className="btn-ghost h-9 px-4 rounded-md text-[12px] disabled:opacity-40">
+              {tgBusy ? "Working…" : "Disconnect"}
+            </button>
+          </div>
+        ) : linkCode ? (
+          <div className="space-y-3">
+            <div className="rounded-lg border border-card-border-subtle bg-[rgba(255,255,255,0.02)] p-3.5 space-y-2">
+              <p className="text-[12px] text-muted">
+                {deepLink
+                  ? "Tap below, then press Start in Telegram."
+                  : "Send this code to the Sealed Agent bot in Telegram:"}
+              </p>
+              <p className="font-mono text-[18px] text-primary tracking-[0.12em]">{linkCode}</p>
+              {deepLink && (
+                <a href={deepLink} target="_blank" rel="noopener noreferrer" className="btn-primary h-9 px-4 rounded-md text-[13px] inline-flex items-center" style={{ textDecoration: "none" }}>
+                  Open Telegram
+                </a>
+              )}
+            </div>
+            <p className="text-[11px] text-subtle">
+              This page updates automatically once you&apos;ve sent it. The code expires in 15 minutes.
+            </p>
+          </div>
+        ) : (
+          <button onClick={startTelegramLink} disabled={tgBusy} className="btn-ghost h-10 px-4 rounded-md text-[13px] disabled:opacity-40">
+            {tgBusy ? "Starting…" : "Connect Telegram"}
+          </button>
+        )}
+
+        {tgError && <p className="text-[12px] text-danger">{tgError}</p>}
       </div>
 
       {/* Notification toggles */}
       <div className="surface-card rounded-xl p-5 space-y-4">
-        <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>Notification events</p>
+        <div>
+          <p className="text-[14px] text-primary" style={{ fontWeight: 590 }}>Notification events</p>
+          {/* Say where these go (#14). A toggle labelled only by event doesn't
+              tell you whether turning it on will actually reach you — and with
+              no channel connected, nothing is delivered at all. */}
+          <p className="text-[12px] text-muted mt-0.5">
+            {deliveryChannels.length === 0 ? (
+              <span className="text-warning">
+                No delivery channel connected — verify an email or connect Telegram above, or these events go nowhere.
+              </span>
+            ) : (
+              <>Delivered by {deliveryChannels.join(" and ")}.</>
+            )}
+          </p>
+        </div>
         <div className="space-y-3">
           {(Object.keys(NOTIFY_LABELS) as (keyof NotificationPrefs)[]).map((key) => (
             <label key={key} className="flex items-center justify-between gap-4 cursor-pointer">

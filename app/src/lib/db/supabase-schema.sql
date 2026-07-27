@@ -99,8 +99,10 @@ CREATE TABLE IF NOT EXISTS sealed_users (
     email             TEXT,
     email_verified    BOOLEAN NOT NULL DEFAULT FALSE,
     email_otp         TEXT,
-    telegram_chat_id  TEXT,
+    telegram_chat_id  TEXT,                           -- set by the bot webhook once linked; the queue sends here
     telegram_username TEXT,
+    telegram_link_code TEXT,                          -- short-lived code the user sends to the bot to link (cleared on use)
+    telegram_link_expires_at TIMESTAMPTZ,
     notify_on         JSONB NOT NULL DEFAULT '{"deal_review_needed":true,"milestone_due":true,"deal_accepted":true,"deal_declined":true,"new_deal_invite":true,"renegotiation_escalated":true,"friend_request":true,"friend_request_accepted":true}'::jsonb,
     kyc_status        TEXT NOT NULL DEFAULT 'none' CHECK (kyc_status IN ('none','pending','approved','rejected')),
     kyc_document_url  TEXT,

@@ -31,6 +31,7 @@ migration, update the schema file to match, or the two drift.
 | 011 | Safety net: ensure every table in the schema file exists |
 | 012 | Notify on friend requests (`notify_on` keys) |
 | 013 | `sealed_deals.invite_code` — short `/i/{code}` invite links |
+| 014 | Telegram account linking (`telegram_link_code` + expiry) |
 
 ## Why several of these exist
 

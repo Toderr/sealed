@@ -35,6 +35,10 @@ export const GET = withRoute<{ params: Promise<{ wallet: string }> }>(
         email: user?.email ?? null,
         email_verified: user?.email_verified ?? false,
         kyc_status: user?.kyc_status ?? "none",
+        // Never expose the raw chat id — the settings UI only needs to know
+        // whether a link exists, and which account it points at.
+        telegram_linked: !!user?.telegram_chat_id,
+        telegram_username: user?.telegram_username ?? null,
       });
     }
 
