@@ -70,6 +70,15 @@ pub fn handler(
     // The creator must be one of the two parties. Without this a buyer could
     // name any wallet as "creator" — including one they know holds an SSS tier —
     // and claim its pricing for a deal that wallet has nothing to do with.
+    //
+    // TRUST BOUNDARY: only `buyer` signs create_deal, so `creator_wallet` is
+    // ASSERTED by the buyer, not proven. This is safe for pricing because the
+    // creator's discount lands on the creator's OWN side: naming the seller as
+    // creator applies the seller's `creator_fee_bps` to the seller and charges
+    // the buyer `counterparty_fee_bps` — so a buyer can only ever give the
+    // discount away or pick a WORSE rate for themselves, never a better one, and
+    // no funds move wrongly. If `creator` ever gains meaning beyond fee-side
+    // selection (e.g. reputation credit), it must become signer-proven.
     require!(
         creator_wallet == ctx.accounts.buyer.key() || creator_wallet == ctx.accounts.seller.key(),
         EscrowError::InvalidCreator

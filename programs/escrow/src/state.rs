@@ -51,10 +51,17 @@ pub struct Deal {
     // ── Fields below were added after deals existed on-chain. ────────────────
     // Borsh is positional, so they MUST stay at the end: inserting anywhere
     // above shifts every subsequent byte and makes already-funded deals
-    // undecodable. Their zero values are also their correct legacy meaning
-    // (see `creator` and the asymmetric-fee note below), so a pre-existing
-    // deal that gets reallocated reads as "untiered, symmetric split" — which
-    // is exactly what it is.
+    // undecodable.
+    //
+    // CRITICAL — these fields make the account LONGER, and Borsh does NOT
+    // tolerate a short buffer: loading an old (pre-upgrade) Deal account fails
+    // with AccountDidNotDeserialize, which would freeze its escrow. Appending is
+    // necessary but NOT sufficient on its own. A pre-existing account must be
+    // grown to the new length and its tail zero-filled BEFORE any fee-path
+    // instruction loads it — that is exactly what `migrate_deal` does, and every
+    // fee/refund instruction that takes a full `Account<Deal>` will reject an
+    // un-migrated old account until it's run. Zero values are the correct legacy
+    // meaning (untiered, symmetric split), so the migration is a pure resize.
     /// Who created the deal. Pubkey::default() = unknown (created before this
     /// field existed) → no tier applies. Not inferable from `buyer`, which
     /// always signs create_deal regardless of who initiated.

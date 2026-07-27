@@ -719,6 +719,33 @@ export { getAccount, getAssociatedTokenAddress, TokenAccountNotFoundError, Token
 
 // Cancel an unfunded (or partially funded) deal. Buyer-only. Returns any
 // partial funding to buyer and closes both the escrow vault and deal PDA.
+/**
+ * Grow a pre-tier Deal account to the current layout. Permissionless and
+ * idempotent: safe to prepend to any instruction that operates on a deal which
+ * might predate the tier upgrade. `payer` covers the small rent top-up.
+ *
+ * A deal created before the tier upgrade is too short to deserialize under the
+ * new layout, so fund/release/refund on it fail until this runs once.
+ */
+export async function buildMigrateDealIx(
+  payer: PublicKey,
+  dealId: string
+): Promise<TransactionInstruction> {
+  if (MOCK_CHAIN) return mockIx(payer);
+  const [dealPDA] = findDealPDA(dealId);
+  const disc = await sha256Discriminator("migrate_deal");
+  const data = Buffer.concat([disc, encodeString(dealId)]);
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+
 export async function buildCancelDealIx(
   buyer: PublicKey,
   dealId: string

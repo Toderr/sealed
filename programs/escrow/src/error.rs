@@ -36,6 +36,8 @@ pub enum EscrowError {
     UnknownTierId,
     #[msg("The named creator is not a party to this deal")]
     InvalidCreator,
+    #[msg("Account could not be deserialized")]
+    AccountDidNotDeserialize,
     #[msg("This deal charges a fee; the correct treasury token account is required")]
     TreasuryAccountRequired,
     #[msg("Arithmetic overflow")]

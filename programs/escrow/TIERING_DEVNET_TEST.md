@@ -27,21 +27,40 @@ solana program deploy target/deploy/escrow.so   # note the NEW program id
 # point the app at it via NEXT_PUBLIC_ESCROW_PROGRAM_ID for the test session
 ```
 
-## Test 1 — the layout-safety case (the blocking one)
+## Test 1 — the layout migration (THE BLOCKING ONE)
 
-The goal is a `Deal` written by the OLD code, then read/spent by the NEW code.
-Since both are the same deployment here, simulate it:
+An adversarial audit confirmed the risk this guards: the new `Deal` fields make
+the account longer, and Borsh does **not** tolerate a short buffer. Loading an
+old (pre-upgrade) Deal account fails with `AccountDidNotDeserialize`, which
+freezes its escrow. Appending the fields is necessary but NOT sufficient — the
+`migrate_deal` instruction grows old accounts and zero-fills the tail, and must
+run on a deal before any fee/refund path can touch it again.
 
-1. **Before** wiring any tier, create + fund a normal deal (no tier assigned to
-   the creator). It snapshots `asymmetric_fees = false`.
-2. Confirm it charged the **1% symmetric** fee at funding (buyer paid 0.5%).
-3. Release a milestone. Confirm the seller's 0.5% came out and the payout math
-   equals a pre-tier deal to the lamport.
-4. Confirm `fetchDealRefundState` still decodes it (open the deal page; the
-   refund panel must render without the "could not decode" warning).
+This test must reproduce a genuinely old-layout account, so it needs TWO
+deployments:
 
-✅ Pass = a deal with the new fields at their zero values behaves byte-identically
-to a pre-tier deal.
+1. Deploy the **OLD** program (current `main`, before this branch) to a
+   throwaway program id. Create + fund a deal, release one milestone partway.
+   This account now has the short, pre-tier layout.
+2. `anchor upgrade` that same program id to **this branch**.
+3. **Without migrating**, call `release_milestone` on the old deal → expect it to
+   FAIL with a deserialization error. (Confirms the risk is real and the account
+   is genuinely old-layout, not silently fine.)
+4. Call `migrate_deal(deal_id)` on it → succeeds, grows the account.
+5. Retry `release_milestone` → now succeeds, and the seller's **0.5% symmetric**
+   fee comes out exactly as a pre-tier deal (migration zero-filled →
+   `asymmetric_fees = false` → legacy half-split).
+6. `migrate_deal` again → no-op (idempotent), no error.
+7. Confirm `fetchDealRefundState` decodes the migrated deal (deal page renders
+   without the "could not decode" warning).
+
+✅ Pass = an old funded deal is frozen after the upgrade, `migrate_deal` unfreezes
+it, and it then behaves byte-identically to a pre-tier deal.
+
+**If step 3 does NOT fail** (i.e. the old account loads fine unmigrated), that
+would mean this Anchor build zero-fills short buffers and `migrate_deal` is
+belt-and-suspenders rather than mandatory — but do not assume it; the audit's
+reading is that it errors. Either way, running migrate is safe.
 
 ## Test 2 — tier assignment + asymmetric pricing
 

@@ -68,6 +68,15 @@ pub mod escrow {
         instructions::fund_escrow::handler(ctx, amount)
     }
 
+    /// Grow a pre-tier Deal account to the current layout (permissionless,
+    /// idempotent). Must be run on any deal created before the tier upgrade
+    /// before it can be funded, released, or refunded again — an old, shorter
+    /// account otherwise fails to deserialize. Zero-fills the new tail, which is
+    /// the correct legacy default (untiered, symmetric split).
+    pub fn migrate_deal(ctx: Context<MigrateDeal>, deal_id: String) -> Result<()> {
+        instructions::migrate_deal::handler(ctx, deal_id)
+    }
+
     /// Release funds for a completed milestone
     pub fn release_milestone(ctx: Context<ReleaseMilestone>, milestone_index: u8) -> Result<()> {
         instructions::release_milestone::handler(ctx, milestone_index)
