@@ -66,7 +66,7 @@ export function defaultSellerBoundaries(): NegotiationBoundaries {
     maxPriceIncrease: 5, // sellers rarely agree to pay more
     maxPriceDecrease: 8, // will accept up to 8% cut
     maxTimelineExtensionDays: 7, // tighter timeline preference
-    minMilestones: 2,
+    minMilestones: 1, // a single-milestone deal is valid; don't make it a red line
     maxMilestones: 4, // prefer fewer checkpoints
     maxFrontLoadPercent: 60, // want more upfront
     acceptedPaymentTerms: ["upfront_50", "upfront_100", "milestone_based"],
