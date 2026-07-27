@@ -27,7 +27,7 @@ import type { Deal, SupabaseDeal, SupabaseMilestone } from "@/lib/types";
 import { labelStyle, headingStyle } from "@/lib/typography";
 import type { Proposal, Revision } from "@/negotiation/types";
 import { defaultSellerBoundaries } from "@/negotiation/types";
-import { buildCreateDealIx, buildFundEscrowIx, buildEnsureAtaIx, getUsdcMint, getUsdcBalance, sendTx, fetchFeeConfig, halfFeeLamports } from "@/lib/escrow-client";
+import { buildCreateDealIx, buildFundEscrowIx, buildEnsureAtaIx, getUsdcMint, getUsdcBalance, sendTx, fetchFeeConfig, resolveBuyerFeeBps, sideFeeLamports } from "@/lib/escrow-client";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { MOCK_CHAIN, MOCK_DATA } from "@/lib/env";
 import { mockEscrow } from "@/lib/mock-escrow";
@@ -1133,11 +1133,20 @@ export default function NegotiateRoom() {
 
     try {
       const mint = getUsdcMint();
-      // The buyer pays the contract + their 0.5% platform fee up front.
+      // The buyer pays the contract + their platform fee up front. The fee is
+      // TIER-AWARE and must match what the chain charges (resolveBuyerFeeBps),
+      // or the balance check demands more than fund_escrow actually takes — e.g.
+      // an SSS-creator deal charges the buyer 0%, not the flat half.
       const fee = await fetchFeeConfig(connection);
-      const buyerFeeUsdc = fee.active
-        ? halfFeeLamports(finalTerms.totalAmount * 1_000_000, fee.feeBps) / 1_000_000
-        : 0;
+      const buyerBps =
+        fee.active && creatorWallet
+          ? await resolveBuyerFeeBps(connection, {
+              globalFeeBps: fee.feeBps,
+              creatorWallet: new PublicKey(creatorWallet),
+              creatorIsBuyer,
+            })
+          : 0;
+      const buyerFeeUsdc = sideFeeLamports(finalTerms.totalAmount * 1_000_000, buyerBps) / 1_000_000;
       const totalToDeposit = finalTerms.totalAmount + buyerFeeUsdc;
 
       const balance = await getUsdcBalance(connection, publicKey, mint);
@@ -1326,6 +1335,14 @@ export default function NegotiateRoom() {
   }
 
   const roomStatusLabel = dealStatusLabel(deal.status);
+
+  // Who created the deal, for tier-aware fee display. creator_role is recorded
+  // at creation (Phase 0); default to buyer (the common case, and what
+  // create_deal defaults to) when a legacy deal predates the column.
+  const creatorIsBuyer = deal.creator_role !== "seller";
+  const creatorWallet = creatorIsBuyer
+    ? (deal.buyer_wallet ?? null)
+    : (deal.seller_wallet ?? null);
 
   // Whether the right-hand conversation column renders. Hidden before a
   // counterparty exists (nothing to converse with), and in the seller's manual
@@ -1574,6 +1591,8 @@ export default function NegotiateRoom() {
                       // agent — the counterparty must be able to respond by hand.
                       onRenegotiate={() => { setEditingTerms(true); setTermsError(null); }}
                       onReject={deal.seller_wallet ? () => { setRejectError(null); setRejectOpen(true); } : undefined}
+                      creatorWallet={creatorWallet}
+                      creatorIsBuyer={creatorIsBuyer}
                     />
                   )}
 
@@ -1726,6 +1745,8 @@ export default function NegotiateRoom() {
                       ? () => { setRejectError(null); setRejectOpen(true); }
                       : undefined
                   }
+                  creatorWallet={creatorWallet}
+                  creatorIsBuyer={creatorIsBuyer}
                 />
               )}
             </div>
@@ -2573,24 +2594,46 @@ function NegotiationTurnLine({ revision }: { revision: Revision }) {
 // Deposit breakdown shown to the buyer before funding: contract + their 0.5%
 // platform fee + total to deposit. Fetches the live fee; renders nothing when
 // there's no active fee (fee-free deals), so it's invisible until fees are on.
-function FeeBreakdown({ contractAmount }: { contractAmount: number }) {
+function FeeBreakdown({
+  contractAmount,
+  creatorWallet,
+  creatorIsBuyer,
+}: {
+  contractAmount: number;
+  creatorWallet: string | null;
+  creatorIsBuyer: boolean;
+}) {
   const { connection } = useConnection();
-  const [fee, setFee] = useState<{ bps: number; active: boolean } | null>(null);
+  // Resolve the BUYER's actual fee the way the contract does — via the
+  // creator's tier, not the flat global rate. Without this the panel showed a
+  // 1% fee (and a $0.51 total) for a deal whose SSS creator is charged 0%, so
+  // Phantom asked for $0.50 and the numbers disagreed.
+  const [state, setState] = useState<{ active: boolean; buyerBps: number } | null>(null);
   useEffect(() => {
     let alive = true;
-    fetchFeeConfig(connection)
-      .then((f) => alive && setFee({ bps: f.feeBps, active: f.active }))
-      .catch(() => alive && setFee({ bps: 0, active: false }));
+    (async () => {
+      const fee = await fetchFeeConfig(connection);
+      if (!fee.active || !creatorWallet) {
+        if (alive) setState({ active: fee.active, buyerBps: 0 });
+        return;
+      }
+      const buyerBps = await resolveBuyerFeeBps(connection, {
+        globalFeeBps: fee.feeBps,
+        creatorWallet: new PublicKey(creatorWallet),
+        creatorIsBuyer,
+      });
+      if (alive) setState({ active: fee.active, buyerBps });
+    })().catch(() => alive && setState({ active: false, buyerBps: 0 }));
     return () => { alive = false; };
-  }, [connection]);
+  }, [connection, creatorWallet, creatorIsBuyer]);
 
-  if (!fee || !fee.active) return null;
-  const buyerFee = halfFeeLamports(contractAmount * 1_000_000, fee.bps) / 1_000_000;
+  if (!state || !state.active) return null;
+  const buyerFee = sideFeeLamports(contractAmount * 1_000_000, state.buyerBps) / 1_000_000;
   const total = contractAmount + buyerFee;
   return (
     <div className="space-y-1 pt-2 mt-1 border-t border-card-border-subtle text-[12px]">
       <div className="flex justify-between text-muted"><span>Contract</span><span className="tabular-nums">${formatUsdc(contractAmount)}</span></div>
-      <div className="flex justify-between text-muted"><span>Platform fee ({(fee.bps / 200).toFixed(2)}%)</span><span className="tabular-nums">${formatUsdc(buyerFee)}</span></div>
+      <div className="flex justify-between text-muted"><span>Platform fee ({(state.buyerBps / 100).toFixed(2)}%)</span><span className="tabular-nums">${formatUsdc(buyerFee)}</span></div>
       <div className="flex justify-between text-primary" style={{ fontWeight: 590 }}><span>Total to deposit</span><span className="tabular-nums">${formatUsdc(total)} USDC</span></div>
     </div>
   );
@@ -2604,6 +2647,8 @@ function NegotiationResult({
   onAccept,
   onRenegotiate,
   onReject,
+  creatorWallet,
+  creatorIsBuyer,
 }: {
   proposal: Proposal;
   role: "buyer" | "seller" | "observer";
@@ -2612,6 +2657,8 @@ function NegotiationResult({
   onAccept: (terms: DealParams) => void;
   onRenegotiate: () => void;
   onReject?: () => void;
+  creatorWallet: string | null;
+  creatorIsBuyer: boolean;
 }) {
   const summary = proposal.summary;
   const finalTerms = proposal.finalTerms;
@@ -2709,7 +2756,13 @@ function NegotiationResult({
             <p className="text-[12px] text-muted">USDC · {finalTerms.milestones.length} milestones</p>
           </div>
           {/* Buyer sees the fee breakdown they'll deposit. */}
-          {isBuyer && <FeeBreakdown contractAmount={finalTerms.totalAmount} />}
+          {isBuyer && (
+            <FeeBreakdown
+              contractAmount={finalTerms.totalAmount}
+              creatorWallet={creatorWallet}
+              creatorIsBuyer={creatorIsBuyer}
+            />
+          )}
         </div>
       )}
 
