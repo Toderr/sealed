@@ -77,6 +77,15 @@ pub mod escrow {
         instructions::migrate_deal::handler(ctx, deal_id)
     }
 
+    /// Grow the pre-tier Config PDA to the current layout (permissionless,
+    /// idempotent). MUST be run once after the tier upgrade before set_tiers,
+    /// set_user_tier, or a fee-bearing create_deal can load the config — the
+    /// old, shorter account otherwise fails to deserialize. Zero-fills the
+    /// appended bytes, which read back as "no tiers configured".
+    pub fn migrate_config(ctx: Context<MigrateConfig>) -> Result<()> {
+        instructions::migrate_config::handler(ctx)
+    }
+
     /// Release funds for a completed milestone
     pub fn release_milestone(ctx: Context<ReleaseMilestone>, milestone_index: u8) -> Result<()> {
         instructions::release_milestone::handler(ctx, milestone_index)
