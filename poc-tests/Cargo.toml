@@ -1,0 +1,19 @@
+[workspace]
+
+[package]
+name = "sealed-poc-tests"
+version = "0.1.0"
+edition = "2021"
+description = "Neodyme solana-poc-framework security PoCs for Sealed escrow"
+publish = false
+
+[dependencies]
+poc-framework = { git = "https://github.com/neodyme-labs/solana-poc-framework.git", branch = "2.2" }
+borsh = "1.5"
+escrow = { path = "../programs/escrow", features = ["no-entrypoint"] }
+anchor-lang = "0.31.1"
+
+[[test]]
+name = "security_pocs"
+path = "tests/security_pocs.rs"
+harness = true

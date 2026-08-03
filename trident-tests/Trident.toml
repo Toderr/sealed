@@ -1,0 +1,8 @@
+[fuzz.metrics]
+enabled = true
+
+
+[[fuzz.programs]]
+address = "3WSjgWUKWhsENKJ1ibnbgvaiuQ8THJp4Mp7uGTUyeYeJ"
+program = "../target/deploy/escrow.so"
+ 

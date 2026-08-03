@@ -2,6 +2,7 @@
 members = [
     "programs/*"
 ]
+exclude = ["poc-tests", "ctf-tests", "trident-tests"]
 resolver = "2"
 
 [profile.release]
