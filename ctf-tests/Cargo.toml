@@ -1,0 +1,19 @@
+[workspace]
+
+[package]
+name = "sealed-ctf-tests"
+version = "0.1.0"
+description = "Otter Sec sol-ctf-framework challenges for Sealed escrow audit PoCs"
+edition = "2021"
+
+[dependencies]
+sol-ctf-framework = { git = "https://github.com/otter-sec/sol-ctf-framework.git" }
+solana-sdk = "3.0"
+solana-program = "3.0"
+spl-token = "9.0"
+borsh = "1.5"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+solana-system-interface = { version = "3.0", features = ["bincode"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
