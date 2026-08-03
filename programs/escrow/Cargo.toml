@@ -3,6 +3,8 @@ name = "escrow"
 version = "0.1.0"
 description = "Sealed: milestone-based escrow with USDC support"
 edition = "2021"
+# Matches the Cargo bundled with `cargo build-sbf` (Solana 1.18.26).
+rust-version = "1.75"
 
 [lib]
 crate-type = ["cdylib", "lib"]
