@@ -236,6 +236,13 @@ pub struct Config {
     /// later would need another realloc.
     #[max_len(16)]
     pub tiers: Vec<Tier>,
+    /// Mints a deal may be denominated in (audit H-1). Empty = accept ANY mint
+    /// (the pre-fix behavior, so an un-migrated Config keeps working) — set it
+    /// via `set_allowed_mints` to enforce USDC/USDT/USDG only. Appended AFTER
+    /// `tiers` to stay Borsh-positional: a zero-filled tail reads as an empty
+    /// vec, which migrate_config produces on an old account.
+    #[max_len(8)]
+    pub allowed_mints: Vec<Pubkey>,
 }
 
 impl Config {
@@ -245,6 +252,8 @@ impl Config {
     pub const DEFAULT_FEE_BPS: u16 = 100;
     /// Hard cap on tier count, mirroring the `max_len` above.
     pub const MAX_TIERS: usize = 16;
+    /// Hard cap on the accepted-mint allowlist, mirroring the `max_len` above.
+    pub const MAX_ALLOWED_MINTS: usize = 8;
 
     /// The fee is only live when a rate is set AND a treasury exists.
     pub fn fee_active(&self) -> bool {
@@ -255,6 +264,14 @@ impl Config {
     /// fall back to the default split rather than failing the deal.
     pub fn tier(&self, id: u8) -> Option<&Tier> {
         self.tiers.iter().find(|t| t.id == id)
+    }
+
+    /// Whether a deal may be denominated in `mint`. An EMPTY allowlist means
+    /// "accept any mint" — the original behavior, so a Config that predates the
+    /// allowlist (or hasn't had one set) keeps working. Once populated, only the
+    /// listed mints (USDC/USDT/USDG) are accepted (audit H-1).
+    pub fn mint_allowed(&self, mint: &Pubkey) -> bool {
+        self.allowed_mints.is_empty() || self.allowed_mints.contains(mint)
     }
 }
 

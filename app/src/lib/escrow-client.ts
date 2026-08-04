@@ -293,11 +293,11 @@ export async function buildCreateDealIx(
     creatorWallet.toBuffer(),
   ]);
 
-  // Optional config account (Anchor Option<Account>): pass the Config PDA to
-  // snapshot the current fee. NOTE (verify in WSL after `anchor build`): Anchor
-  // signals `None` by passing the PROGRAM ID in this slot; if no config exists
-  // on-chain yet, pass PROGRAM_ID here instead of configPDA so create_deal
-  // treats the deal as fee-free. Once init_config is run, always pass configPDA.
+  // Config account — now REQUIRED on-chain (audit C-1). Always pass the real
+  // Config PDA; the deal snapshots the live fee from it. (It used to be optional,
+  // and omitting it snapshotted a 0% fee — a permanent fee bypass. The account is
+  // mandatory now, so there is no None sentinel here.) A deal is still fee-free
+  // when the config's fee isn't active; that's decided by config STATE, on-chain.
   const [configPDA] = findConfigPDA();
 
   // The creator's tier account (Anchor Option<Account>): pass its PDA only when

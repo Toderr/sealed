@@ -100,7 +100,11 @@ pub fn handler(ctx: Context<ReleaseMilestone>, milestone_index: u8) -> Result<()
     deal.milestones[index].status = MilestoneStatus::Released;
     deal.milestones[index].confirmed_by = Some(ctx.accounts.buyer.key());
     deal.milestones[index].confirmed_at = Some(Clock::get()?.unix_timestamp);
-    deal.released_amount += amount;
+    // checked_add (audit M-3): defense-in-depth over the profile overflow panic.
+    deal.released_amount = deal
+        .released_amount
+        .checked_add(amount)
+        .ok_or(EscrowError::MathOverflow)?;
 
     // A release changes what a mutual refund would return, so any standing
     // refund approval is no longer consent to THESE terms — clear both sides.

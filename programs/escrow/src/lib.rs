@@ -39,6 +39,12 @@ pub mod escrow {
         instructions::config::set_tiers(ctx, tiers)
     }
 
+    /// Replace the accepted-mint allowlist (authority only). Empty = any mint;
+    /// set [USDC,USDT,USDG] to restrict deal denomination (audit H-1).
+    pub fn set_allowed_mints(ctx: Context<UpdateConfig>, mints: Vec<Pubkey>) -> Result<()> {
+        instructions::config::set_allowed_mints(ctx, mints)
+    }
+
     /// Assign a wallet to a pricing tier (authority only). Creates or updates.
     pub fn set_user_tier(ctx: Context<SetUserTier>, wallet: Pubkey, tier_id: u8) -> Result<()> {
         instructions::tier::set_user_tier(ctx, wallet, tier_id)
