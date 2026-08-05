@@ -40,8 +40,13 @@ pub struct FundEscrow<'info> {
 pub fn handler(ctx: Context<FundEscrow>, amount: u64) -> Result<()> {
     let deal = &mut ctx.accounts.deal;
 
+    // checked_add (audit M-3): don't rely on the release-profile overflow panic.
+    let new_funded = deal
+        .funded_amount
+        .checked_add(amount)
+        .ok_or(EscrowError::MathOverflow)?;
     require!(
-        deal.funded_amount + amount <= deal.total_amount,
+        new_funded <= deal.total_amount,
         EscrowError::OverFunding
     );
 
@@ -86,7 +91,7 @@ pub fn handler(ctx: Context<FundEscrow>, amount: u64) -> Result<()> {
     }
 
     let now = Clock::get()?.unix_timestamp;
-    deal.funded_amount += amount;
+    deal.funded_amount = new_funded; // checked above (M-3)
     if deal.funded_amount == deal.total_amount {
         deal.status = DealStatus::Funded;
         deal.funded_at = now;

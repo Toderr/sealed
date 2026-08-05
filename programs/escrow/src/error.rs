@@ -36,6 +36,10 @@ pub enum EscrowError {
     UnknownTierId,
     #[msg("The named creator is not a party to this deal")]
     InvalidCreator,
+    #[msg("Payment mint is not on the platform allowlist")]
+    UnsupportedMint,
+    #[msg("Too many allowed mints configured (max 8)")]
+    TooManyAllowedMints,
     #[msg("Account could not be deserialized")]
     AccountDidNotDeserialize,
     #[msg("This deal charges a fee; the correct treasury token account is required")]

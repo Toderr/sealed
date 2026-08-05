@@ -111,3 +111,23 @@ pub fn set_tiers(ctx: Context<UpdateConfig>, tiers: Vec<Tier>) -> Result<()> {
     msg!("Tiers updated: {} configured", ctx.accounts.config.tiers.len());
     Ok(())
 }
+
+// ── set_allowed_mints ─────────────────────────────────────────────────────────
+// Replace the accepted-mint allowlist (authority only). Empty = accept any mint
+// (the pre-fix default). Set to [USDC, USDT, USDG] to restrict deals to those
+// stablecoins (audit H-1). Wholesale replacement, like set_tiers, so the list is
+// always internally consistent. Existing deals are unaffected — the mint is
+// checked only at create_deal, and each deal is bound to its snapshotted mint.
+
+pub fn set_allowed_mints(ctx: Context<UpdateConfig>, mints: Vec<Pubkey>) -> Result<()> {
+    require!(
+        mints.len() <= Config::MAX_ALLOWED_MINTS,
+        EscrowError::TooManyAllowedMints
+    );
+    ctx.accounts.config.allowed_mints = mints;
+    msg!(
+        "Allowed mints updated: {} configured",
+        ctx.accounts.config.allowed_mints.len()
+    );
+    Ok(())
+}

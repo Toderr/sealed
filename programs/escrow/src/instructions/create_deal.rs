@@ -22,7 +22,10 @@ pub struct CreateDeal<'info> {
     )]
     pub deal: Account<'info, Deal>,
 
-    /// USDC mint
+    /// The deal's payment mint. Must be on the platform allowlist (USDC/USDT/
+    /// USDG) once one is set — enforced in the handler against `config`, since
+    /// the accepted set lives in Config data, not a compile-time constant (audit
+    /// H-1). An empty allowlist accepts any mint (pre-fix behavior).
     pub mint: Account<'info, Mint>,
 
     #[account(
@@ -35,11 +38,16 @@ pub struct CreateDeal<'info> {
     )]
     pub escrow_token_account: Account<'info, TokenAccount>,
 
-    /// Global platform config, if it exists — the deal snapshots its fee_bps +
-    /// treasury. Optional so deals can still be created before init_config
-    /// (they're then fee-free). Seeds-validated when provided.
+    /// Global platform config. REQUIRED (audit C-1): when this was optional, a
+    /// hand-built tx could omit it and permanently snapshot fee_bps=0, bypassing
+    /// the platform fee entirely. It is now mandatory, so the fee snapshot always
+    /// reflects the real on-chain config. The config must be initialized
+    /// (`init_config`) before any deal — which it is on every live deployment.
+    /// A deal is still fee-FREE when the config's fee isn't active (no rate or no
+    /// treasury), so the pre-config fee-free era is preserved via config state,
+    /// not via omitting the account.
     #[account(seeds = [b"config"], bump = config.bump)]
-    pub config: Option<Account<'info, Config>>,
+    pub config: Account<'info, Config>,
 
     /// The deal creator's tier assignment, if they have one. Optional because
     /// ABSENCE IS THE DEFAULT — the overwhelming majority of wallets are
@@ -84,7 +92,20 @@ pub fn handler(
         EscrowError::InvalidCreator
     );
 
-    let milestone_sum: u64 = milestones.iter().map(|m| m.amount).sum();
+    // The payment mint must be on the platform allowlist (audit H-1). An empty
+    // allowlist accepts any mint (pre-fix behavior); once USDC/USDT/USDG are set
+    // via set_allowed_mints, anything else is rejected.
+    require!(
+        ctx.accounts.config.mint_allowed(&ctx.accounts.mint.key()),
+        EscrowError::UnsupportedMint
+    );
+
+    // Sum milestone amounts with checked_add (audit H-2): the plain `.sum()`
+    // would panic on u64 overflow. Return a clean error instead.
+    let milestone_sum: u64 = milestones
+        .iter()
+        .try_fold(0u64, |acc, m| acc.checked_add(m.amount))
+        .ok_or(EscrowError::MathOverflow)?;
     require!(
         milestone_sum == total_amount,
         EscrowError::MilestoneAmountMismatch
@@ -125,64 +146,66 @@ pub fn handler(
     // is configured. Later fee changes never affect this (already-created) deal.
     deal.creator = creator_wallet;
 
-    match &ctx.accounts.config {
-        Some(config) if config.fee_active() => {
-            deal.fee_bps = config.fee_bps;
-            deal.treasury = config.treasury;
+    // config is now REQUIRED (audit C-1), so read it directly. A deal is still
+    // fee-free when the config's fee isn't active (no rate / no treasury) — that
+    // preserves the pre-treasury era through config STATE, not by omitting the
+    // account (which was the bypass).
+    let config = &ctx.accounts.config;
+    if config.fee_active() {
+        deal.fee_bps = config.fee_bps;
+        deal.treasury = config.treasury;
 
-            // Resolve the CREATOR's tier, if any. A tier is a property of the
-            // wallet that created the deal — being a counterparty on someone
-            // else's deal never earns a discount.
-            //
-            // The tier is resolved once, here, and its rates are snapshotted
-            // onto the deal like fee_bps always has been. Repricing a tier
-            // later can therefore never change a deal already underway.
-            let tier = ctx
-                .accounts
-                .creator_tier
-                .as_ref()
-                .filter(|t| t.wallet == creator_wallet)
-                .and_then(|t| config.tier(t.tier_id));
+        // Resolve the CREATOR's tier, if any. A tier is a property of the
+        // wallet that created the deal — being a counterparty on someone
+        // else's deal never earns a discount.
+        //
+        // The tier is resolved once, here, and its rates are snapshotted
+        // onto the deal like fee_bps always has been. Repricing a tier
+        // later can therefore never change a deal already underway.
+        let tier = ctx
+            .accounts
+            .creator_tier
+            .as_ref()
+            .filter(|t| t.wallet == creator_wallet)
+            .and_then(|t| config.tier(t.tier_id));
 
-            match tier {
-                Some(t) => {
-                    // Map creator/counterparty onto buyer/seller for this deal.
-                    let creator_is_buyer = creator_wallet == deal.buyer;
-                    deal.buyer_fee_bps = if creator_is_buyer {
-                        t.creator_fee_bps
-                    } else {
-                        t.counterparty_fee_bps
-                    };
-                    deal.seller_fee_bps = if creator_is_buyer {
-                        t.counterparty_fee_bps
-                    } else {
-                        t.creator_fee_bps
-                    };
-                    deal.asymmetric_fees = true;
-                    msg!(
-                        "Tier {} applied: buyer={} bps, seller={} bps",
-                        t.id,
-                        deal.buyer_fee_bps,
-                        deal.seller_fee_bps
-                    );
-                }
-                None => {
-                    // Untiered: leave asymmetric_fees false so the fee helpers
-                    // use the symmetric half-split, byte-identical to the
-                    // behavior before tiers existed.
-                    deal.buyer_fee_bps = 0;
-                    deal.seller_fee_bps = 0;
-                    deal.asymmetric_fees = false;
-                }
+        match tier {
+            Some(t) => {
+                // Map creator/counterparty onto buyer/seller for this deal.
+                let creator_is_buyer = creator_wallet == deal.buyer;
+                deal.buyer_fee_bps = if creator_is_buyer {
+                    t.creator_fee_bps
+                } else {
+                    t.counterparty_fee_bps
+                };
+                deal.seller_fee_bps = if creator_is_buyer {
+                    t.counterparty_fee_bps
+                } else {
+                    t.creator_fee_bps
+                };
+                deal.asymmetric_fees = true;
+                msg!(
+                    "Tier {} applied: buyer={} bps, seller={} bps",
+                    t.id,
+                    deal.buyer_fee_bps,
+                    deal.seller_fee_bps
+                );
+            }
+            None => {
+                // Untiered: leave asymmetric_fees false so the fee helpers
+                // use the symmetric half-split, byte-identical to the
+                // behavior before tiers existed.
+                deal.buyer_fee_bps = 0;
+                deal.seller_fee_bps = 0;
+                deal.asymmetric_fees = false;
             }
         }
-        _ => {
-            deal.fee_bps = 0;
-            deal.treasury = Pubkey::default();
-            deal.buyer_fee_bps = 0;
-            deal.seller_fee_bps = 0;
-            deal.asymmetric_fees = false;
-        }
+    } else {
+        deal.fee_bps = 0;
+        deal.treasury = Pubkey::default();
+        deal.buyer_fee_bps = 0;
+        deal.seller_fee_bps = 0;
+        deal.asymmetric_fees = false;
     }
 
     msg!("Deal created: {} (fee_bps={})", deal.deal_id, deal.fee_bps);
