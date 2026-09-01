@@ -112,6 +112,8 @@ pub fn handler(
     );
 
     let deal = &mut ctx.accounts.deal;
+    deal.version = DEAL_VERSION;
+    deal._reserved = [0u8; 64];
     deal.deal_id = deal_id;
     deal.buyer = ctx.accounts.buyer.key();
     deal.seller = ctx.accounts.seller.key();

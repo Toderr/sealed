@@ -83,6 +83,25 @@ async function main() {
     console.log("no TREASURY env — leaving treasury unset (program stays fee-free)");
   }
 
+  // set_allowed_mints → restrict which mints a deal may use (audit H-1 / issue
+  // #65 finding 3). MUST run at setup: an empty allowlist accepts ANY mint
+  // (fail-open), and nothing else populates it — so without this step a fresh
+  // deployment starts with H-1 open. Defaults to the cluster's USDC; override
+  // with ALLOWED_MINTS (comma-separated) for USDC,USDT,USDG on mainnet.
+  const USDC_DEVNET = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+  const USDC_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const rpc = provider.connection.rpcEndpoint;
+  const defaultMint = rpc.includes("mainnet") ? USDC_MAINNET : USDC_DEVNET;
+  const mints = (process.env.ALLOWED_MINTS ?? defaultMint)
+    .split(",")
+    .map((s) => new PublicKey(s.trim()));
+  console.log(`set_allowed_mints([${mints.map((m) => m.toBase58()).join(", ")}])...`);
+  await program.methods
+    .setAllowedMints(mints)
+    .accounts({ authority: provider.wallet.publicKey, config: configPda })
+    .rpc();
+  console.log("  ✓ mint allowlist set — deals restricted to these mints");
+
   const cfg = await program.account.config.fetch(configPda);
   const active = cfg.feeBps > 0 && !cfg.treasury.equals(PublicKey.default);
   console.log("\n── on-chain config ──────────────────────────────");

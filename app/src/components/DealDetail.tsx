@@ -16,6 +16,7 @@ import {
   shortenAddress,
 } from "@/lib/types";
 import {
+  assertDealFundable,
   buildFundEscrowIx,
   buildReleaseMilestoneIx,
   buildRefundIx,
@@ -190,6 +191,9 @@ export default function DealDetail({
     });
 
     try {
+      // Refuse to fund a deal on an old, undersized layout (audit #65 finding 1)
+      // — its escrow could never pay out. Throws with a user-facing message.
+      await assertDealFundable(connection, deal.dealId);
       const mint = getUsdcMint();
       const ensureAta = await buildEnsureAtaIx(publicKey, publicKey, mint);
       const fundIx = await buildFundEscrowIx(publicKey, deal.dealId, amountUsdc);

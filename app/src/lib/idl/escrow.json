@@ -8,6 +8,55 @@
   },
   "instructions": [
     {
+      "name": "approve_refund",
+      "docs": [
+        "Mutual refund, two-step: each party approves in their OWN transaction and",
+        "the refund executes once both have. Avoids the ~90s blockhash expiry that",
+        "made the single shared co-signed transaction unusable in practice."
+      ],
+      "discriminator": [
+        133,
+        74,
+        53,
+        175,
+        88,
+        246,
+        218,
+        27
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "docs": [
+            "The approving party — must be the deal's buyer or seller."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "deal",
+          "writable": true
+        },
+        {
+          "name": "escrow_token_account",
+          "writable": true
+        },
+        {
+          "name": "buyer_token_account",
+          "docs": [
+            "Buyer's USDC account — the refund destination. Validated against the deal's",
+            "buyer + mint, so the caller can't redirect funds."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "buyer_timeout_refund",
       "docs": [
         "Unilateral refund after 30-day inactivity timeout (buyer only, no seller required)"
@@ -94,6 +143,77 @@
       "args": []
     },
     {
+      "name": "clear_user_tier",
+      "docs": [
+        "Revoke a wallet's tier (authority only), returning the account rent."
+      ],
+      "discriminator": [
+        98,
+        135,
+        61,
+        148,
+        119,
+        2,
+        189,
+        183
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_tier",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  105,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "wallet"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "wallet",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "close_deal",
       "docs": [
         "Close a completed or refunded deal, reclaim escrow vault rent (buyer only)"
@@ -135,7 +255,10 @@
     {
       "name": "create_deal",
       "docs": [
-        "Create a new deal with milestones and escrow parameters"
+        "Create a new deal with milestones and escrow parameters.",
+        "`creator_wallet` records which party initiated the deal — it cannot be",
+        "inferred, since the buyer always signs regardless of who created it —",
+        "and selects whose tier (if any) prices the deal."
       ],
       "discriminator": [
         198,
@@ -180,7 +303,10 @@
         {
           "name": "mint",
           "docs": [
-            "USDC mint"
+            "The deal's payment mint. Must be on the platform allowlist (USDC/USDT/",
+            "USDG) once one is set — enforced in the handler against `config`, since",
+            "the accepted set lives in Config data, not a compile-time constant (audit",
+            "H-1). An empty allowlist accepts any mint (pre-fix behavior)."
           ]
         },
         {
@@ -215,11 +341,15 @@
         {
           "name": "config",
           "docs": [
-            "Global platform config, if it exists — the deal snapshots its fee_bps +",
-            "treasury. Optional so deals can still be created before init_config",
-            "(they're then fee-free). Seeds-validated when provided."
+            "Global platform config. REQUIRED (audit C-1): when this was optional, a",
+            "hand-built tx could omit it and permanently snapshot fee_bps=0, bypassing",
+            "the platform fee entirely. It is now mandatory, so the fee snapshot always",
+            "reflects the real on-chain config. The config must be initialized",
+            "(`init_config`) before any deal — which it is on every live deployment.",
+            "A deal is still fee-FREE when the config's fee isn't active (no rate or no",
+            "treasury), so the pre-config fee-free era is preserved via config state,",
+            "not via omitting the account."
           ],
-          "optional": true,
           "pda": {
             "seeds": [
               {
@@ -232,6 +362,34 @@
                   105,
                   103
                 ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator_tier",
+          "docs": [
+            "The deal creator's tier assignment, if they have one. Optional because",
+            "ABSENCE IS THE DEFAULT — the overwhelming majority of wallets are",
+            "untiered and simply have no such account. Seeds bind it to",
+            "`creator_wallet`, so a caller cannot pass someone else's (cheaper) tier:",
+            "the PDA derivation would not match."
+          ],
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  105,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "creator_wallet"
               }
             ]
           }
@@ -267,6 +425,10 @@
         {
           "name": "total_amount",
           "type": "u64"
+        },
+        {
+          "name": "creator_wallet",
+          "type": "pubkey"
         }
       ]
     },
@@ -296,7 +458,25 @@
         },
         {
           "name": "deal",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "deal.deal_id",
+                "account": "Deal"
+              }
+            ]
+          }
         },
         {
           "name": "escrow_token_account",
@@ -380,9 +560,131 @@
       ]
     },
     {
+      "name": "migrate_config",
+      "docs": [
+        "Grow the pre-tier Config PDA to the current layout (permissionless,",
+        "idempotent). MUST be run once after the tier upgrade before set_tiers,",
+        "set_user_tier, or a fee-bearing create_deal can load the config — the",
+        "old, shorter account otherwise fails to deserialize. Zero-fills the",
+        "appended bytes, which read back as \"no tiers configured\"."
+      ],
+      "discriminator": [
+        92,
+        131,
+        58,
+        105,
+        210,
+        154,
+        224,
+        193
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "deserialize, which is the whole reason we're here. Validated by hand:",
+            "PDA seeds, program ownership, and the Config discriminator."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "migrate_deal",
+      "docs": [
+        "Grow a pre-tier Deal account to the current layout (permissionless,",
+        "idempotent). Must be run on any deal created before the tier upgrade",
+        "before it can be funded, released, or refunded again — an old, shorter",
+        "account otherwise fails to deserialize. Zero-fills the new tail, which is",
+        "the correct legacy default (untiered, symmetric split)."
+      ],
+      "discriminator": [
+        145,
+        228,
+        242,
+        75,
+        191,
+        229,
+        119,
+        13
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Pays for the extra rent-exempt lamports the larger account needs."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "deal",
+          "docs": [
+            "too short to deserialize, which is the whole reason we're here. Validated",
+            "by hand: PDA seeds, program ownership, and the Deal discriminator."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "deal_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "deal_id",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "name": "refund",
       "docs": [
-        "Refund remaining funds to buyer (requires both signatures)"
+        "Refund remaining funds to buyer (requires both signatures in ONE tx).",
+        "Superseded by `approve_refund` — kept for compatibility with any deal",
+        "mid-flight under the old flow."
       ],
       "discriminator": [
         2,
@@ -488,6 +790,59 @@
       ]
     },
     {
+      "name": "set_allowed_mints",
+      "docs": [
+        "Replace the accepted-mint allowlist (authority only). Empty = any mint;",
+        "set [USDC,USDT,USDG] to restrict deal denomination (audit H-1)."
+      ],
+      "discriminator": [
+        16,
+        115,
+        41,
+        64,
+        183,
+        248,
+        196,
+        92
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "mints",
+          "type": {
+            "vec": "pubkey"
+          }
+        }
+      ]
+    },
+    {
       "name": "set_authority",
       "docs": [
         "Transfer the config authority to a new wallet (authority only)"
@@ -588,6 +943,63 @@
       ]
     },
     {
+      "name": "set_tiers",
+      "docs": [
+        "Replace the pricing tier table (authority only). Repricing a tier is a",
+        "config change, never a redeploy; deals keep the rates they snapshotted."
+      ],
+      "discriminator": [
+        170,
+        131,
+        109,
+        175,
+        156,
+        214,
+        177,
+        121
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "tiers",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "Tier"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "set_treasury",
       "docs": [
         "Change the treasury address (authority only)"
@@ -636,6 +1048,94 @@
           "type": "pubkey"
         }
       ]
+    },
+    {
+      "name": "set_user_tier",
+      "docs": [
+        "Assign a wallet to a pricing tier (authority only). Creates or updates."
+      ],
+      "discriminator": [
+        160,
+        170,
+        147,
+        164,
+        197,
+        144,
+        38,
+        201
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Only the config authority may assign tiers — this is the pricing",
+            "control, so it must not be self-serve."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_tier",
+          "docs": [
+            "`init_if_needed` so one instruction both creates and updates an",
+            "assignment; re-running with a different tier_id is a promotion or",
+            "demotion rather than an error."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  105,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "wallet",
+          "type": "pubkey"
+        },
+        {
+          "name": "tier_id",
+          "type": "u8"
+        }
+      ]
     }
   ],
   "accounts": [
@@ -663,6 +1163,19 @@
         162,
         182,
         219
+      ]
+    },
+    {
+      "name": "UserTier",
+      "discriminator": [
+        170,
+        73,
+        251,
+        195,
+        74,
+        98,
+        252,
+        132
       ]
     }
   ],
@@ -734,11 +1247,46 @@
     },
     {
       "code": 6013,
+      "name": "TooManyTiers",
+      "msg": "Too many tiers configured (max 16)"
+    },
+    {
+      "code": 6014,
+      "name": "DuplicateTierId",
+      "msg": "Duplicate tier id — each tier id must be unique"
+    },
+    {
+      "code": 6015,
+      "name": "UnknownTierId",
+      "msg": "No tier with that id exists in the platform config"
+    },
+    {
+      "code": 6016,
+      "name": "InvalidCreator",
+      "msg": "The named creator is not a party to this deal"
+    },
+    {
+      "code": 6017,
+      "name": "UnsupportedMint",
+      "msg": "Payment mint is not on the platform allowlist"
+    },
+    {
+      "code": 6018,
+      "name": "TooManyAllowedMints",
+      "msg": "Too many allowed mints configured (max 8)"
+    },
+    {
+      "code": 6019,
+      "name": "AccountDidNotDeserialize",
+      "msg": "Account could not be deserialized"
+    },
+    {
+      "code": 6020,
       "name": "TreasuryAccountRequired",
       "msg": "This deal charges a fee; the correct treasury token account is required"
     },
     {
-      "code": 6014,
+      "code": 6021,
       "name": "MathOverflow",
       "msg": "Arithmetic overflow"
     }
@@ -746,15 +1294,17 @@
   "types": [
     {
       "name": "Config",
-      "docs": [
-        "Global platform config (PDA: seeds = [\"config\"]). Holds the changeable fee",
-        "rate, treasury, and the admin authority. A single instance for the program.",
-        "The fee is only ACTUALLY charged when fee_bps > 0 AND treasury is set — so",
-        "the program can be deployed and run fee-free until the treasury exists."
-      ],
       "type": {
         "kind": "struct",
         "fields": [
+          {
+            "name": "version",
+            "docs": [
+              "Layout version (audit #65 finding 5). First field, for the same reason",
+              "as Deal.version — dispatch on it before reading anything positional."
+            ],
+            "type": "u8"
+          },
           {
             "name": "authority",
             "docs": [
@@ -773,7 +1323,8 @@
           {
             "name": "fee_bps",
             "docs": [
-              "Total platform fee in basis points (100 = 1%). Split half buyer / half seller."
+              "Default total fee in basis points (100 = 1%) for wallets with no tier.",
+              "Split half buyer / half seller, as it always has been."
             ],
             "type": "u16"
           },
@@ -783,6 +1334,48 @@
               "Bump seed"
             ],
             "type": "u8"
+          },
+          {
+            "name": "tiers",
+            "docs": [
+              "Pricing tiers, indexed by Tier.id. Empty = nobody is tiered and every",
+              "deal uses fee_bps. Sized generously up front (max 16): growing the cap",
+              "later would need another realloc."
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "Tier"
+                }
+              }
+            }
+          },
+          {
+            "name": "allowed_mints",
+            "docs": [
+              "Mints a deal may be denominated in (audit H-1). Empty = accept ANY mint",
+              "(the pre-fix behavior, so an un-migrated Config keeps working) — set it",
+              "via `set_allowed_mints` to enforce USDC/USDT/USDG only. Appended AFTER",
+              "`tiers` to stay Borsh-positional: a zero-filled tail reads as an empty",
+              "vec, which migrate_config produces on an old account."
+            ],
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved padding (audit #65 finding 5). Future scalar config fields come",
+              "out of this block in place. (Vecs above already move the tail, so the",
+              "padding mainly guards fixed-size additions.)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
           }
         ]
       }
@@ -792,6 +1385,15 @@
       "type": {
         "kind": "struct",
         "fields": [
+          {
+            "name": "version",
+            "docs": [
+              "Layout version (audit #65 finding 5). MUST be the first field so a reader",
+              "can dispatch on it before touching anything positional. Older on-chain",
+              "deals predate this field entirely — see the migration note at the bottom."
+            ],
+            "type": "u8"
+          },
           {
             "name": "deal_id",
             "docs": [
@@ -917,11 +1519,69 @@
             "type": "bool"
           },
           {
+            "name": "buyer_refund_ok",
+            "docs": [
+              "Mutual-refund approvals. Each party approves in their OWN transaction;",
+              "the refund executes once both are true. This replaces the old ceremony",
+              "where buyer and seller had to co-sign a single shared transaction, which",
+              "could not work in practice: a recent blockhash expires in ~90s and the",
+              "counterparty signs much later."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "seller_refund_ok",
+            "type": "bool"
+          },
+          {
             "name": "bump",
             "docs": [
               "Bump seed for PDA"
             ],
             "type": "u8"
+          },
+          {
+            "name": "creator",
+            "docs": [
+              "Who created the deal. Pubkey::default() = unknown → no tier applies. Not",
+              "inferable from `buyer`, which always signs create_deal."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer_fee_bps",
+            "docs": [
+              "Buyer's fee rate in bps of the buyer's side."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "seller_fee_bps",
+            "docs": [
+              "Seller's fee rate in bps of the seller's side."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "asymmetric_fees",
+            "docs": [
+              "Whether the two rates above are authoritative (vs the symmetric split)."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved padding (audit #65 finding 5). New scalar fields are carved out",
+              "of THIS block in place, keeping every offset above it stable — so no",
+              "future addition can shift `bump` the way the history above did."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
           }
         ]
       }
@@ -1032,6 +1692,83 @@
           },
           {
             "name": "Released"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Tier",
+      "docs": [
+        "Global platform config (PDA: seeds = [\"config\"]). Holds the changeable fee",
+        "rate, treasury, and the admin authority. A single instance for the program.",
+        "The fee is only ACTUALLY charged when fee_bps > 0 AND treasury is set — so",
+        "the program can be deployed and run fee-free until the treasury exists.",
+        "One pricing tier. The two rates are INDEPENDENT — a tier is any",
+        "(creator, counterparty) pair — so a tier can make the creator free while the",
+        "counterparty still pays their normal share, or shift the whole fee onto one",
+        "side. Pricing policy lives in data, not code: repricing is a `set_tiers`",
+        "call, never a redeploy."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "docs": [
+              "Stable identifier referenced by UserTier.tier_id (0 = SSS, 1 = SS, …)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "creator_fee_bps",
+            "docs": [
+              "Fee charged to the party who CREATED the deal, in bps of their side."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "counterparty_fee_bps",
+            "docs": [
+              "Fee charged to the counterparty, in bps of their side."
+            ],
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UserTier",
+      "docs": [
+        "Per-wallet tier assignment (PDA: seeds = [\"tier\", wallet]).",
+        "",
+        "ABSENCE IS THE DEFAULT: a wallet with no UserTier account is untiered and",
+        "pays the standard fee. That costs nothing for the overwhelming majority of",
+        "users who aren't VIPs — only whitelisted wallets get an account. Revoking a",
+        "tier closes the account and returns the rent."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "wallet",
+            "docs": [
+              "The wallet this assignment belongs to (also the PDA seed)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "tier_id",
+            "docs": [
+              "Which Config.tiers entry applies to deals this wallet CREATES."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Bump seed"
+            ],
+            "type": "u8"
           }
         ]
       }

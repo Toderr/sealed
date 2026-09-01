@@ -11,6 +11,12 @@ pub struct FundEscrow<'info> {
 
     #[account(
         mut,
+        // Re-derive the deal PDA from its stored bump (audit #65 finding 1). A
+        // deal whose `bump` was corrupted by a past mid-struct field insertion
+        // won't derive to its own address, so this constraint REJECTS it — money
+        // can no longer be funded into a vault that can never sign a payout.
+        seeds = [b"deal", deal.deal_id.as_bytes()],
+        bump = deal.bump,
         has_one = buyer @ EscrowError::UnauthorizedBuyer,
         constraint = deal.status == DealStatus::Created || deal.status == DealStatus::Funded @ EscrowError::InvalidDealStatus,
     )]

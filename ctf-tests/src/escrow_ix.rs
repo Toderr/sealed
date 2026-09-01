@@ -103,10 +103,19 @@ pub fn create_deal_ix(
         AccountMeta::new(vault, false),
     ];
 
-    if include_config {
-        metas.push(AccountMeta::new_readonly(config_pda(), false));
-    }
-
+    // Anchor 0.31.1 signals Option::None with the PROGRAM ID in that slot
+    // (anchor-lang-0.31.1/src/accounts/option.rs:44-53), NEVER by omitting the
+    // meta. Both optional accounts (config, creator_tier) ALWAYS consume a
+    // positional slot. Omitting them (the prior bug, audit #65 finding 2) shifted
+    // every following account, so the token program landed on `config` and the
+    // test died at setup with 3007 on BOTH the patched and unpatched program —
+    // voiding it as a C-1 proof. With the sentinels correct, `include_config`
+    // now genuinely toggles the C-1 path.
+    metas.push(AccountMeta::new_readonly(
+        if include_config { config_pda() } else { ESCROW_PROGRAM_ID },
+        false,
+    ));
+    metas.push(AccountMeta::new_readonly(ESCROW_PROGRAM_ID, false)); // creator_tier = None
     metas.push(AccountMeta::new_readonly(TOKEN_PROGRAM, false));
     metas.push(AccountMeta::new_readonly(SYSTEM_PROGRAM, false));
     metas.push(AccountMeta::new_readonly(RENT_SYSVAR, false));

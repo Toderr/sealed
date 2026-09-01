@@ -1,8 +1,16 @@
 use anchor_lang::prelude::*;
 
+/// Current on-chain layout version for `Deal`. Bump on EVERY layout change so
+/// a decoder can branch per generation instead of misreading old bytes.
+pub const DEAL_VERSION: u8 = 1;
+
 #[account]
 #[derive(InitSpace)]
 pub struct Deal {
+    /// Layout version (audit #65 finding 5). MUST be the first field so a reader
+    /// can dispatch on it before touching anything positional. Older on-chain
+    /// deals predate this field entirely — see the migration note at the bottom.
+    pub version: u8,
     /// Unique deal identifier
     #[max_len(32)]
     pub deal_id: String,
@@ -48,34 +56,30 @@ pub struct Deal {
     pub seller_refund_ok: bool,
     /// Bump seed for PDA
     pub bump: u8,
-    // ── Fields below were added after deals existed on-chain. ────────────────
-    // Borsh is positional, so they MUST stay at the end: inserting anywhere
-    // above shifts every subsequent byte and makes already-funded deals
-    // undecodable.
-    //
-    // CRITICAL — these fields make the account LONGER, and Borsh does NOT
-    // tolerate a short buffer: loading an old (pre-upgrade) Deal account fails
-    // with AccountDidNotDeserialize, which would freeze its escrow. Appending is
-    // necessary but NOT sufficient on its own. A pre-existing account must be
-    // grown to the new length and its tail zero-filled BEFORE any fee-path
-    // instruction loads it — that is exactly what `migrate_deal` does, and every
-    // fee/refund instruction that takes a full `Account<Deal>` will reject an
-    // un-migrated old account until it's run. Zero values are the correct legacy
-    // meaning (untiered, symmetric split), so the migration is a pure resize.
-    /// Who created the deal. Pubkey::default() = unknown (created before this
-    /// field existed) → no tier applies. Not inferable from `buyer`, which
-    /// always signs create_deal regardless of who initiated.
+    // ── HISTORY / LESSON (audit #65 finding 1) ───────────────────────────────
+    // Fields above were added across releases by INSERTING them ahead of `bump`
+    // (funded_at, fee_bps, treasury, buyer_fee_paid, buyer_refund_ok,
+    // seller_refund_ok). Every insertion shifted `bump` for accounts already on
+    // chain, so five layout generations exist on devnet and 17 of them decode
+    // `bump` from the wrong offset → their vault PDA no longer signs → escrow
+    // frozen, and `migrate_deal` (append-only resize) cannot repair a mid-struct
+    // shift. That mistake is why `version` (first) and `_reserved` (last) now
+    // exist: future scalar additions go into `_reserved` IN PLACE — never
+    // inserted, never appended past it — so `bump` and every prior offset stay
+    // fixed forever. This is the canonical layout for the fresh mainnet deploy.
+    /// Who created the deal. Pubkey::default() = unknown → no tier applies. Not
+    /// inferable from `buyer`, which always signs create_deal.
     pub creator: Pubkey,
-    /// Buyer's fee rate in bps of the buyer's side. 0 with `fee_bps` set means
-    /// this deal predates asymmetric fees — `buyer_fee()` falls back to the
-    /// symmetric half-split so old deals keep charging exactly what they did.
+    /// Buyer's fee rate in bps of the buyer's side.
     pub buyer_fee_bps: u16,
-    /// Seller's fee rate in bps of the seller's side. Same legacy fallback.
+    /// Seller's fee rate in bps of the seller's side.
     pub seller_fee_bps: u16,
-    /// Whether the two rates above are authoritative. False on every deal
-    /// created before tiers shipped, which is what makes the fallback safe and
-    /// unambiguous rather than guessing from zero values.
+    /// Whether the two rates above are authoritative (vs the symmetric split).
     pub asymmetric_fees: bool,
+    /// Reserved padding (audit #65 finding 5). New scalar fields are carved out
+    /// of THIS block in place, keeping every offset above it stable — so no
+    /// future addition can shift `bump` the way the history above did.
+    pub _reserved: [u8; 64],
 }
 
 impl Deal {
@@ -212,9 +216,15 @@ pub struct Tier {
 /// rate, treasury, and the admin authority. A single instance for the program.
 /// The fee is only ACTUALLY charged when fee_bps > 0 AND treasury is set — so
 /// the program can be deployed and run fee-free until the treasury exists.
+/// Current on-chain layout version for `Config`. Bump on every layout change.
+pub const CONFIG_VERSION: u8 = 1;
+
 #[account]
 #[derive(InitSpace)]
 pub struct Config {
+    /// Layout version (audit #65 finding 5). First field, for the same reason
+    /// as Deal.version — dispatch on it before reading anything positional.
+    pub version: u8,
     /// The only wallet allowed to change fee settings.
     pub authority: Pubkey,
     /// Where platform fees are sent (owner of the treasury token account).
@@ -243,6 +253,10 @@ pub struct Config {
     /// vec, which migrate_config produces on an old account.
     #[max_len(8)]
     pub allowed_mints: Vec<Pubkey>,
+    /// Reserved padding (audit #65 finding 5). Future scalar config fields come
+    /// out of this block in place. (Vecs above already move the tail, so the
+    /// padding mainly guards fixed-size additions.)
+    pub _reserved: [u8; 64],
 }
 
 impl Config {
@@ -290,4 +304,117 @@ pub struct UserTier {
     pub tier_id: u8,
     /// Bump seed
     pub bump: u8,
+}
+
+// ── Unit tests (audit #65 finding 4.1) ───────────────────────────────────────
+// Pins the fee arithmetic and the mint allowlist. Pure logic — needs no
+// validator and no built .so; runs under `cargo test -p escrow`.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Minimal Deal carrying just the fields the fee helpers read.
+    fn deal(fee_bps: u16, buyer_bps: u16, seller_bps: u16, asym: bool, treasury_set: bool) -> Deal {
+        Deal {
+            version: DEAL_VERSION,
+            deal_id: String::new(),
+            buyer: Pubkey::default(),
+            seller: Pubkey::default(),
+            mint: Pubkey::default(),
+            escrow_token_account: Pubkey::default(),
+            total_amount: 0,
+            funded_amount: 0,
+            released_amount: 0,
+            status: DealStatus::Created,
+            milestones: vec![],
+            created_at: 0,
+            funded_at: 0,
+            updated_at: 0,
+            fee_bps,
+            treasury: if treasury_set { Pubkey::new_unique() } else { Pubkey::default() },
+            buyer_fee_paid: false,
+            buyer_refund_ok: false,
+            seller_refund_ok: false,
+            bump: 0,
+            creator: Pubkey::default(),
+            buyer_fee_bps: buyer_bps,
+            seller_fee_bps: seller_bps,
+            asymmetric_fees: asym,
+            _reserved: [0u8; 64],
+        }
+    }
+
+    const USDC: u64 = 1_000_000; // 6 decimals
+
+    #[test]
+    fn legacy_symmetric_fee_unchanged() {
+        // 1% total, split half/half. asymmetric_fees=false → half_fee path.
+        let d = deal(100, 0, 0, false, true);
+        assert_eq!(d.buyer_fee(1000 * USDC), 5 * USDC); // 0.5%
+        assert_eq!(d.seller_fee(1000 * USDC), 5 * USDC); // 0.5%
+        assert!(d.has_fee());
+    }
+
+    #[test]
+    fn asymmetric_sss_creator_buyer_zero() {
+        // SSS creator=buyer: buyer 0%, counterparty(seller) 1%.
+        let d = deal(200, 0, 100, true, true);
+        assert_eq!(d.buyer_fee(1000 * USDC), 0);
+        assert_eq!(d.seller_fee(1000 * USDC), 10 * USDC);
+        // has_fee must stay TRUE even though the buyer side is 0.
+        assert!(d.has_fee());
+    }
+
+    #[test]
+    fn asymmetric_both_zero_is_fee_free() {
+        let d = deal(200, 0, 0, true, true);
+        assert!(!d.has_fee());
+    }
+
+    #[test]
+    fn has_fee_false_without_treasury() {
+        assert!(!deal(100, 0, 0, false, false).has_fee());
+    }
+
+    #[test]
+    fn side_fee_truncates_toward_payee() {
+        // 0.25% of 1333 lamports = 3.3325 → 3 (truncated).
+        assert_eq!(Deal::side_fee(1333, 25), 3);
+        assert_eq!(Deal::side_fee(100, 25), 0); // rounds to 0
+    }
+
+    #[test]
+    fn milestone_sum_checked_add() {
+        // Mirrors create_deal's try_fold: overflow returns None, not a panic.
+        let over = [u64::MAX, 1]
+            .iter()
+            .try_fold(0u64, |a, x| a.checked_add(*x));
+        assert_eq!(over, None);
+        let ok = [1u64, 2, 3].iter().try_fold(0u64, |a, x| a.checked_add(*x));
+        assert_eq!(ok, Some(6));
+    }
+
+    fn config(mints: Vec<Pubkey>) -> Config {
+        Config {
+            version: CONFIG_VERSION,
+            authority: Pubkey::default(),
+            treasury: Pubkey::default(),
+            fee_bps: 200,
+            bump: 0,
+            tiers: vec![],
+            allowed_mints: mints,
+            _reserved: [0u8; 64],
+        }
+    }
+
+    #[test]
+    fn mint_allowlist_behavior() {
+        let usdc = Pubkey::new_unique();
+        let scam = Pubkey::new_unique();
+        // Empty = accept any (documented back-compat).
+        assert!(config(vec![]).mint_allowed(&scam));
+        // Populated = only listed mints.
+        assert!(config(vec![usdc]).mint_allowed(&usdc));
+        assert!(!config(vec![usdc]).mint_allowed(&scam));
+    }
 }
