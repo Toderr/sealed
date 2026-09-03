@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::error::EscrowError;
-use crate::state::{Config, Tier};
+use crate::state::{Config, Tier, CONFIG_VERSION};
 
 // ── init_config ───────────────────────────────────────────────────────────────
 // Creates the single global Config PDA. The caller becomes the authority. The
@@ -29,6 +29,8 @@ pub struct InitConfig<'info> {
 pub fn init_config(ctx: Context<InitConfig>, fee_bps: u16) -> Result<()> {
     require!(fee_bps <= Config::MAX_FEE_BPS, EscrowError::FeeTooHigh);
     let config = &mut ctx.accounts.config;
+    config.version = CONFIG_VERSION;
+    config._reserved = [0u8; 64];
     config.authority = ctx.accounts.authority.key();
     config.treasury = Pubkey::default(); // unset → fee-free until set_treasury
     config.fee_bps = fee_bps;

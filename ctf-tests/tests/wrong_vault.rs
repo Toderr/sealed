@@ -7,7 +7,7 @@
 
 use sealed_ctf_tests::escrow_ix::{create_deal_ix, fund_escrow_ix, vault_pda};
 use sealed_ctf_tests::harness::{require_escrow_so, LocalChallenge};
-use sealed_ctf_tests::setup::ChallengeActors;
+use sealed_ctf_tests::setup::{init_fee_platform, ChallengeActors};
 use sealed_ctf_tests::{ONE_USDC, Signer};
 
 #[tokio::test]
@@ -22,6 +22,13 @@ async fn challenge_wrong_vault_substitution_rejected() {
         .await
         .expect("bootstrap");
 
+    // config is now required (audit C-1), so init the platform and pass it —
+    // otherwise create_deal is rejected before this test reaches its actual
+    // vault-substitution assertion (audit #65 finding 2).
+    init_fee_platform(&mut challenge, actors.treasury_owner.pubkey())
+        .await
+        .expect("fee platform");
+
     let deal_id = "ctf-wrong-vault";
     let amount = 5 * ONE_USDC;
 
@@ -32,7 +39,7 @@ async fn challenge_wrong_vault_substitution_rejected() {
         deal_id,
         amount,
         actors.buyer.pubkey(),
-        false,
+        true,
     );
     challenge
         .challenge

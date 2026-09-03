@@ -333,6 +333,34 @@ export async function buildCreateDealIx(
   });
 }
 
+// Minimum byte size of a fundable Deal account (audit #65 finding 1). Deals
+// created before a struct upgrade can be SMALLER than the current layout; some
+// of those have a corrupted `bump` that can no longer sign a payout, so funding
+// them moves money into a vault that can never release. This is the size the
+// CURRENTLY DEPLOYED program's `8 + Deal::INIT_SPACE` produces — UPDATE IT on
+// any program upgrade that changes the Deal layout.
+//
+// (The deployed program also validates the PDA bump in fund_escrow now, so this
+// client gate is defense-in-depth / a friendly error, not the only guard.)
+export const MIN_FUNDABLE_DEAL_SIZE = 2130;
+
+/** Throw if `dealId`'s on-chain account is too small to be safely funded.
+ *  No-op when the account doesn't exist yet (a fresh create+fund in one tx). */
+export async function assertDealFundable(
+  connection: Connection,
+  dealId: string
+): Promise<void> {
+  if (MOCK_CHAIN) return;
+  const [dealPDA] = findDealPDA(dealId);
+  const info = await connection.getAccountInfo(dealPDA);
+  if (info && info.data.length < MIN_FUNDABLE_DEAL_SIZE) {
+    throw new Error(
+      "This deal was created under an older program version and can't be funded " +
+        "safely — its escrow could never pay out. Please create a new deal."
+    );
+  }
+}
+
 export async function buildFundEscrowIx(
   buyer: PublicKey,
   dealId: string,

@@ -1,9 +1,18 @@
-//! Challenge: Fee Free — exploit optional config omission on create_deal.
+//! Regression guard: the C-1 fee-bypass must stay closed.
 //!
-//! Audit: AUDIT/12 #1 (TRUE POSITIVE), AUDIT/04 F-03, AUDIT/08 P0-1.
+//! Audit: AUDIT/12 #1, AUDIT/04 F-03, AUDIT/08 P0-1; fix in PR #64; harness ABI
+//! corrected per issue #65 finding 2.
 //!
-//! When platform config exists with active fees, a caller can omit the optional
-//! `config` account and permanently snapshot `fee_bps = 0` on the deal.
+//! History: `config` used to be `Option`, so a caller could OMIT it and snapshot
+//! `fee_bps = 0` (permanent fee bypass). PR #64 made `config` required. This test
+//! now asserts the exploit is REJECTED — it is GREEN when the fix holds, so it
+//! guards against regression, rather than merely documenting the old exploit.
+//!
+//! The harness supplies Anchor's Option sentinel (PROGRAM ID) in the config slot
+//! (issue #65 finding 2) — without that, create_deal_ix shifted the accounts and
+//! failed identically on patched and unpatched builds, which is why the earlier
+//! single-run "proof" was void. With the sentinel, omitting config is a genuine
+//! C-1 exploit attempt, and it is now rejected.
 
 use sealed_ctf_tests::escrow_ix::{create_deal_ix, fund_escrow_ix, vault_pda};
 use sealed_ctf_tests::harness::{require_escrow_so, LocalChallenge};
@@ -29,7 +38,9 @@ async fn challenge_fee_free_config_omission_bypasses_platform_fee() {
     let deal_id = "ctf-fee-free";
     let amount = 10 * ONE_USDC;
 
-    // EXPLOIT: omit config — deal snapshots fee_bps = 0 permanently.
+    // EXPLOIT ATTEMPT (must now FAIL): omit config to snapshot fee_bps = 0.
+    // include_config=false puts the PROGRAM-ID sentinel in the required config
+    // slot; the C-1 fix rejects it. Pre-#64 this SUCCEEDED (the auditor's A/B).
     let create_ix = create_deal_ix(
         actors.buyer.pubkey(),
         actors.seller.pubkey(),
@@ -37,30 +48,21 @@ async fn challenge_fee_free_config_omission_bypasses_platform_fee() {
         deal_id,
         amount,
         actors.buyer.pubkey(),
-        false, // include_config = false → fee bypass
+        false, // include_config = false → bypass attempt
     );
-    challenge
+    let err = challenge
         .challenge
         .run_ixs_full(&[create_ix], &[&actors.buyer], &actors.buyer.pubkey())
         .await
-        .expect("create_deal without config should succeed");
-
-    // Fund without treasury ATA — succeeds only because deal is fee-free.
-    let fund_ix = fund_escrow_ix(
-        actors.buyer.pubkey(),
-        deal_id,
-        actors.buyer_ata,
-        amount,
-        vault_pda(deal_id),
-        None, // no treasury
+        .expect_err("C-1 REGRESSION: create_deal without config must be rejected");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("3007") || msg.to_lowercase().contains("config"),
+        "expected the config account to be rejected, got: {msg}"
     );
-    challenge
-        .challenge
-        .run_ixs_full(&[fund_ix], &[&actors.buyer], &actors.buyer.pubkey())
-        .await
-        .expect("fee-free deal funds without treasury");
+    eprintln!("C-1 closed: omit-config create_deal rejected — {msg}");
 
-    // Control: deal created WITH config requires treasury on fund.
+    // Control: create WITH config succeeds (the honest path still works).
     let deal_id_fee = "ctf-fee-control";
     let create_fee_ix = create_deal_ix(
         actors.buyer.pubkey(),
@@ -75,26 +77,6 @@ async fn challenge_fee_free_config_omission_bypasses_platform_fee() {
         .challenge
         .run_ixs_full(&[create_fee_ix], &[&actors.buyer], &actors.buyer.pubkey())
         .await
-        .expect("create with config");
-
-    let fund_no_treasury = fund_escrow_ix(
-        actors.buyer.pubkey(),
-        deal_id_fee,
-        actors.buyer_ata,
-        amount,
-        vault_pda(deal_id_fee),
-        None,
-    );
-    let err = challenge
-        .challenge
-        .run_ixs_full(
-            &[fund_no_treasury],
-            &[&actors.buyer],
-            &actors.buyer.pubkey(),
-        )
-        .await
-        .expect_err("fee-bearing deal must reject missing treasury");
-
-    eprintln!("Fee Free challenge: exploit succeeded (fee bypass confirmed)");
-    eprintln!("Control rejected fund without treasury: {err}");
+        .expect("create with config must still succeed");
+    eprintln!("Control: create_deal WITH config still succeeds.");
 }
