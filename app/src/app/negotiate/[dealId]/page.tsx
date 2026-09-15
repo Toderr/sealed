@@ -434,8 +434,6 @@ export default function NegotiateRoom() {
     (role === "buyer" && !deal?.seller_wallet) ||
     (role === "seller" && !deal?.buyer_wallet);
 
-  const counterpartyWallet =
-    role === "buyer" ? deal?.seller_wallet : deal?.buyer_wallet;
 
   // A deal moving back to escalated reopens the negotiation room for both
   // parties. Without this, a counterparty sitting on an old "agreed" result
@@ -3036,7 +3034,6 @@ function ManualNegotiationPanel({
     // Fully-manual is human↔human, so poll for the counterparty's messages.
     const t = fullyManual ? setInterval(load, 4000) : null;
     return () => { cancelled = true; if (t) clearInterval(t); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal.deal_id, fullyManual]);
 
   // Auto-trigger buyer's agent opening message when conversation is empty.
