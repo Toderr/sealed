@@ -2,7 +2,7 @@
 //
 // When NEXT_PUBLIC_MOCK_CHAIN=true (and NOT a production build), the app runs the
 // full deal flow with a fake wallet + fake escrow ledger — no Phantom, no RPC,
-// no devnet USDC. See Code analysis/sealed-auth-and-local-dev-mode.md.
+// no devnet USDC.
 //
 // Hard guard: this must NEVER be enabled in a production build.
 

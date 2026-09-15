@@ -54,7 +54,6 @@ const K = {
   ratings: "mock:data:ratings",
   profiles: "mock:data:profiles",
   deliverables: "mock:data:deliverables",
-  refundReqs: "mock:data:refund-requests",
   complaints: "mock:data:complaints",
 };
 

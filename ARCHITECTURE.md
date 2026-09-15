@@ -177,8 +177,8 @@ type SalesProfile = {
 POST /api/agent              existing, Structurer role
 POST /api/negotiate          NEW, runs Negotiator ↔ Negotiator rounds
 POST /api/verify-milestone   NEW, Verifier reviews proof
-GET  /api/memory/:wallet     NEW, retrieve BusinessMemory
-POST /api/memory/:wallet     NEW, update BusinessMemory
+GET  /api/memory/:wallet     PLANNED (not built — memory is read via /api/agent/context)
+POST /api/memory/:wallet     PLANNED (not built)
 GET  /api/users/:wallet/public        public profile + reputation aggregate
 POST /api/ratings                     completed-deal star review
 GET  /api/friends                     friend graph for current wallet
@@ -260,7 +260,7 @@ app/src/
 ├── agents/
 │   ├── types.ts              AgentRole, AgentConfig, AgentMessage
 │   ├── prompts/
-│   │   ├── structurer.ts     current
+│   │   ├── structurer.ts     (lives at src/lib/agent-system-prompt.ts)
 │   │   ├── negotiator.ts     Step 2
 │   │   ├── verifier.ts       Step 4
 │   │   ├── purchasing-scout.ts  FUTURE stub

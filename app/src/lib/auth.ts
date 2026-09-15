@@ -37,24 +37,3 @@ export function getWallet(req: HeaderReq): string | null {
   return wallet && BASE58_PUBKEY.test(wallet) ? wallet : null;
 }
 
-/**
- * Early-return variant that fits the existing route style without try/catch.
- * Returns either the validated wallet or a ready-to-return error Response:
- *
- *   const auth = walletOrError(req);
- *   if (auth instanceof Response) return auth;
- *   const wallet = auth;  // validated string
- *
- *   - missing header    → 401 { error: "Missing x-wallet header" }
- *   - malformed address → 400 { error: "Invalid wallet address" }
- */
-export function walletOrError(req: HeaderReq): string | Response {
-  const wallet = req.headers.get("x-wallet");
-  if (!wallet) {
-    return Response.json({ error: "Missing x-wallet header" }, { status: 401 });
-  }
-  if (!BASE58_PUBKEY.test(wallet)) {
-    return Response.json({ error: "Invalid wallet address" }, { status: 400 });
-  }
-  return wallet;
-}

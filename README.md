@@ -104,9 +104,7 @@ sealed/
 ├── scripts/                     Deploy + devnet helpers
 ├── Anchor.toml                  Cluster = devnet
 ├── ARCHITECTURE.md              Forward-compat agent system + data model
-├── PITCH_DECK.md                Colosseum submission pitch
-├── DECK_BRIEF.md                Structured brief for claude.ai/design
-└── DEMO.md                      Step-by-step demo script
+└── docs/                        Architecture decision log
 ```
 
 ---
@@ -201,7 +199,7 @@ Program ID is pinned in `Anchor.toml` and `NEXT_PUBLIC_PROGRAM_ID`; redeploy pre
 
 ## Hackathon demo
 
-See **[DEMO.md](./DEMO.md)** for the step-by-step walkthrough covering the full deal lifecycle (chat → negotiate → fund → proof → release → completed) plus the mutual-refund path.
+Run the app (`cd app && npm run dev`), connect a wallet, and walk the deal lifecycle: chat → negotiate → fund → proof → release → completed.
 
 ---
 

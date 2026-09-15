@@ -51,7 +51,7 @@ type RouteHandler<Ctx> = (req: NextRequest, ctx: Ctx) => Promise<Response> | Res
  *
  *   export const POST = withRoute(async (req) => {
  *     const wallet = requireWallet(req);
- *     const { deal_id } = requireFields(await req.json(), ["deal_id"]);
+ *     const { deal_id } = await req.json();
  *     ...
  *     return json({ ok: true });
  *   });
@@ -82,19 +82,4 @@ export function requireString(value: unknown, name: string): string {
   return value;
 }
 
-/**
- * Require the named fields to be present (non-null/undefined) on a parsed body.
- * Returns the body narrowed so the fields are known-present. Mirrors the common
- * `if (!a || !b) return 400` guard.
- */
-export function requireFields<T extends Record<string, unknown>, K extends string>(
-  body: T,
-  fields: readonly K[]
-): T & { [P in K]: NonNullable<T[P]> } {
-  for (const f of fields) {
-    if (body[f] === undefined || body[f] === null || body[f] === "") {
-      throw new HttpError(400, "Missing required fields");
-    }
-  }
-  return body as T & { [P in K]: NonNullable<T[P]> };
-}
+

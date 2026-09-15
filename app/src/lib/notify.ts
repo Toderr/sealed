@@ -128,7 +128,6 @@ async function sendEmailForEvent(
 /** Subject/body/link for an event, shared by every channel so the copy can't
  *  drift between email and Telegram. */
 function emailParts(
-  handle: string,
   eventType: string,
   payload: Record<string, unknown>
 ): { subject: string; body: string; ctaUrl: string } {
@@ -195,7 +194,7 @@ function buildEmailContent(
   eventType: string,
   payload: Record<string, unknown>
 ): { subject: string; html: string } {
-  const msg = emailParts(handle, eventType, payload);
+  const msg = emailParts(eventType, payload);
   const ctaUrl = msg.ctaUrl;
 
   const html = `<!DOCTYPE html>
@@ -241,7 +240,7 @@ function buildTelegramContent(
   eventType: string,
   payload: Record<string, unknown>
 ): string {
-  const { subject, ctaUrl, body } = emailParts(handle, eventType, payload);
+  const { subject, ctaUrl, body } = emailParts(eventType, payload);
   // HTML parse mode: escape anything that could come from user input.
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

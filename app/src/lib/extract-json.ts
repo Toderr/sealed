@@ -7,8 +7,7 @@
  * verify-milestone route. `context` only customizes the not-found error message.
  *
  * NOTE: this is the brittle first-{ to last-} slice approach. A future pass
- * should move to provider structured-output / tool-use instead (see
- * Code analysis/sealed-negotiation-llm-analysis.md).
+ * should move to provider structured-output / tool-use instead.
  */
 export function extractJson<T>(text: string, context = "response"): T {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
