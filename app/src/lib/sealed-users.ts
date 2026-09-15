@@ -161,6 +161,14 @@ export async function getPublicProfile(
     getReputationFallback(wallet),
   ]);
 
+  // Nothing exists for this wallet at all — the three reads above swallow
+  // errors into null/zeros, so only fabricate a zeroed profile when a real
+  // row actually exists somewhere. This keeps the route's `!profile` path live
+  // instead of reporting a fake empty user during a DB outage.
+  if (!user && !rep && fallback.deals_total === 0 && fallback.avg_rating === 0) {
+    return null;
+  }
+
   return {
     handle: user?.handle ?? null,
     deals_total: Math.max(rep?.deals_total ?? 0, fallback.deals_total),
@@ -214,10 +222,11 @@ export async function updateNotifications(
   wallet: string,
   prefs: NotificationPrefs
 ): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from(table("users"))
     .update({ notify_on: prefs })
     .eq("wallet", wallet);
+  if (error) throw new Error(`updateNotifications: ${error.message}`);
 }
 
 export async function updateEmail(
@@ -225,10 +234,11 @@ export async function updateEmail(
   email: string
 ): Promise<string> {
   const otp = randomInt(100000, 1000000).toString();
-  await supabase
+  const { error } = await supabase
     .from(table("users"))
     .update({ email, email_verified: false, email_otp: otp })
     .eq("wallet", wallet);
+  if (error) throw new Error(`updateEmail: ${error.message}`);
   return otp;
 }
 
@@ -240,9 +250,10 @@ export async function verifyEmail(
   if (!user || (user as unknown as { email_otp: string }).email_otp !== otp)
     return false;
 
-  await supabase
+  const { error } = await supabase
     .from(table("users"))
     .update({ email_verified: true, email_otp: null })
     .eq("wallet", wallet);
+  if (error) throw new Error(`verifyEmail: ${error.message}`);
   return true;
 }

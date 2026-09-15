@@ -1,6 +1,6 @@
 import { updateUserProfile } from "@/lib/sealed-users";
 import { getWallet } from "@/lib/auth";
-import { withRoute, json, HttpError } from "@/lib/api-error";
+import { withRoute, json, HttpError, parseJsonBody } from "@/lib/api-error";
 
 export const PUT = withRoute<{ params: Promise<{ wallet: string }> }>(
   async (request, { params }) => {
@@ -11,7 +11,7 @@ export const PUT = withRoute<{ params: Promise<{ wallet: string }> }>(
       throw new HttpError(403, "Forbidden");
     }
 
-    const body = await request.json() as {
+    const body = (await parseJsonBody(request)) as {
       handle?: string;
       display_name?: string;
       bio?: string;

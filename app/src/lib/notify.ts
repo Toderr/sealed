@@ -28,13 +28,16 @@ export async function queueNotification(
   if (u.telegram_chat_id) channels.push("telegram");
 
   for (const channel of channels) {
-    await supabase.from(table("notification_queue")).insert({
+    const { error } = await supabase.from(table("notification_queue")).insert({
       recipient_wallet: recipientWallet,
       channel,
       event_type: eventType,
       payload,
       status: "pending",
     });
+    // Best-effort by contract (callers fire-and-forget) — but failures must be
+    // visible in logs rather than silently reporting queued.
+    if (error) console.warn(`[notify] failed to queue ${eventType}/${channel} for ${recipientWallet}:`, error.message);
   }
 }
 

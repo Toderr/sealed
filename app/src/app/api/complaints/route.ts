@@ -1,7 +1,7 @@
 import { supabase, table } from "@/lib/supabase";
 import { requireWallet } from "@/lib/auth";
 import { requireAdmin } from "@/lib/admin";
-import { HttpError, json, withRoute } from "@/lib/api-error";
+import { HttpError, json, withRoute, parseJsonBody } from "@/lib/api-error";
 
 // User-reported problems. POST: any authenticated user files a complaint (about
 // a deal or general). GET: admin-only list for the dashboard. Mediate-only —
@@ -13,7 +13,7 @@ const CATEGORIES = new Set(["non_delivery", "quality", "communication", "payment
 // (reported_wallet + category "account") rather than only a deal.
 export const POST = withRoute(async (request) => {
   const wallet = requireWallet(request);
-  const body = (await request.json()) as {
+  const body = (await parseJsonBody(request)) as unknown as {
     deal_id?: string | null;
     reported_wallet?: string | null;
     category?: string;
@@ -87,7 +87,7 @@ export const PATCH = withRoute(async (request) => {
   const guard = requireAdmin(request);
   if (guard) return guard;
 
-  const body = (await request.json()) as { id?: string; status?: string };
+  const body = (await parseJsonBody(request)) as { id?: string; status?: string };
   const STATUSES = new Set(["open", "reviewing", "resolved", "dismissed"]);
   if (!body.id || !STATUSES.has(body.status ?? "")) {
     throw new HttpError(400, "id and valid status required");

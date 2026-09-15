@@ -1,13 +1,13 @@
 import { supabase, table } from "@/lib/supabase";
 import { requireWallet } from "@/lib/auth";
-import { HttpError, json, withRoute } from "@/lib/api-error";
+import { HttpError, json, parseJsonBody, withRoute } from "@/lib/api-error";
 
 export const PATCH = withRoute<{ params: Promise<{ friendWallet: string }> }>(
   async (req, { params }) => {
   const wallet = requireWallet(req);
 
   const { friendWallet } = await params;
-  const { action } = (await req.json()) as { action?: "accept" | "decline" };
+  const { action } = (await parseJsonBody(req)) as { action?: "accept" | "decline" };
   if (!action) throw new HttpError(400, "action required");
 
   // Find the incoming request (they sent to us)

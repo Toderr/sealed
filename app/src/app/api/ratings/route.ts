@@ -1,7 +1,7 @@
 import { submitRating } from "@/lib/reputation";
 import { supabase, table } from "@/lib/supabase";
 import { requireWallet } from "@/lib/auth";
-import { HttpError, withRoute, json, requireString } from "@/lib/api-error";
+import { HttpError, withRoute, json, requireString, parseJsonBody } from "@/lib/api-error";
 
 type RatingMilestone = { status?: string };
 
@@ -65,7 +65,7 @@ export const GET = withRoute(async (request) => {
 export const POST = withRoute(async (request) => {
   const rater_wallet = requireWallet(request);
 
-  const body = await request.json();
+  const body = (await parseJsonBody(request)) as { deal_id?: string; ratee_wallet?: string; stars?: number; review_text?: string };
   const { deal_id, ratee_wallet, stars, review_text } = body;
 
   if (!deal_id || !ratee_wallet || !stars) {

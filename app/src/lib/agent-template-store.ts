@@ -85,24 +85,28 @@ export async function deleteTemplate(
   id: string,
   wallet: string
 ): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from(table("agent_templates"))
     .delete()
     .eq("id", id)
     .eq("wallet", wallet);
+  if (error) throw new Error(`deleteTemplate: ${error.message}`);
 }
 
 export async function setActive(id: string, wallet: string): Promise<void> {
   // Deactivate all templates for this wallet first
-  await supabase
+  const { error: clearError } = await supabase
     .from(table("agent_templates"))
     .update({ active: false })
     .eq("wallet", wallet);
+  if (clearError) throw new Error(`setActive clear: ${clearError.message}`);
 
-  // Activate the selected one
-  await supabase
+  // Activate the selected one — if this fails the wallet would be left with no
+  // active template, so surface the error rather than reporting ok.
+  const { error: setError } = await supabase
     .from(table("agent_templates"))
     .update({ active: true })
     .eq("id", id)
     .eq("wallet", wallet);
+  if (setError) throw new Error(`setActive set: ${setError.message}`);
 }

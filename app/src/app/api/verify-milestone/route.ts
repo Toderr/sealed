@@ -3,7 +3,7 @@ import { VERIFIER_SYSTEM_PROMPT } from "@/agents/prompts/verifier";
 import type { ProofType, VerifierReview } from "@/lib/types";
 import { dispatchLlm, getLlmOptsFromRequest, type LlmMessage } from "@/lib/llm-dispatch";
 import { extractJson } from "@/lib/extract-json";
-import { HttpError, json, withRoute } from "@/lib/api-error";
+import { HttpError, json, withRoute, parseJsonBody } from "@/lib/api-error";
 
 interface VerifyRequest {
   milestoneDescription: string;
@@ -42,7 +42,7 @@ function buildUserMessage(body: VerifyRequest): LlmMessage {
 
 export const POST = withRoute(async (request: NextRequest) => {
   try {
-    const body = (await request.json()) as VerifyRequest;
+    const body = (await parseJsonBody(request)) as VerifyRequest;
     if (!body?.milestoneDescription || !body?.proofType || !body?.proofData) {
       throw new HttpError(400, "Missing required fields");
     }

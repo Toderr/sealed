@@ -82,4 +82,16 @@ export function requireString(value: unknown, name: string): string {
   return value;
 }
 
+/**
+ * Parse a request JSON body, mapping malformed JSON to a 400 instead of the
+ * unhandled SyntaxError that would otherwise escape as a 500.
+ */
+export async function parseJsonBody(req: { json(): Promise<unknown> }): Promise<unknown> {
+  try {
+    return await req.json();
+  } catch {
+    throw new HttpError(400, "Invalid JSON body");
+  }
+}
+
 

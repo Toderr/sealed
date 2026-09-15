@@ -1,5 +1,5 @@
 import { supabase, table } from "@/lib/supabase";
-import { HttpError, json, withRoute } from "@/lib/api-error";
+import { HttpError, json, withRoute, parseJsonBody } from "@/lib/api-error";
 
 export const GET = withRoute(async (request) => {
   const dealId = request.nextUrl.searchParams.get("deal_id");
@@ -16,7 +16,7 @@ export const GET = withRoute(async (request) => {
 });
 
 export const POST = withRoute(async (request) => {
-  const body = await request.json();
+  const body = (await parseJsonBody(request)) as { deal_id?: string; role?: string; content?: string; wallet?: string; metadata?: Record<string, unknown> };
   const { deal_id, role, content, wallet, metadata } = body;
 
   if (!deal_id || !role || !content) {

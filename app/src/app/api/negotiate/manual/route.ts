@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase, table } from "@/lib/supabase";
 import { dispatchLlm, friendlyLlmError, getLlmOptsFromRequest } from "@/lib/llm-dispatch";
-import { HttpError, json, withRoute } from "@/lib/api-error";
+import { HttpError, json, withRoute, parseJsonBody } from "@/lib/api-error";
 
 // Always use a reliable paid model for agent responses.
 // Ignores OPENROUTER_MODEL env var on purpose — free-tier models hit rate limits
@@ -36,7 +36,7 @@ async function saveMessage(dealId: string, role: string, content: string, wallet
 }
 
 export const POST = withRoute(async (request: NextRequest) => {
-  const body = await request.json() as {
+  const body = (await parseJsonBody(request)) as {
     dealId: string;
     messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
     isOpening?: boolean;

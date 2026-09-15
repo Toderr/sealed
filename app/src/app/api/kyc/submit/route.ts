@@ -1,6 +1,6 @@
 import { supabase, table } from "@/lib/supabase";
 import { getWallet } from "@/lib/auth";
-import { HttpError, json, withRoute } from "@/lib/api-error";
+import { HttpError, json, withRoute, parseJsonBody } from "@/lib/api-error";
 import { randomUUID } from "crypto";
 
 const MAGIC_PDF = [0x25, 0x50, 0x44, 0x46];
@@ -14,7 +14,7 @@ function isAllowedKycFile(buf: Buffer): boolean {
 
 export const POST = withRoute(async (request) => {
   const callerWallet = getWallet(request);
-  const body = await request.json();
+  const body = (await parseJsonBody(request)) as { wallet?: string; documentBase64?: string; mimeType?: string };
   const { wallet, documentBase64, mimeType } = body;
 
   if (!wallet || !documentBase64) {
@@ -47,7 +47,7 @@ export const POST = withRoute(async (request) => {
     throw new HttpError(500, "Storage failed");
   }
 
-  await supabase
+  const { error: updateError } = await supabase
     .from(table("users"))
     .update({
       kyc_status: "pending",
@@ -55,6 +55,8 @@ export const POST = withRoute(async (request) => {
       kyc_submitted_at: new Date().toISOString(),
     })
     .eq("wallet", wallet);
+
+  if (updateError) throw new HttpError(500, "Failed to record KYC submission");
 
   return json({ status: "pending" });
 });

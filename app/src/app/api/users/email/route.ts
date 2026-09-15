@@ -1,9 +1,9 @@
 import { updateEmail } from "@/lib/sealed-users";
 import { sendEmail, EmailNotConfiguredError } from "@/lib/notify";
-import { withRoute, json, HttpError } from "@/lib/api-error";
+import { withRoute, json, HttpError, parseJsonBody } from "@/lib/api-error";
 
 export const POST = withRoute(async (request) => {
-  const { wallet, email } = await request.json();
+  const { wallet, email } = (await parseJsonBody(request)) as { wallet?: string; email?: string };
   if (!wallet || !email) throw new HttpError(400, "Missing fields");
 
   const otp = await updateEmail(wallet, email);

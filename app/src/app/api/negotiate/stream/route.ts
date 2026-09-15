@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { runNegotiation } from "@/negotiation/engine";
 import { friendlyLlmError } from "@/lib/llm-dispatch";
-import { HttpError } from "@/lib/api-error";
+import { HttpError, parseJsonBody } from "@/lib/api-error";
 import type { Revision } from "@/negotiation/types";
 import {
   type NegotiateRequest,
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   let body: NegotiateRequest;
   try {
-    body = validateNegotiateBody((await request.json()) as NegotiateRequest);
+    body = validateNegotiateBody((await parseJsonBody(request)) as NegotiateRequest);
   } catch (err) {
     return errorStream(encoder, err);
   }

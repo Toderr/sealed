@@ -3,9 +3,10 @@ import { dispatchLlm, getLlmOptsFromEnv } from "@/lib/llm-dispatch";
 import { buildSystemPrompt } from "@/lib/agent-system-prompt";
 import { getWallet } from "@/lib/auth";
 import { HttpError, json, withRoute } from "@/lib/api-error";
+import { parseJsonBody } from "@/lib/api-error";
 
 export const POST = withRoute(async (request: NextRequest) => {
-  const { messages } = await request.json();
+  const { messages } = (await parseJsonBody(request)) as { messages: Array<{ role: string; content: string }> };
   const wallet = getWallet(request) ?? undefined;
 
   const llm = getLlmOptsFromEnv();

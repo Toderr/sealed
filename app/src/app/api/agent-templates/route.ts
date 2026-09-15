@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import type { AgentTemplate } from "@/lib/types";
 import {
   getTemplates,
   createTemplate,
@@ -6,7 +7,7 @@ import {
   deleteTemplate,
   setActive,
 } from "@/lib/agent-template-store";
-import { HttpError, json, withRoute } from "@/lib/api-error";
+import { HttpError, json, withRoute, parseJsonBody } from "@/lib/api-error";
 
 export const GET = withRoute(async (request: NextRequest) => {
   const wallet = request.nextUrl.searchParams.get("wallet");
@@ -17,8 +18,7 @@ export const GET = withRoute(async (request: NextRequest) => {
 });
 
 export const POST = withRoute(async (request: NextRequest) => {
-  const body = await request.json();
-  const { wallet, ...data } = body;
+  const { wallet, ...data } = (await parseJsonBody(request)) as { wallet?: string } & Omit<AgentTemplate, "id" | "wallet" | "created_at">;
   if (!wallet) throw new HttpError(400, "Missing wallet");
 
   const result = await createTemplate(wallet, data);
@@ -27,8 +27,7 @@ export const POST = withRoute(async (request: NextRequest) => {
 });
 
 export const PATCH = withRoute(async (request: NextRequest) => {
-  const body = await request.json();
-  const { id, wallet, action, ...data } = body;
+  const { id, wallet, action, ...data } = (await parseJsonBody(request)) as { id?: string; wallet?: string; action?: string } & Partial<Omit<AgentTemplate, "id" | "wallet" | "created_at">>;
   if (!id || !wallet) throw new HttpError(400, "Missing id or wallet");
 
   if (action === "set-active") {
@@ -42,8 +41,7 @@ export const PATCH = withRoute(async (request: NextRequest) => {
 });
 
 export const DELETE = withRoute(async (request: NextRequest) => {
-  const body = await request.json();
-  const { id, wallet } = body;
+  const { id, wallet } = (await parseJsonBody(request)) as { id?: string; wallet?: string };
   if (!id || !wallet) throw new HttpError(400, "Missing id or wallet");
 
   await deleteTemplate(id, wallet);

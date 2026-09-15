@@ -1,6 +1,6 @@
 import { supabase, table } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/admin";
-import { HttpError, json, withRoute } from "@/lib/api-error";
+import { HttpError, json, withRoute, parseJsonBody } from "@/lib/api-error";
 
 export const GET = withRoute(async (request) => {
   const guard = requireAdmin(request);
@@ -21,7 +21,7 @@ export const POST = withRoute(async (request) => {
   const guard = requireAdmin(request);
   if (guard) return guard;
 
-  const body = await request.json();
+  const body = (await parseJsonBody(request)) as { wallet?: string; action?: string };
   const { target_wallet, decision } = body as {
     target_wallet?: string;
     decision?: "approved" | "rejected";

@@ -1,11 +1,11 @@
 import { supabase, table } from "@/lib/supabase";
 import { requireWallet } from "@/lib/auth";
-import { HttpError, json, withRoute } from "@/lib/api-error";
+import { HttpError, json, parseJsonBody, withRoute } from "@/lib/api-error";
 
 export const POST = withRoute(async (request) => {
   const wallet = requireWallet(request);
 
-  const body = await request.json();
+  const body = (await parseJsonBody(request)) as Record<string, unknown>;
   const {
     deal_id,
     buyer_wallet: bodyBuyer,
@@ -144,13 +144,16 @@ export const POST = withRoute(async (request) => {
   }
 
   if (tx_signature) {
-    await supabase.from(table("messages")).insert({
+    // Secondary annotation after the committed upsert — surface failures in
+    // logs without failing the (already-committed) mirror write.
+    const { error: msgError } = await supabase.from(table("messages")).insert({
       deal_id,
       role: "system",
       content: `Deal created on-chain. Tx: ${tx_signature}`,
       wallet,
       metadata: { tx_signature },
     });
+    if (msgError) console.warn("[deals/mirror] system message insert failed:", msgError.message);
   }
 
   return json({ ok: true, deal: data });

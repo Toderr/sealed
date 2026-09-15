@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { runNegotiation } from "@/negotiation/engine";
 import { friendlyLlmError } from "@/lib/llm-dispatch";
-import { HttpError, json, withRoute } from "@/lib/api-error";
+import { HttpError, json, withRoute, parseJsonBody } from "@/lib/api-error";
 import {
   type NegotiateRequest,
   prepareNegotiation,
@@ -14,7 +14,7 @@ import {
 // the negotiation room uses /api/negotiate/stream for live per-round updates.
 export const POST = withRoute(async (request: NextRequest) => {
   try {
-    const body = validateNegotiateBody((await request.json()) as NegotiateRequest);
+    const body = validateNegotiateBody((await parseJsonBody(request)) as NegotiateRequest);
     const { params, buyerCallLlm, sellerCallLlm } = await prepareNegotiation(request, body);
 
     const proposal = await runNegotiation(params, buyerCallLlm, sellerCallLlm);

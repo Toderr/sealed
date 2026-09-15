@@ -2,7 +2,7 @@ import { supabase, table } from "@/lib/supabase";
 import { incrementDeal } from "@/lib/reputation";
 import { queueNotification } from "@/lib/notify";
 import { requireWallet } from "@/lib/auth";
-import { HttpError, json, withRoute } from "@/lib/api-error";
+import { HttpError, json, withRoute, parseJsonBody } from "@/lib/api-error";
 
 type DealMilestone = {
   description: string;
@@ -180,7 +180,7 @@ export const PATCH = withRoute<{ params: Promise<{ dealId: string }> }>(
     throw new HttpError(404, "Deal not found");
   }
 
-  const body = (await req.json()) as Record<string, unknown>;
+  const body = (await parseJsonBody(req)) as Record<string, unknown>;
   const keys = Object.keys(body);
   if (keys.some((key) => !PATCH_FIELDS.has(key))) {
     throw new HttpError(400, "Unsupported deal update field");

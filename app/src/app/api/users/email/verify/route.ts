@@ -1,8 +1,8 @@
 import { verifyEmail } from "@/lib/sealed-users";
-import { withRoute, json, HttpError } from "@/lib/api-error";
+import { withRoute, json, HttpError, parseJsonBody } from "@/lib/api-error";
 
 export const POST = withRoute(async (request) => {
-  const { wallet, otp } = await request.json();
+  const { wallet, otp } = (await parseJsonBody(request)) as { wallet?: string; otp?: string };
   if (!wallet || !otp) throw new HttpError(400, "Missing fields");
 
   const ok = await verifyEmail(wallet, otp);

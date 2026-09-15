@@ -2,7 +2,7 @@ import { supabase, table } from "@/lib/supabase";
 import { getPublicProfile, getUserByHandle } from "@/lib/sealed-users";
 import { requireWallet } from "@/lib/auth";
 import { queueNotification } from "@/lib/notify";
-import { HttpError, json, withRoute, isMissingTableError } from "@/lib/api-error";
+import { HttpError, json, withRoute, isMissingTableError, parseJsonBody } from "@/lib/api-error";
 
 type FriendRow = {
   id: string;
@@ -76,7 +76,7 @@ export const GET = withRoute(async (req) => {
 export const POST = withRoute(async (req) => {
   const wallet = requireWallet(req);
 
-  const { friendWallet, friendHandle } = (await req.json()) as {
+  const { friendWallet, friendHandle } = (await parseJsonBody(req)) as {
     friendWallet?: string;
     friendHandle?: string;
   };
