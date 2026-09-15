@@ -5,6 +5,8 @@
 // localStorage. All amounts are in USDC lamports (6 decimals), matching the
 // on-chain representation.
 
+import { DealStatus } from "./types";
+
 const LEDGER_KEY = "mock:escrow:ledger";
 const BAL_KEY = "mock:usdc:balances";
 const CONFIG_KEY = "mock:escrow:config";
@@ -21,12 +23,9 @@ const DEFAULT_CONFIG: MockFeeConfig = { feeBps: 100, treasury: "" };
 // Every dev wallet starts rich so funding always succeeds.
 const START_BALANCE = 1_000_000 * 1_000_000; // 1,000,000 USDC in lamports
 
-export type MockDealStatus =
-  | "Created"
-  | "Funded"
-  | "InProgress"
-  | "Completed"
-  | "Refunded";
+// Mirrors the on-chain DealStatus enum (lib/types.ts) — including Disputed,
+// which the old copy silently dropped.
+export type MockDealStatus = `${DealStatus}`;
 
 export interface MockDeal {
   dealId: string;

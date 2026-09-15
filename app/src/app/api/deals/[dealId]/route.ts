@@ -3,6 +3,7 @@ import { incrementDeal } from "@/lib/reputation";
 import { queueNotification } from "@/lib/notify";
 import { requireWallet } from "@/lib/auth";
 import { HttpError, json, withRoute, parseJsonBody } from "@/lib/api-error";
+import { PRE_ESCROW_STATUSES, normalizeDealStatus } from "@/lib/deal-status";
 
 type DealMilestone = {
   description: string;
@@ -12,19 +13,6 @@ type DealMilestone = {
   proof_by?: "seller" | "buyer";
 };
 
-const DEAL_STATUSES = new Set([
-  "draft",
-  "seller-ready",
-  "seller-agreed",
-  "manual-chat",
-  "escalated",
-  "proposed",
-  "funded",
-  "in_progress",
-  "completed",
-  "refunded",
-  "disputed",
-]);
 
 const PATCH_FIELDS = new Set([
   "seller_wallet",
@@ -37,19 +25,6 @@ const PATCH_FIELDS = new Set([
   "funded_at",
 ]);
 
-function normalizeDealStatus(status: unknown): string | null {
-  if (typeof status !== "string") return null;
-  const normalized = status.trim().replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
-  const lower = normalized
-    .replace(/^_/, "")
-    .replace("in_progress", "in_progress")
-    .replace("created", "draft")
-    .replace("funded", "funded")
-    .replace("completed", "completed")
-    .replace("refunded", "refunded")
-    .replace("disputed", "disputed");
-  return DEAL_STATUSES.has(lower) ? lower : null;
-}
 
 function sanitizeMilestones(value: unknown): DealMilestone[] | null {
   if (!Array.isArray(value)) return null;
@@ -117,17 +92,6 @@ export const GET = withRoute<{ params: Promise<{ dealId: string }> }>(
   }
 );
 
-// Statuses where escrow is NOT yet on-chain — the only deals that may be
-// deleted (bug #15). Once a deal is funded/in-progress/etc. it holds real
-// on-chain state and must never be removed from the mirror.
-const PRE_ESCROW_STATUSES = new Set([
-  "draft",
-  "seller-ready",
-  "seller-agreed",
-  "manual-chat",
-  "proposed",
-  "escalated",
-]);
 
 export const DELETE = withRoute<{ params: Promise<{ dealId: string }> }>(
   async (req, { params }) => {

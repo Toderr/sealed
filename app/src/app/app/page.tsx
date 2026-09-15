@@ -26,23 +26,14 @@ import { SealedBackdrop } from "@/components/SealedBackdrop";
 
 import WalletMultiButton from "@/components/AppWalletButton";
 import WalletMenu from "@/components/WalletMenu";
+import { DEAL_STATUS_LABELS, PRE_ESCROW_STATUSES, dealStatusKey, isMilestoneDone } from "@/lib/deal-status";
 
 type CounterpartyProfile = Pick<PublicProfile, "handle" | "display_name" | "avatar_url">;
 
-function isMilestoneDone(status: string | undefined) {
-  const normalized = status?.toLowerCase();
-  return normalized === "released" || normalized === "completed";
-}
+
 
 function inferDealStatus(deal: SupabaseDeal) {
-  const raw = (deal.status ?? "").toLowerCase();
-  const milestones = deal.milestones ?? [];
-  if (milestones.length > 0 && milestones.every((m) => isMilestoneDone(m.status))) {
-    return "completed";
-  }
-  if (raw === "inprogress") return "in_progress";
-  if (raw === "created") return "draft";
-  return raw;
+  return dealStatusKey(deal);
 }
 
 function dealHref(deal: SupabaseDeal) {
@@ -1081,19 +1072,11 @@ function DealCardBold({
   // deals hold on-chain state and must not be removed.
   const canDelete =
     !!onRequestDelete &&
-    ["draft", "seller-ready", "seller-agreed", "manual-chat", "proposed", "escalated"].includes(displayStatus);
+    PRE_ESCROW_STATUSES.has(displayStatus);
 
   const statusLabel: Record<string, string> = {
-    draft:          counterparty ? "Counterparty joined" : "Awaiting counterparty",
-    "seller-ready": "Counterparty reviewing",
-    "seller-agreed":"Ready to fund",
-    escalated:      "Renegotiation requested",
-    proposed:       "Ready to sign",
-    funded:         "Funded",
-    in_progress:    "In progress",
-    completed:      "Sealed",
-    refunded:       "Refunded",
-    disputed:       "Disputed",
+    ...DEAL_STATUS_LABELS,
+    draft: counterparty ? "Counterparty joined" : "Awaiting counterparty",
   };
   const statusTone: Record<string, string> = {
     draft:          "warning",

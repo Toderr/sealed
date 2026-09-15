@@ -43,6 +43,7 @@ import { ArrowLeft } from "lucide-react";
 
 import WalletMultiButton from "@/components/AppWalletButton";
 import WalletMenu from "@/components/WalletMenu";
+import { DEAL_STATUS_LABELS, PRE_ESCROW_STATUSES, type MirrorDealStatus } from "@/lib/deal-status";
 
 type NegState =
   | { kind: "idle" }
@@ -68,32 +69,10 @@ type DbMsg = {
 };
 
 function dealStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    draft: "Draft",
-    "seller-ready": "Counterparty reviewing",
-    "seller-agreed": "Ready to fund",
-    escalated: "Renegotiation requested",
-    proposed: "Ready to sign",
-    funded: "Funded",
-    in_progress: "In progress",
-    completed: "Sealed",
-    refunded: "Refunded",
-    disputed: "Disputed",
-  };
-  return labels[status] ?? status;
+  return DEAL_STATUS_LABELS[status as MirrorDealStatus] ?? status;
 }
 
-// Statuses where escrow is not yet on-chain, so terms may still change. Mirrors
-// PRE_ESCROW_STATUSES in api/deals/[dealId]/route.ts — that server list is
-// authoritative; this one only decides whether to show the UI.
-const PRE_ESCROW_UI_STATUSES = new Set([
-  "draft",
-  "seller-ready",
-  "seller-agreed",
-  "manual-chat",
-  "proposed",
-  "escalated",
-]);
+
 
 /** The newest terms proposal that hasn't been accepted or rejected yet, or null.
  *  Resolutions are messages too, so "live" means: latest proposal, with no
@@ -658,7 +637,7 @@ export default function NegotiateRoom() {
   // with 409) — the x-wallet header is unsigned, so UI gating alone wouldn't
   // hold. Observers never edit.
   const termsEditable =
-    !!deal && role !== "observer" && PRE_ESCROW_UI_STATUSES.has(deal.status);
+    !!deal && role !== "observer" && PRE_ESCROW_STATUSES.has(deal.status);
 
   // Poll messages for the live proposal. Same cadence and endpoint as the
   // escalation notice; keyed off termsEditable so we stop once terms lock.

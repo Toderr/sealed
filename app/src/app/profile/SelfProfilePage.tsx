@@ -26,6 +26,7 @@ import type { Deal, AgentTemplate, NotificationPrefs, PublicProfile } from "@/li
 import WalletMultiButton from "@/components/AppWalletButton";
 import WalletMenu from "@/components/WalletMenu";
 import { apiFetch, apiFetchSafe, ApiError } from "@/lib/api-client";
+import { dealStatusKey, dealStatusRank } from "@/lib/deal-status";
 
 type ProfileMilestone = {
   description: string;
@@ -86,20 +87,8 @@ const DEAL_SORTS: { value: DealSort; label: string }[] = [
   { value: "status", label: "Status" },
 ];
 
-function isDoneMilestone(status: string | undefined) {
-  const normalized = status?.toLowerCase();
-  return normalized === "released" || normalized === "completed";
-}
-
 function profileDealStatusKey(deal: ProfileDealRowData) {
-  if (deal.milestones.length > 0 && deal.milestones.every((m) => isDoneMilestone(m.status))) {
-    return "completed";
-  }
-
-  const raw = deal.status.toLowerCase();
-  if (raw === "created") return "draft";
-  if (raw === "inprogress") return "in_progress";
-  return raw;
+  return dealStatusKey(deal);
 }
 
 function isProfileDealSealed(deal: ProfileDealRowData) {
@@ -183,19 +172,7 @@ function profileDealTimestamp(deal: ProfileDealRowData) {
 }
 
 function profileDealStatusRank(deal: ProfileDealRowData) {
-  const order: Record<string, number> = {
-    draft: 0,
-    "seller-ready": 1,
-    "seller-agreed": 2,
-    escalated: 3,
-    proposed: 3,
-    funded: 4,
-    in_progress: 5,
-    completed: 6,
-    refunded: 7,
-    disputed: 8,
-  };
-  return order[profileDealStatusKey(deal)] ?? 99;
+  return dealStatusRank(profileDealStatusKey(deal));
 }
 
 function profileDealMatchesFilter(deal: ProfileDealRowData, filter: DealFilter) {

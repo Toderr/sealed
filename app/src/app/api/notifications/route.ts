@@ -1,6 +1,7 @@
 import { supabase, table } from "@/lib/supabase";
 import { requireWallet } from "@/lib/auth";
 import { HttpError, json, withRoute } from "@/lib/api-error";
+import { normalizeDealStatus } from "@/lib/deal-status";
 
 type DealRow = {
   deal_id: string;
@@ -70,7 +71,7 @@ function synthesizeDealNotifications(deals: DealRow[], wallet: string): Notifica
   const items: NotificationItem[] = [];
 
   for (const deal of deals) {
-    const status = normalizeStatus(deal.status);
+    const status = normalizeDealStatus(deal.status) ?? deal.status.toLowerCase();
     const isBuyer = deal.buyer_wallet === wallet;
     const isSeller = deal.seller_wallet === wallet;
     const createdAt = deal.updated_at ?? deal.created_at;
@@ -187,12 +188,7 @@ function queueNotificationToItem(row: QueueRow): NotificationItem {
   };
 }
 
-function normalizeStatus(status: string) {
-  const lower = status.toLowerCase();
-  if (lower === "inprogress") return "in_progress";
-  if (lower === "created") return "draft";
-  return lower;
-}
+
 
 function eventTitle(eventType: string) {
   const titles: Record<string, string> = {
