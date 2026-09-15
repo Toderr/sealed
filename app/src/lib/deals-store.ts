@@ -69,8 +69,12 @@ function readSnapshot(key: string): Deal[] {
   let deals: Deal[] = EMPTY_DEALS;
   if (raw) {
     try {
-      const parsed = JSON.parse(raw) as SerializedDeal[];
-      deals = parsed.map(deserializeDeal);
+      const parsed: unknown = JSON.parse(raw);
+      // Corrupt or stale-shape blob — treat as empty rather than deserializing
+      // rows that can't satisfy SerializedDeal.
+      deals = Array.isArray(parsed)
+        ? parsed.filter((d) => d && typeof d === "object" && typeof (d as SerializedDeal).dealId === "string").map(deserializeDeal)
+        : EMPTY_DEALS;
     } catch (err) {
       console.error("Failed to parse deals from storage:", err);
     }

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { dispatchLlm, getLlmOptsFromEnv } from "@/lib/llm-dispatch";
+import { dispatchLlm, friendlyLlmError, getLlmOptsFromEnv } from "@/lib/llm-dispatch";
 import { buildSystemPrompt } from "@/lib/agent-system-prompt";
 import { getWallet } from "@/lib/auth";
 import { HttpError, json, withRoute } from "@/lib/api-error";
@@ -29,8 +29,7 @@ export const POST = withRoute(async (request: NextRequest) => {
     return json({ response: text });
   } catch (err) {
     if (err instanceof HttpError) throw err;
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[agent] LLM call failed:", message);
-    throw new HttpError(500, message);
+    console.error("[agent] LLM call failed:", err);
+    throw new HttpError(502, friendlyLlmError(err));
   }
 });

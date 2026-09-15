@@ -8,10 +8,10 @@ import { useConnection as useSolanaConnection } from "@solana/wallet-adapter-rea
 import type { Connection } from "@solana/web3.js";
 import { MOCK_CHAIN } from "./env";
 
-export function useAppConnection(): { connection: Connection } {
+export function useAppConnection(): { connection: Connection | null } {
   if (MOCK_CHAIN) {
     // No RPC in mock mode; mocked escrow-client functions ignore this.
-    return { connection: null as unknown as Connection };
+    return { connection: null };
   }
   // eslint-disable-next-line react-hooks/rules-of-hooks
   return useSolanaConnection();

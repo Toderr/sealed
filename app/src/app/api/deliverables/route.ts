@@ -11,6 +11,6 @@ export const GET = withRoute(async (request) => {
     .eq("deal_id", dealId)
     .order("created_at", { ascending: false });
 
-  if (error) return json({ deliverables: [] });
+  if (error) throw new HttpError(500, error.message);
   return json({ deliverables: data ?? [] });
 });

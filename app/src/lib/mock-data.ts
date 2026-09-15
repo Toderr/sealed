@@ -69,11 +69,21 @@ type Deliverable = {
   created_at: string;
 };
 
+
+// Unversioned storage blobs: a parsed value whose top-level kind differs from
+// the fallback (array vs object vs primitive) is corrupt — return the fallback
+// instead of letting it take on type T it can't satisfy.
+function matchesFallbackKind(v: unknown, fallback: unknown): boolean {
+  if (v === null || typeof v !== "object") return typeof v === typeof fallback;
+  return Array.isArray(v) === Array.isArray(fallback);
+}
 function read<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
     const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
+    if (!raw) return fallback;
+    const parsed: unknown = JSON.parse(raw);
+    return matchesFallbackKind(parsed, fallback) ? (parsed as T) : fallback;
   } catch {
     return fallback;
   }
@@ -140,7 +150,12 @@ export const mockData = {
   },
   addRating(r: Omit<Rating, "id" | "submitted_at" | "revealed">): Rating {
     const all = read<Record<string, Rating>>(K.ratings, {});
-    const rating: Rating = { ...r, id: uuid(), revealed: true, submitted_at: nowIso() };
+    // Mirror the real double-blind contract: hidden until the counterparty rates.
+    const reciprocal = all[`${r.deal_id}:${r.ratee_wallet}`];
+    const rating: Rating = { ...r, id: uuid(), revealed: !!reciprocal, submitted_at: nowIso() };
+    if (reciprocal) {
+      all[`${r.deal_id}:${r.ratee_wallet}`] = { ...reciprocal, revealed: true };
+    }
     all[`${r.deal_id}:${r.rater_wallet}`] = rating;
     write(K.ratings, all);
     return rating;
@@ -495,6 +510,23 @@ async function handle(
       if (!b.deal_id || !b.ratee_wallet || !b.stars) {
         return json({ error: "Missing required fields" }, 400);
       }
+      if (wallet === b.ratee_wallet) {
+        return json({ error: "Cannot rate yourself" }, 400);
+      }
+      if (!Number.isInteger(b.stars) || b.stars < 1 || b.stars > 5) {
+        return json({ error: "Stars must be between 1 and 5" }, 400);
+      }
+      const ratedDeal = mockData.getDeal(b.deal_id);
+      if (!ratedDeal) return json({ error: "Deal not found" }, 404);
+      if (counterparty(ratedDeal, wallet) !== b.ratee_wallet) {
+        return json({ error: "Forbidden" }, 403);
+      }
+      if (!isCompleted(ratedDeal)) {
+        return json({ error: "Deal must be completed before rating" }, 400);
+      }
+      if (mockData.ratingFor(b.deal_id, wallet)) {
+        return json({ error: "Already rated this deal" }, 409);
+      }
       const rating = mockData.addRating({
         deal_id: b.deal_id,
         rater_wallet: wallet,
@@ -502,7 +534,7 @@ async function handle(
         stars: b.stars,
         review_text: (b.review_text ?? "").slice(0, 500),
       });
-      return json({ ok: true, id: rating.id, revealed: true });
+      return json({ ok: true, revealed: rating.revealed });
     }
   }
 
@@ -514,7 +546,7 @@ async function handle(
   // GET /api/deliverables — proof uploaded by either party, persisted on upload
   if (path === "/api/deliverables" && method === "GET") {
     const dealId = params.get("deal_id");
-    if (!dealId) return json({ deliverables: [] });
+    if (!dealId) return json({ error: "Missing deal_id" }, 400);
     return json({ deliverables: mockData.deliverablesFor(dealId) });
   }
 
@@ -722,7 +754,7 @@ async function handle(
 
   // POST /api/verify-milestone — offline auto-approve (no LLM proof review).
   if (path === "/api/verify-milestone" && method === "POST") {
-    return json({ review: { verdict: "approved", confidence: 1, reasoning: "Offline mode — auto-approved." } });
+    return json({ review: { confidence: 1, recommendation: "approve", notes: "Offline mode — auto-approved.", reviewedAt: Math.floor(Date.now() / 1000) } });
   }
 
   // GET/PUT /api/users/:wallet/profile — read/write the localStorage profile
@@ -782,7 +814,7 @@ async function handle(
 
   // GET /api/agent-templates — empty offline
   if (path === "/api/agent-templates" && method === "GET") {
-    return json({ templates: [], limit: 3 });
+    return json({ templates: [] });
   }
 
   // Not a mocked endpoint → let the caller fall through to real fetch.

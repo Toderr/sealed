@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { VERIFIER_SYSTEM_PROMPT } from "@/agents/prompts/verifier";
 import type { ProofType, VerifierReview } from "@/lib/types";
-import { dispatchLlm, getLlmOptsFromRequest, type LlmMessage } from "@/lib/llm-dispatch";
+import { dispatchLlm, friendlyLlmError, getLlmOptsFromRequest, type LlmMessage } from "@/lib/llm-dispatch";
 import { extractJson } from "@/lib/extract-json";
 import { HttpError, json, withRoute, parseJsonBody } from "@/lib/api-error";
 
@@ -10,6 +10,29 @@ interface VerifyRequest {
   proofType: ProofType;
   proofData: string;
   sellerNote?: string;
+}
+
+const RECOMMENDATIONS = new Set(["approve", "reject", "request_clarification"]);
+
+// extractJson only parses — the LLM can emit any shape under the precise
+// VerifierReview type. Validate fields before the value reaches callers.
+function validateReviewShape(p: unknown): Omit<VerifierReview, "reviewedAt"> {
+  if (!p || typeof p !== "object") throw new HttpError(502, "Verifier returned a malformed review");
+  const o = p as Record<string, unknown>;
+  if (typeof o.confidence !== "number" || !Number.isFinite(o.confidence) || o.confidence < 0 || o.confidence > 1) {
+    throw new HttpError(502, "Verifier returned an invalid confidence score");
+  }
+  if (typeof o.recommendation !== "string" || !RECOMMENDATIONS.has(o.recommendation)) {
+    throw new HttpError(502, "Verifier returned an invalid recommendation");
+  }
+  if (typeof o.notes !== "string") {
+    throw new HttpError(502, "Verifier returned malformed notes");
+  }
+  return {
+    confidence: o.confidence,
+    recommendation: o.recommendation as VerifierReview["recommendation"],
+    notes: o.notes,
+  };
 }
 
 function buildUserMessage(body: VerifyRequest): LlmMessage {
@@ -65,9 +88,9 @@ export const POST = withRoute(async (request: NextRequest) => {
       maxTokens: 512,
     });
 
-    const parsed = extractJson<Omit<VerifierReview, "reviewedAt">>(raw, "verifier response");
+    const parsed = extractJson<unknown>(raw, "verifier response");
     const review: VerifierReview = {
-      ...parsed,
+      ...validateReviewShape(parsed),
       reviewedAt: Math.floor(Date.now() / 1000),
     };
 
@@ -75,6 +98,6 @@ export const POST = withRoute(async (request: NextRequest) => {
   } catch (err) {
     if (err instanceof HttpError) throw err;
     console.error("Milestone verification failed:", err);
-    throw new HttpError(500, err instanceof Error ? err.message : "Unknown verification error");
+    throw new HttpError(502, friendlyLlmError(err));
   }
 });

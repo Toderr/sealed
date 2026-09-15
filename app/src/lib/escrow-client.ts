@@ -85,7 +85,7 @@ export interface FeeConfig {
 // mode, decode the on-chain Config account (fee_bps u16 + treasury pubkey, after
 // the 8-byte discriminator + 32-byte authority). Returns fee-free defaults if
 // the config account doesn't exist yet.
-export async function fetchFeeConfig(connection?: Connection): Promise<FeeConfig> {
+export async function fetchFeeConfig(connection?: Connection | null): Promise<FeeConfig> {
   if (MOCK_CHAIN) {
     const c = mockEscrow.getConfig();
     return { feeBps: c.feeBps, treasury: c.treasury, active: mockEscrow.feeActive() };
@@ -117,7 +117,7 @@ export type Tier = { id: number; creatorFeeBps: number; counterpartyFeeBps: numb
 
 /** Decode the tier table from Config. Empty when none configured (or on error).
  *  Layout after fee_bps: [1 bump][4 vec_len][ (id u8, creator u16, counterparty u16) · len ]. */
-export async function fetchTiers(connection?: Connection): Promise<Tier[]> {
+export async function fetchTiers(connection?: Connection | null): Promise<Tier[]> {
   if (MOCK_CHAIN || !connection) return [];
   try {
     const [configPDA] = findConfigPDA();
@@ -148,7 +148,7 @@ export async function fetchTiers(connection?: Connection): Promise<Tier[]> {
  *  create_deal — so the funding UI can show the fee the chain will ACTUALLY
  *  charge, not the flat default. */
 export async function fetchUserTierId(
-  connection: Connection | undefined,
+  connection: Connection | null,
   wallet: PublicKey
 ): Promise<number | null> {
   if (MOCK_CHAIN || !connection) return null;
@@ -174,7 +174,7 @@ export async function fetchUserTierId(
  * This is why an SSS-creator deal shows the buyer $0 fee: creator_fee_bps = 0.
  */
 export async function resolveBuyerFeeBps(
-  connection: Connection | undefined,
+  connection: Connection | null,
   opts: { globalFeeBps: number; creatorWallet: PublicKey; creatorIsBuyer: boolean }
 ): Promise<number> {
   const tierId = await fetchUserTierId(connection, opts.creatorWallet);
@@ -264,7 +264,7 @@ export async function buildCreateDealIx(
   // Optional: used to detect whether the creator has a tier account on-chain.
   // Omitted → the deal is built as untiered (standard fee), which is safe and
   // matches pre-tier behavior; passing it enables tiered pricing.
-  connection?: Connection
+  connection?: Connection | null
 ): Promise<TransactionInstruction> {
   if (MOCK_CHAIN) return mockIx(buyer);
   const seller = new PublicKey(params.sellerWallet);
@@ -347,10 +347,10 @@ export const MIN_FUNDABLE_DEAL_SIZE = 2130;
 /** Throw if `dealId`'s on-chain account is too small to be safely funded.
  *  No-op when the account doesn't exist yet (a fresh create+fund in one tx). */
 export async function assertDealFundable(
-  connection: Connection,
+  connection: Connection | null,
   dealId: string
 ): Promise<void> {
-  if (MOCK_CHAIN) return;
+  if (MOCK_CHAIN || !connection) return;
   const [dealPDA] = findDealPDA(dealId);
   const info = await connection.getAccountInfo(dealPDA);
   if (info && info.data.length < MIN_FUNDABLE_DEAL_SIZE) {
@@ -530,10 +530,10 @@ const DEAL_STATUSES = ["created", "funded", "in_progress", "completed", "refunde
  * or can't be decoded — callers must treat null as "unknown", not "not refunded".
  */
 export async function fetchDealRefundState(
-  connection: Connection,
+  connection: Connection | null,
   dealId: string
 ): Promise<DealRefundState | null> {
-  if (MOCK_CHAIN) return null;
+  if (MOCK_CHAIN || !connection) return null;
   const [dealPDA] = findDealPDA(dealId);
   const info = await connection.getAccountInfo(dealPDA);
   if (!info) return null;
@@ -598,13 +598,13 @@ export async function buildEnsureAtaIx(
 // --- Transaction helpers ---
 
 export async function sendTx(
-  connection: Connection,
+  connection: Connection | null,
   ixs: TransactionInstruction | TransactionInstruction[],
   signTransaction: (tx: Transaction) => Promise<Transaction>
 ): Promise<string> {
   // Mock mode: never touch the chain. Component handlers update Deal state after
   // this resolves, so returning a fake signature keeps the full flow working.
-  if (MOCK_CHAIN) {
+  if (MOCK_CHAIN || !connection) {
     return mockEscrow.fakeSig("send");
   }
   try {
@@ -635,11 +635,11 @@ export async function sendTx(
 }
 
 export async function getUsdcBalance(
-  connection: Connection,
+  connection: Connection | null,
   owner: PublicKey,
   mint = getUsdcMint()
 ): Promise<number> {
-  if (MOCK_CHAIN) {
+  if (MOCK_CHAIN || !connection) {
     return lamportsToUsdc(mockEscrow.balanceOf(owner.toBase58()));
   }
   const ata = await getAssociatedTokenAddress(mint, owner);
@@ -686,12 +686,12 @@ export async function getUsdcBalance(
  * reclaimed and stale requests cleaned up).
  */
 export async function buildAndPartialSign(
-  connection: Connection,
+  connection: Connection | null,
   ixs: TransactionInstruction[],
   feePayer: PublicKey,
   signTransaction: (tx: Transaction) => Promise<Transaction>
 ): Promise<{ partialTx: string; nonceAccount: string; nonce: string }> {
-  if (MOCK_CHAIN) {
+  if (MOCK_CHAIN || !connection) {
     return { partialTx: "mock-partial-tx-blob", nonceAccount: "mock-nonce", nonce: "mock-nonce-value" };
   }
 
@@ -751,12 +751,12 @@ export async function buildAndPartialSign(
  * Best-effort: only the nonce authority (the initiator) can call this.
  */
 export async function closeNonceAccount(
-  connection: Connection,
+  connection: Connection | null,
   nonceAccountPubkey: string,
   authority: PublicKey,
   signTransaction: (tx: Transaction) => Promise<Transaction>
 ): Promise<void> {
-  if (MOCK_CHAIN) return;
+  if (MOCK_CHAIN || !connection) return;
   const tx = new Transaction().add(
     SystemProgram.nonceWithdraw({
       noncePubkey: new PublicKey(nonceAccountPubkey),
@@ -773,11 +773,11 @@ export async function closeNonceAccount(
 }
 
 export async function coSignAndSend(
-  connection: Connection,
+  connection: Connection | null,
   partialTxB64: string,
   signTransaction: (tx: Transaction) => Promise<Transaction>
 ): Promise<string> {
-  if (MOCK_CHAIN) {
+  if (MOCK_CHAIN || !connection) {
     return mockEscrow.fakeSig("cosign");
   }
   const bytes = Buffer.from(partialTxB64, "base64");

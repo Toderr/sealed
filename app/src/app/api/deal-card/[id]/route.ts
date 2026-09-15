@@ -11,11 +11,20 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  const { data: deal } = await supabase
+  const { data: deal, error } = await supabase
     .from(table("deals"))
     .select("*")
     .eq("deal_id", id)
     .single();
+
+  if (error && error.code !== "PGRST116") {
+    return new Response("Failed to load deal", { status: 500 });
+  }
+  if (!deal) {
+    // Missing deal must 404 — fabricating a card for a nonexistent id served
+    // a "Deal Sealed" badge with invented parties and a $0 amount.
+    return new Response("Deal not found", { status: 404 });
+  }
 
   const dealData = deal as {
     deal_id: string;
@@ -26,22 +35,22 @@ export async function GET(
     created_at: string;
     updated_at: string;
     milestones_metadata?: { show_amount_on_card?: boolean };
-  } | null;
+  };
 
   const [partyA, partyB] = await Promise.all([
-    dealData ? getPublicProfile(dealData.buyer_wallet) : null,
-    dealData ? getPublicProfile(dealData.seller_wallet) : null,
+    getPublicProfile(dealData.buyer_wallet),
+    getPublicProfile(dealData.seller_wallet),
   ]);
 
-  const showAmount = dealData?.milestones_metadata?.show_amount_on_card !== false;
-  const amountUsdc = dealData ? dealData.total_amount_usdc / 1_000_000 : 0;
-  const milestones = dealData?.milestones ?? [];
+  const showAmount = dealData.milestones_metadata?.show_amount_on_card !== false;
+  const amountUsdc = dealData.total_amount_usdc / 1_000_000;
+  const milestones = dealData.milestones ?? [];
   const milestoneDone = milestones.filter(
     (m) => m.status === "Completed" || m.status === "Released"
   ).length;
 
-  const createdAt = dealData?.created_at ? new Date(dealData.created_at) : new Date();
-  const updatedAt = dealData?.updated_at ? new Date(dealData.updated_at) : new Date();
+  const createdAt = dealData.created_at ? new Date(dealData.created_at) : new Date();
+  const updatedAt = dealData.updated_at ? new Date(dealData.updated_at) : new Date();
   const durationDays = Math.max(
     1,
     Math.round((updatedAt.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24))

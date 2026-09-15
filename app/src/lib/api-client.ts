@@ -85,10 +85,16 @@ export async function apiFetch<T = unknown>(
     throw new ApiError(res.status, message, errBody);
   }
 
-  if (res.status === 204) return undefined as T;
-  // Some routes return empty bodies on success; guard the parse.
+  // Every route in this API responds with a JSON body; a 2xx with no body
+  // (or unparseable body) is a server contract violation, not `undefined`.
+  // Surface it as an ApiError instead of lying about the T return type.
   const text = await res.text();
-  return (text ? JSON.parse(text) : undefined) as T;
+  if (!text) throw new ApiError(res.status, "Empty response body");
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ApiError(res.status, "Invalid JSON response body", text.slice(0, 200));
+  }
 }
 
 /**

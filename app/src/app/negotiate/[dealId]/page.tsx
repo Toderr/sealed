@@ -107,7 +107,15 @@ function liveProposalFromMessages(
     if (type === "terms_proposal") {
       const terms = m.metadata?.terms as ProposedTerms | undefined;
       // Ignore malformed proposals rather than rendering an empty diff.
-      if (terms && typeof terms.totalAmount === "number" && Array.isArray(terms.milestones)) {
+      if (
+        terms &&
+        typeof terms.totalAmount === "number" && Number.isFinite(terms.totalAmount) &&
+        Array.isArray(terms.milestones) &&
+        terms.milestones.every(
+          (ms) => ms && typeof ms.description === "string" &&
+                  typeof ms.amount === "number" && Number.isFinite(ms.amount)
+        )
+      ) {
         latest = {
           terms,
           proposedBy: typeof m.metadata?.proposed_by === "string" ? m.metadata.proposed_by : m.wallet ?? null,

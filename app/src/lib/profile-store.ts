@@ -79,7 +79,9 @@ function storageKey(wallet: string) {
 export function loadProfileFromStorage(wallet: string): UserProfile | null {
   try {
     const raw = localStorage.getItem(storageKey(wallet));
-    return raw ? (JSON.parse(raw) as UserProfile) : null;
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? (parsed as UserProfile) : null;
   } catch {
     return null;
   }

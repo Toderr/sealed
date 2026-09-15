@@ -11,6 +11,7 @@ import { isAgentConfigError } from "@/lib/agent-config-error";
 import { dispatchLlm, type LlmMessage } from "@/lib/llm-dispatch";
 import { apiFetch } from "@/lib/api-client";
 import { ContractWizard } from "@/components/ContractWizard";
+import type { WizardInitialData } from "@/components/ContractWizard";
 import { renderMarkdown } from "@/lib/render-markdown";
 import { MOCK_DATA } from "@/lib/env";
 import MockDealForm from "@/components/MockDealForm";
@@ -120,12 +121,8 @@ function getWizardStartStep(partial: PartialDeal): string {
   return "milestones"; // all basic fields known, let user review/edit milestones
 }
 
-interface WizardPrefill {
-  contractType?: ContractType;
-  title?: string;
-  totalAmount?: string;
-  milestones?: Array<{ description: string; amount: string }>;
-}
+// Shared with ContractWizard's initialData prop — do not fork this shape.
+type WizardPrefill = WizardInitialData;
 
 const NEW_DEAL_SUGGESTIONS = [
   "Draft a vendor deal for 100 units at $5,000 with two delivery milestones",

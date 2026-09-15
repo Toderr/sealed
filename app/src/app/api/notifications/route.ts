@@ -34,7 +34,7 @@ type NotificationItem = {
 export const GET = withRoute(async (request) => {
   const wallet = requireWallet(request);
 
-  const [{ data: deals, error: dealsError }, { data: queue }] = await Promise.all([
+  const [{ data: deals, error: dealsError }, { data: queue, error: queueError }] = await Promise.all([
     supabase
       .from(table("deals"))
       .select("deal_id,buyer_wallet,seller_wallet,title,status,milestones,created_at,updated_at")
@@ -51,6 +51,9 @@ export const GET = withRoute(async (request) => {
 
   if (dealsError) {
     throw new HttpError(500, dealsError.message);
+  }
+  if (queueError) {
+    throw new HttpError(500, queueError.message);
   }
 
   const notifications = [

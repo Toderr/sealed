@@ -29,7 +29,13 @@ const FRESH_DRAFT_MS = 2 * 60 * 1000; // 2 minutes
 function readSessionDeal(dealId: string): SupabaseDeal | null {
   try {
     const raw = sessionStorage.getItem(`deal:${dealId}`);
-    if (raw) return JSON.parse(raw) as SupabaseDeal;
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && typeof (parsed as SupabaseDeal).deal_id === "string") {
+        return parsed as SupabaseDeal;
+      }
+      return null;
+    }
   } catch {}
   return null;
 }

@@ -136,7 +136,8 @@ export async function runNegotiation(
       throw new Error(
         `Agent call failed on round ${round} (${currentSide}): ${
           err instanceof Error ? err.message : String(err)
-        }`
+        }`,
+        { cause: err }
       );
     }
 
@@ -148,7 +149,8 @@ export async function runNegotiation(
       throw new Error(
         `Failed to parse ${currentSide} agent output on round ${round}: ${
           err instanceof Error ? err.message : String(err)
-        }`
+        }`,
+        { cause: err }
       );
     }
 

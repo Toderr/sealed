@@ -62,11 +62,71 @@ export interface PreparedNegotiation {
   sellerCallLlm: LlmCaller;
 }
 
-export function validateNegotiateBody(body: NegotiateRequest | null): NegotiateRequest {
-  if (!body?.proposalId || !body?.buyerWallet || !body?.initialTerms || !body?.buyerBoundaries) {
-    throw new HttpError(400, "Missing required fields");
+const PAYMENT_TERMS = new Set(["upfront_100", "upfront_50", "milestone_based", "net_7", "net_30"]);
+const NEGOTIATION_STYLES = new Set(["conservative", "balanced", "aggressive"]);
+
+function finiteNumber(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v);
+}
+
+// Field-level check: an absent or non-finite maxNegotiationRounds previously
+// passed the truthiness gate, making Math.min(..., NaN) run zero rounds.
+function validateBoundaries(b: unknown, name: string): asserts b is NegotiationBoundaries {
+  if (!b || typeof b !== "object") throw new HttpError(400, `Missing ${name}`);
+  const o = b as Record<string, unknown>;
+  for (const f of [
+    "maxPriceIncrease", "maxPriceDecrease", "maxTimelineExtensionDays",
+    "minMilestones", "maxMilestones", "maxFrontLoadPercent",
+    "autoApproveBelowUsdc", "requireApprovalAboveUsdc", "maxNegotiationRounds",
+  ]) {
+    if (!finiteNumber(o[f])) throw new HttpError(400, `Invalid ${name}.${f}`);
   }
-  return body;
+  if (!Array.isArray(o.acceptedPaymentTerms) || !o.acceptedPaymentTerms.every((t) => typeof t === "string" && PAYMENT_TERMS.has(t))) {
+    throw new HttpError(400, `Invalid ${name}.acceptedPaymentTerms`);
+  }
+  if (!Array.isArray(o.redLines) || !o.redLines.every((t) => typeof t === "string")) {
+    throw new HttpError(400, `Invalid ${name}.redLines`);
+  }
+  if (typeof o.negotiationStyle !== "string" || !NEGOTIATION_STYLES.has(o.negotiationStyle)) {
+    throw new HttpError(400, `Invalid ${name}.negotiationStyle`);
+  }
+  const n = o as unknown as NegotiationBoundaries;
+  if (n.minMilestones < 1 || n.maxMilestones < n.minMilestones || n.maxNegotiationRounds < 1) {
+    throw new HttpError(400, `Impossible ${name}: check milestone/round bounds`);
+  }
+}
+
+function validateDealParams(t: unknown): asserts t is DealParams {
+  if (!t || typeof t !== "object") throw new HttpError(400, "Missing initialTerms");
+  const o = t as Record<string, unknown>;
+  if (typeof o.dealId !== "string" || !o.dealId) throw new HttpError(400, "Invalid initialTerms.dealId");
+  if (typeof o.sellerWallet !== "string") throw new HttpError(400, "Invalid initialTerms.sellerWallet");
+  if (!finiteNumber(o.totalAmount) || o.totalAmount <= 0) throw new HttpError(400, "Invalid initialTerms.totalAmount");
+  if (!Array.isArray(o.milestones) || o.milestones.length === 0) {
+    throw new HttpError(400, "initialTerms.milestones must be a non-empty array");
+  }
+  for (const m of o.milestones) {
+    const ms = m as Record<string, unknown>;
+    if (!ms || typeof ms !== "object" || typeof ms.description !== "string" || !finiteNumber(ms.amount) || ms.amount <= 0) {
+      throw new HttpError(400, "Invalid initialTerms.milestones entry");
+    }
+  }
+}
+
+// Field-level validation — presence-only checks let `{}` boundaries through,
+// which turned maxNegotiationRounds NaN and ran zero negotiation rounds.
+export function validateNegotiateBody(body: unknown): NegotiateRequest {
+  if (!body || typeof body !== "object") throw new HttpError(400, "Missing request body");
+  const o = body as Record<string, unknown>;
+  if (typeof o.proposalId !== "string" || !o.proposalId) throw new HttpError(400, "Invalid proposalId");
+  if (typeof o.buyerWallet !== "string" || !o.buyerWallet) throw new HttpError(400, "Invalid buyerWallet");
+  validateDealParams(o.initialTerms);
+  validateBoundaries(o.buyerBoundaries, "buyerBoundaries");
+  if (o.sellerBoundaries !== undefined) validateBoundaries(o.sellerBoundaries, "sellerBoundaries");
+  for (const f of ["renegotiationRequest", "overrideInstructions"]) {
+    if (o[f] !== undefined && typeof o[f] !== "string") throw new HttpError(400, `Invalid ${f}`);
+  }
+  return o as unknown as NegotiateRequest;
 }
 
 // Apply the buyer's saved persona + resolve the LLM callers. Mutates a copy of
@@ -79,17 +139,23 @@ export async function prepareNegotiation(
 
   const { data: templates } = await supabase
     .from(table("agent_templates"))
-    .select("style_index, price_floor, escalate_after")
+    .select("negotiation_style, price_floor_pct, escalate_after_rounds")
     .eq("wallet", body.buyerWallet)
+    .eq("active", true)
     .limit(1);
   if (templates && templates.length > 0) {
     const p = templates[0];
-    const styleMap: NegotiationStyle[] = ["conservative", "balanced", "balanced"];
+    // Schema styles: firm/flexible/collaborative → engine NegotiationStyle.
+    const styleMap: Record<string, NegotiationStyle> = {
+      firm: "conservative",
+      flexible: "balanced",
+      collaborative: "aggressive",
+    };
     buyerBoundaries = {
       ...buyerBoundaries,
-      negotiationStyle: styleMap[p.style_index ?? 1],
-      maxPriceDecrease: 100 - (p.price_floor ?? 80),
-      maxNegotiationRounds: p.escalate_after ?? buyerBoundaries.maxNegotiationRounds,
+      negotiationStyle: styleMap[p.negotiation_style ?? ""] ?? buyerBoundaries.negotiationStyle,
+      maxPriceDecrease: 100 - (p.price_floor_pct ?? 80),
+      maxNegotiationRounds: p.escalate_after_rounds ?? buyerBoundaries.maxNegotiationRounds,
     };
   }
 

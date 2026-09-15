@@ -37,11 +37,21 @@ export interface MockDeal {
   fundedAt: number; // unix seconds; 0 = not yet fully funded
 }
 
+
+// Unversioned storage blobs: a parsed value whose top-level kind differs from
+// the fallback (array vs object vs primitive) is corrupt — return the fallback
+// instead of letting it take on type T it can't satisfy.
+function matchesFallbackKind(v: unknown, fallback: unknown): boolean {
+  if (v === null || typeof v !== "object") return typeof v === typeof fallback;
+  return Array.isArray(v) === Array.isArray(fallback);
+}
 function load<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
     const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
+    if (!raw) return fallback;
+    const parsed: unknown = JSON.parse(raw);
+    return matchesFallbackKind(parsed, fallback) ? (parsed as T) : fallback;
   } catch {
     return fallback;
   }

@@ -318,9 +318,11 @@ interface FriendEntry {
   profile: FriendProfile | null;
 }
 
-// ── Prefill types (must match ChatInterface WizardPrefill) ─────────────────
+// ── Prefill types ─────────────────────────────────────────────────────────
+// Exported: ChatInterface uses this as its WizardPrefill — one shared type
+// instead of two parallel copies that must be kept in sync.
 
-interface WizardInitialData {
+export interface WizardInitialData {
   contractType?: ContractType;
   title?: string;
   totalAmount?: string;

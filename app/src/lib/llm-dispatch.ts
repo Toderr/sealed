@@ -24,7 +24,14 @@ export class LlmError extends Error {
  * Never returns raw provider JSON.
  */
 export function friendlyLlmError(err: unknown): string {
-  const status = err instanceof LlmError ? err.status : null;
+  // Walk the cause chain — callers like the negotiation engine wrap provider
+  // errors in a contextual Error, so the typed status may sit on .cause.
+  let cur: unknown = err;
+  let status: number | null = null;
+  while (cur instanceof Error) {
+    if (cur instanceof LlmError) { status = cur.status; break; }
+    cur = cur.cause;
+  }
   const msg = err instanceof Error ? err.message : String(err);
 
   if (status === 402 || /quota|insufficient|more credits|can only afford|billing/i.test(msg)) {

@@ -1,6 +1,6 @@
 import { supabase, table } from "@/lib/supabase";
 import { getWallet } from "@/lib/auth";
-import { json, withRoute } from "@/lib/api-error";
+import { HttpError, json, withRoute, isMissingTableError } from "@/lib/api-error";
 
 // GET /api/friends/status?with=<wallet>
 // Returns the friendship status between x-wallet and ?with=
@@ -13,7 +13,7 @@ export const GET = withRoute(async (req) => {
   if (!theirWallet) return json({ status: "none" });
   if (theirWallet === myWallet) return json({ status: "self" });
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from(table("friends"))
     .select("id, wallet, status")
     .or(
@@ -21,6 +21,14 @@ export const GET = withRoute(async (req) => {
     )
     .maybeSingle();
 
+  // A DB failure must not masquerade as "not friends" — same contract as the
+  // sibling friends routes.
+  if (error) {
+    if (isMissingTableError(error)) {
+      throw new HttpError(503, "Friends isn't set up on this server yet.");
+    }
+    throw new HttpError(500, error.message);
+  }
   if (!data) return json({ status: "none" });
 
   if (data.status === "accepted") return json({ status: "friends", id: data.id });

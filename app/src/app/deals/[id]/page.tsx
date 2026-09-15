@@ -878,7 +878,7 @@ export default function ActiveDealPage() {
     setRatingError(null);
 
     try {
-      const data = await apiFetch<{ id?: string }>("/api/ratings", {
+      const data = await apiFetch<{ ok?: boolean; revealed?: boolean }>("/api/ratings", {
         method: "POST",
         wallet,
         body: {
@@ -893,10 +893,12 @@ export default function ActiveDealPage() {
         ...ratingLookup,
         canRate: false,
         rating: {
-          id: data?.id ?? "submitted",
+          // Prod returns no rating id — mock used to, which taught the client a
+          // shape the server never produced. "submitted" is a display placeholder.
+          id: "submitted",
           stars: ratingStars,
           review_text: ratingText.trim(),
-          revealed: true,
+          revealed: data?.revealed ?? false,
           submitted_at: new Date().toISOString(),
           ratee_wallet: ratingLookup.ratee_wallet,
         },
